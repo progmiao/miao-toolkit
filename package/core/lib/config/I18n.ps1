@@ -1,7 +1,8 @@
-﻿# 工具箱多语言（仅 core/i18n，不含 tools/ 下各工具）
+﻿# 工具箱与工具多语言（core/i18n、tools/<id>/i18n；语种以工具箱目录下 *.json 为准）
 
-$script:I18nConfigCache = $null
+$script:ToolkitLocalesCache = $null
 $script:I18nCatalogCache = @{}
+$script:ToolI18nCatalogCache = @{}
 $script:CurrentLocale = $null
 
 function Get-I18nRoot {
@@ -11,18 +12,36 @@ function Get-I18nRoot {
     return Join-Path (Get-CorePackageRoot) 'i18n'
 }
 
+function Get-ToolkitLocales {
+    if ($null -ne $script:ToolkitLocalesCache) {
+        return $script:ToolkitLocalesCache
+    }
+
+    $root = Get-I18nRoot
+    if (-not (Test-Path $root)) {
+        $script:ToolkitLocalesCache = @()
+        return $script:ToolkitLocalesCache
+    }
+
+    $names = @(Get-ChildItem -Path $root -Filter '*.json' -File |
+        ForEach-Object { $_.BaseName } |
+        Sort-Object)
+    $script:ToolkitLocalesCache = $names
+    return $script:ToolkitLocalesCache
+}
+
+function Get-DefaultToolkitLocale {
+    $locales = @(Get-ToolkitLocales)
+    if ($locales.Count -eq 0) { return 'zh' }
+    if ($locales -contains 'zh') { return 'zh' }
+    return [string]$locales[0]
+}
+
 function Get-I18nConfig {
-    if ($script:I18nConfigCache) {
-        return $script:I18nConfigCache
+    return [pscustomobject]@{
+        locales       = @(Get-ToolkitLocales)
+        defaultLocale = (Get-DefaultToolkitLocale)
     }
-
-    $path = Join-Path (Get-I18nRoot) 'i18n.json'
-    if (-not (Test-Path $path)) {
-        throw '未找到 core/i18n/i18n.json'
-    }
-
-    $script:I18nConfigCache = Get-Content -Raw -Path $path -Encoding UTF8 | ConvertFrom-Json
-    return $script:I18nConfigCache
 }
 
 function Get-CurrentLocale {
@@ -30,7 +49,7 @@ function Get-CurrentLocale {
         return $script:CurrentLocale
     }
 
-    $config = Get-I18nConfig
+    $supported = @(Get-ToolkitLocales)
     $locale = $null
 
     if ($env:MIAO_LANG) {
@@ -41,14 +60,10 @@ function Get-CurrentLocale {
         if ($userConfig.locale) {
             $locale = [string]$userConfig.locale
         }
-        else {
-            $locale = [string]$config.defaultLocale
-        }
     }
 
-    $supported = @($config.locales | ForEach-Object { [string]$_ })
-    if ($supported -notcontains $locale) {
-        $locale = [string]$config.defaultLocale
+    if ([string]::IsNullOrWhiteSpace($locale) -or ($supported.Count -gt 0 -and $supported -notcontains $locale)) {
+        $locale = Get-DefaultToolkitLocale
     }
 
     $script:CurrentLocale = $locale
@@ -58,15 +73,20 @@ function Get-CurrentLocale {
 function Reset-I18nLocaleCache {
     $script:CurrentLocale = $null
     $script:I18nCatalogCache = @{}
+    $script:ToolI18nCatalogCache = @{}
 }
 
 function Set-UserLocale {
     param([string]$Locale)
 
     $locale = $Locale.Trim()
-    $supported = @((Get-I18nConfig).locales | ForEach-Object { [string]$_ })
-    if ($supported -notcontains $locale) {
-        throw "不支持的语言: $Locale"
+    $supported = @(Get-ToolkitLocales)
+    if ($supported.Count -gt 0 -and $supported -notcontains $locale) {
+        $template = Get-I18nRaw -Key 'error.unsupportedLocale'
+        if ([string]::IsNullOrEmpty($template)) {
+            throw $locale
+        }
+        throw (Expand-UiTemplate -Template $template -Vars @{ locale = $locale })
     }
 
     $config = Get-UserConfig
@@ -100,11 +120,40 @@ function Get-I18nCatalog {
 
     $path = Join-Path (Get-I18nRoot) "$Locale.json"
     if (-not (Test-Path $path)) {
-        throw "未找到语言包: $Locale.json"
+        $script:I18nCatalogCache[$Locale] = @{}
+        return $script:I18nCatalogCache[$Locale]
     }
 
     $catalog = Get-Content -Raw -Path $path -Encoding UTF8 | ConvertFrom-Json
     $script:I18nCatalogCache[$Locale] = $catalog
+    return $catalog
+}
+
+function Get-ToolI18nRoot {
+    param([string]$ToolRoot)
+
+    return Join-Path $ToolRoot 'i18n'
+}
+
+function Get-ToolI18nCatalog {
+    param(
+        [string]$ToolRoot,
+        [string]$Locale = (Get-CurrentLocale)
+    )
+
+    $cacheKey = "$ToolRoot|$Locale"
+    if ($script:ToolI18nCatalogCache.ContainsKey($cacheKey)) {
+        return $script:ToolI18nCatalogCache[$cacheKey]
+    }
+
+    $path = Join-Path (Get-ToolI18nRoot -ToolRoot $ToolRoot) "$Locale.json"
+    if (-not (Test-Path $path)) {
+        $script:ToolI18nCatalogCache[$cacheKey] = @{}
+        return $script:ToolI18nCatalogCache[$cacheKey]
+    }
+
+    $catalog = Get-Content -Raw -Path $path -Encoding UTF8 | ConvertFrom-Json
+    $script:ToolI18nCatalogCache[$cacheKey] = $catalog
     return $catalog
 }
 
@@ -135,7 +184,7 @@ function Get-I18nRaw {
     $value = Resolve-I18nKey -Object (Get-I18nCatalog -Locale $locale) -Key $Key
 
     if ([string]::IsNullOrEmpty($value)) {
-        $fallback = [string](Get-I18nConfig).defaultLocale
+        $fallback = Get-DefaultToolkitLocale
         if ($locale -ne $fallback) {
             $value = Resolve-I18nKey -Object (Get-I18nCatalog -Locale $fallback) -Key $Key
         }
@@ -152,12 +201,52 @@ function Get-I18n {
 
     $template = Get-I18nRaw -Key $Key
     if ([string]::IsNullOrEmpty($template)) {
-        throw "i18n 缺少键: $Key"
+        return $Key
+    }
+
+    return Expand-UiTemplate -Template $template -Vars (Get-ManifestTemplateVars -Extra $Vars)
+}
+
+function Get-ToolI18nRaw {
+    param(
+        [string]$ToolRoot,
+        [string]$Key
+    )
+
+    if ([string]::IsNullOrWhiteSpace($ToolRoot) -or [string]::IsNullOrWhiteSpace($Key)) {
+        return $null
+    }
+
+    $locale = Get-CurrentLocale
+    $value = Resolve-I18nKey -Object (Get-ToolI18nCatalog -ToolRoot $ToolRoot -Locale $locale) -Key $Key
+
+    if ([string]::IsNullOrEmpty($value)) {
+        $fallback = Get-DefaultToolkitLocale
+        if ($locale -ne $fallback) {
+            $value = Resolve-I18nKey -Object (Get-ToolI18nCatalog -ToolRoot $ToolRoot -Locale $fallback) -Key $Key
+        }
+    }
+
+    return $value
+}
+
+function Get-ToolI18n {
+    param(
+        [string]$ToolRoot,
+        [string]$Key,
+        [hashtable]$Vars = @{}
+    )
+
+    $template = Get-ToolI18nRaw -ToolRoot $ToolRoot -Key $Key
+    if ([string]::IsNullOrEmpty($template)) {
+        return $Key
     }
 
     return Expand-UiTemplate -Template $template -Vars (Get-ManifestTemplateVars -Extra $Vars)
 }
 
 function Get-BrandTitle {
-    return Get-I18nRaw -Key 'brand.title'
+    $title = Get-I18nRaw -Key 'brand.title'
+    if ([string]::IsNullOrWhiteSpace($title)) { return 'brand.title' }
+    return $title
 }

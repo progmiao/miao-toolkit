@@ -22,7 +22,8 @@
     "statusAvailable": "New version available: v{latestVersion}",
     "latestReleaseLabel": "Latest release",
     "executePlaceholder": "[Preview] Update execution not implemented yet",
-    "pressEscToBack": "Enter / Esc to go back"
+    "pressEscToBack": "Enter / Esc to go back",
+    "sessionHint": "[!] A new Miao version v{latestVersion} is available (current v{currentVersion}). Run miao update or winget upgrade miao."
   },
   "menu": {
     "toolList": "Tools",
@@ -50,7 +51,8 @@
     "hintSettingsShortcut": "S Settings",
     "flashDisabledNumber": "This option is not available yet",
     "flashInvalidNumber": "Number not found",
-    "flashDisabledItem": "This option is not available yet"
+    "flashDisabledItem": "This option is not available yet",
+    "toolMenuDefaultTitle": "Tool menu"
   },
   "branded": {
     "footerScroll": "↑↓ scroll",
@@ -119,13 +121,18 @@
       "uninstallLabel": "Uninstall",
       "uninstallSummary": "Uninstall this tool's dependencies",
       "statusUpToDate": "Dependencies are up to date",
-      "pressEnterToBack": "Press Enter to return to the menu"
+      "pressEnterToBack": "Press Enter to return to the menu",
+      "installing": "Installing dependencies for {name}…"
     }
   },
   "error": {
-    "pathsNotInitialized": "{title} is not initialized. Start via miao or dev\\dev-miao.ps1",
+    "pathsNotInitialized": "{title} is not initialized. Start via the miao command.",
     "unknownTool": "Unknown tool: {toolId}",
-    "unknownCommand": "Unknown command or tool: {command}"
+    "unknownCommand": "Unknown command or tool: {command}",
+    "toolMissingEntry": "Tool {toolId} is missing entry: {entry}",
+    "missingInstallScript": "Missing dependency install script: {path}",
+    "missingManifest": "core/manifest.json not found",
+    "unsupportedLocale": "Unsupported language: {locale}"
   },
   "settings": {
     "menuEntry": "Settings",

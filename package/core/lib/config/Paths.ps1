@@ -63,7 +63,7 @@ function Get-Manifest {
 
     $path = Get-ManifestRawPath
     if (-not (Test-Path $path)) {
-        throw '未找到 core/manifest.json'
+        throw (Get-I18n -Key 'error.missingManifest')
     }
 
     $script:ManifestCache = Get-Content -Raw -Path $path -Encoding UTF8 | ConvertFrom-Json

@@ -822,11 +822,15 @@ function New-ToolkitMenuHeader {
 function New-ToolMenuHeader {
     param(
         $ToolConfig,
-        [string]$SectionTitle = '功能菜单'
+        [string]$SectionTitle = ''
     )
 
     $version = ''
     try { $version = (Get-Manifest).version } catch { }
+
+    if ([string]::IsNullOrWhiteSpace($SectionTitle)) {
+        $SectionTitle = Get-I18n -Key 'menu.toolMenuDefaultTitle'
+    }
 
     return @{
         Version      = $version

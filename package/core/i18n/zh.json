@@ -4,7 +4,7 @@
     "description": "Windows 命令行工具集成与管理平台"
   },
   "header": {
-    "welcomeLine": "Welcome to Miao!",
+    "welcomeLine": "欢迎使用 Miao！",
     "subtitleTemplate": "{author}  ·  v{version}  ·  {releaseDate}",
     "fallbackLogoMiddle": "   ( {shortName} )   "
   },
@@ -22,7 +22,8 @@
     "statusAvailable": "发现新版本 v{latestVersion}",
     "latestReleaseLabel": "最新发布",
     "executePlaceholder": "[预览] 更新执行逻辑待实现",
-    "pressEscToBack": "Enter / Esc 返回"
+    "pressEscToBack": "Enter / Esc 返回",
+    "sessionHint": "[!] Miao 有新版本 v{latestVersion}（当前 v{currentVersion}）。运行 miao update 或 winget upgrade miao 更新。"
   },
   "menu": {
     "toolList": "工具列表",
@@ -50,7 +51,8 @@
     "hintSettingsShortcut": "S 设置",
     "flashDisabledNumber": "该选项尚未开放，请选择其他编号",
     "flashInvalidNumber": "编号不存在",
-    "flashDisabledItem": "该选项尚未开放，请选择其他项"
+    "flashDisabledItem": "该选项尚未开放，请选择其他项",
+    "toolMenuDefaultTitle": "功能菜单"
   },
   "branded": {
     "footerScroll": "↑↓ 滚动",
@@ -119,13 +121,18 @@
       "uninstallLabel": "卸载",
       "uninstallSummary": "卸载本工具第三方依赖",
       "statusUpToDate": "依赖已是最新，无需处理",
-      "pressEnterToBack": "按 Enter 返回功能菜单"
+      "pressEnterToBack": "按 Enter 返回功能菜单",
+      "installing": "正在安装 {name} 的依赖…"
     }
   },
   "error": {
-    "pathsNotInitialized": "{title} 路径未初始化，请通过 miao 命令或 dev\\dev-miao.ps1 启动",
+    "pathsNotInitialized": "{title} 路径未初始化，请通过 miao 命令启动",
     "unknownTool": "未知工具: {toolId}",
-    "unknownCommand": "未知命令或工具: {command}"
+    "unknownCommand": "未知命令或工具: {command}",
+    "toolMissingEntry": "工具 {toolId} 缺少入口: {entry}",
+    "missingInstallScript": "缺少依赖安装脚本: {path}",
+    "missingManifest": "未找到 core/manifest.json",
+    "unsupportedLocale": "不支持的语言: {locale}"
   },
   "settings": {
     "menuEntry": "系统设置",

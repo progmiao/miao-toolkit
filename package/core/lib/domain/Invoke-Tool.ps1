@@ -8,7 +8,10 @@
 
     $entry = Join-Path $Tool._root $Tool.entry
     if (-not (Test-Path $entry)) {
-        Write-Host "工具 $($Tool.id) 缺少入口: $($Tool.entry)" -ForegroundColor Red
+        Write-Host (Get-I18n -Key 'error.toolMissingEntry' -Vars @{
+                toolId = $Tool.id
+                entry  = $Tool.entry
+            }) -ForegroundColor Red
         return 1
     }
 

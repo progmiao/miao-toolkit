@@ -136,7 +136,7 @@ function Invoke-ToolInstall {
 
     $installScript = Join-Path $Tool._root $Tool.install
     if (-not (Test-Path $installScript)) {
-        Write-Host "缺少依赖安装脚本: $($Tool.install)" -ForegroundColor Red
+        Write-Host (Get-I18n -Key 'error.missingInstallScript' -Vars @{ path = $Tool.install }) -ForegroundColor Red
         return $false
     }
 
@@ -145,7 +145,8 @@ function Invoke-ToolInstall {
         return $true
     }
 
-    Write-Host "正在安装 $($Tool.displayName) 的依赖..." -ForegroundColor Cyan
+    $depName = if ($Tool.displayName) { [string]$Tool.displayName } else { [string]$Tool.id }
+    Write-Host (Get-I18n -Key 'tool.deps.installing' -Vars @{ name = $depName }) -ForegroundColor Cyan
     & $installScript
     if ($LASTEXITCODE -and $LASTEXITCODE -ne 0) {
         return $false
