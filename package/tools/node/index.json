@@ -1,0 +1,46 @@
+{
+  "number": 1,
+  "displayName": "Node.js 版本管理",
+  "summary": "基于 Volta 的 Node.js 版本浏览与安装",
+  "logo": "⬢",
+  "developer": "程序喵",
+  "category": "runtime",
+  "interactive": true,
+  "dependencies": [
+    {
+      "name": "volta",
+      "checkCommand": "volta --version",
+      "version": "latest",
+      "install": {
+        "type": "winget",
+        "packageId": "Volta.Volta"
+      }
+    }
+  ],
+  "actions": [
+    {
+      "id": "install",
+      "label": "浏览并安装",
+      "summary": "从版本列表安装 Node 到本机",
+      "script": "lib/browse-install.ps1",
+      "param": { "switch": "Install", "alias": "i" },
+      "enabled": true
+    },
+    {
+      "id": "pin",
+      "label": "为项目指定",
+      "summary": "锁定当前目录项目的 Node 版本",
+      "script": "lib/pin-project.ps1",
+      "param": { "switch": "Pin", "alias": "p" },
+      "enabled": false
+    },
+    {
+      "id": "default",
+      "label": "设置全局默认",
+      "summary": "设置未 pin 时使用的 Node 版本",
+      "script": "lib/set-default.ps1",
+      "param": { "switch": "Default", "alias": "d" },
+      "enabled": false
+    }
+  ]
+}

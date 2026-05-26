@@ -1,0 +1,5 @@
+# 占位：安装/卸载脚本
+
+设计冻结后在此开发 install.ps1、uninstall.ps1。
+
+参见 `docs/INSTALL.md`。

@@ -1,0 +1,161 @@
+{
+  "brand": {
+    "title": "Miao Toolkit",
+    "description": "Windows CLI tool integration and management platform"
+  },
+  "header": {
+    "welcomeLine": "Welcome to Miao!",
+    "subtitleTemplate": "{author}  ·  v{version}  ·  {releaseDate}",
+    "fallbackLogoMiddle": "   ( {shortName} )   "
+  },
+  "panel": {
+    "authorLine": "Author: {author}",
+    "versionLine": "Version: {version}",
+    "releaseDateLine": "Released: {releaseDate}",
+    "versionReleaseLine": "v{version}  ·  {releaseDate}",
+    "emailLine": "Email: {email}"
+  },
+  "update": {
+    "pageTitle": "Update toolkit",
+    "checkFailed": "Could not check for updates. Try again later.",
+    "statusLatest": "You are on the latest version",
+    "statusAvailable": "New version available: v{latestVersion}",
+    "latestReleaseLabel": "Latest release",
+    "executePlaceholder": "[Preview] Update execution not implemented yet",
+    "pressEscToBack": "Enter / Esc to go back"
+  },
+  "menu": {
+    "toolList": "Tools",
+    "defaultSection": "Menu",
+    "noToolsRegistered": "No tools registered",
+    "countTools": "tools",
+    "countItems": "items",
+    "colHeader": "     #  Option",
+    "footerNavPage": "Page {current}/{total}",
+    "footerNavCount": "Total {count}",
+    "footerNavSelect": "↑↓ select",
+    "footerNavPageTurn": "←→ page",
+    "footerActionEnter": "Enter confirm",
+    "footerActionEsc": "Esc quit",
+    "footerActionSettings": "S Settings",
+    "footerActionHelp": "H Help",
+    "countToolsShort": "",
+    "toolStatusInstalled": "Installed",
+    "toolStatusNotInstalled": "Not installed",
+    "toolStatusUpdateAvailable": "Update available",
+    "pageStatus": "Page {current}/{total}  |  ",
+    "pageStatusTotal": " {count} {unit} total",
+    "hintSelect": " ↑↓ select  ←→ page  |  #{index}  |  Enter confirm  Esc quit",
+    "hintInputSuffix": " |  input: {buffer}",
+    "hintSettingsShortcut": "S Settings",
+    "flashDisabledNumber": "This option is not available yet",
+    "flashInvalidNumber": "Number not found",
+    "flashDisabledItem": "This option is not available yet"
+  },
+  "branded": {
+    "footerScroll": "↑↓ scroll",
+    "footerEscBack": "Esc back"
+  },
+  "shell": {
+    "footerExit": "Esc quit",
+    "footerBack": "Q back",
+    "footerSettings": "S Settings",
+    "exitConfirmYes": "Y yes",
+    "exitConfirmNo": "N cancel",
+    "exitConfirmPrompt": "Quit?"
+  },
+  "afterTool": {
+    "title": "Next",
+    "returnList": "[Enter]  Back to tool list",
+    "exit": "[Q]      Quit {shortName}",
+    "promptFallback": "Enter for list / Q to quit"
+  },
+  "help": {
+    "pageTitle": "Help",
+    "commandsTitle": "Commands:",
+    "toolsTitle": "Tools:",
+    "unknownCommand": "Run miao -helper for help",
+    "toolHelpMissing": "No help available for tool {toolId}",
+    "cmdMenu": "Tool list",
+    "cmdList": "List tools",
+    "cmdVersion": "Show version",
+    "cmdHelp": "Help",
+    "cmdInstall": "Install/update all tool dependencies",
+    "cmdInstallTool": "Install/update one tool's dependencies",
+    "cmdUninstallTool": "Uninstall one tool's dependencies",
+    "cmdUpdate": "Open toolkit update page",
+    "cmdLang": "Change UI language",
+    "cmdSettings": "Open settings menu",
+    "cmdTool": "Open a tool"
+  },
+  "install": {
+    "batchTitle": "Install/update all tool dependencies",
+    "pageTitle": "Dependency install/update",
+    "pageStatusNotInstalled": "Not installed",
+    "pageStatusInstalled": "Installed {version}",
+    "pageStatusUpdateAvailable": "Update {current} → {latest}",
+    "pageStatusUpdateAvailableShort": "Update available",
+    "pageFooterHint": "Space select  |  Enter confirm  |  Q/Esc back",
+    "pageNothingToDo": "Selected tools need no install or update",
+    "pagePressEnterToBack": "Press Enter to go back",
+    "noTargets": "No tools require external dependencies",
+    "unknownTool": "Unknown tool: {toolId}",
+    "noExternalDeps": "Tool {toolId} has no external dependencies",
+    "missingUninstallScript": "Tool {toolId} is missing uninstall.ps1",
+    "uninstalling": "Uninstalling dependencies for {name}…",
+    "uninstallNeedsToolId": "Specify a tool, e.g. miao uninstall node",
+    "statusUpToDate": "Up to date, skipped",
+    "statusInstalling": "Installing…",
+    "statusUpdating": "Updating…",
+    "statusDone": "Done",
+    "statusFailed": "Failed",
+    "batchComplete": "All done",
+    "batchFailed": "Failed tools: {tools}"
+  },
+  "tool": {
+    "deps": {
+      "installLabel": "Install/update",
+      "installSummary": "Install or update this tool's dependencies",
+      "uninstallLabel": "Uninstall",
+      "uninstallSummary": "Uninstall this tool's dependencies",
+      "statusUpToDate": "Dependencies are up to date",
+      "pressEnterToBack": "Press Enter to return to the menu"
+    }
+  },
+  "error": {
+    "pathsNotInitialized": "{title} is not initialized. Start via miao or dev\\dev-miao.ps1",
+    "unknownTool": "Unknown tool: {toolId}",
+    "unknownCommand": "Unknown command or tool: {command}"
+  },
+  "settings": {
+    "menuEntry": "Settings",
+    "menuEntrySummary": "Language, version, update and help",
+    "sectionTitle": "Settings",
+    "languageSectionTitle": "Language",
+    "languageTitle": "Language",
+    "languageChanged": "Switched to {locale}",
+    "languageAlreadyCurrent": "Already using {locale}",
+    "versionTitle": "Version",
+    "versionLabel": "Version",
+    "releaseDateLabel": "Released",
+    "repositoryLabel": "Repository",
+    "localeLabel": "UI language",
+    "pressEnterToBack": "Press Enter to go back",
+    "locale": {
+      "zh": "简体中文",
+      "en": "English"
+    },
+    "action": {
+      "lang": "Language",
+      "langSummary": "Change UI language",
+      "version": "Version info",
+      "versionSummary": "Toolkit version and release",
+      "update": "Update toolkit",
+      "updateSummary": "Update Miao itself",
+      "help": "Help",
+      "helpSummary": "Commands and tools overview",
+      "install": "Install/update dependencies",
+      "installSummary": "Open dependency page to select and batch install or update"
+    }
+  }
+}

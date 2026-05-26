@@ -1,0 +1,28 @@
+{
+  "packageName": "miao-toolkit",
+  "shortName": "Miao",
+  "author": "程序喵",
+  "logo": "ascii-logo.txt",
+  "version": "0.1.0-dev",
+  "releaseDate": "2026-05-24",
+  "repository": "ProgMiao/miao-toolkit",
+  "contact": {
+    "email": "455855199@qq.com"
+  },
+  "userAgent": "Miao-Toolkit",
+  "menu": {
+    "pageSize": 20,
+    "loadMore": 20,
+    "brandSeparatorExtra": 8,
+    "cliCommandPrefix": "miao",
+    "numberDisplayWidth": 2,
+    "pageNumberDisplayWidth": 2,
+    "columnGap": 2,
+    "toolListColumns": {
+      "command": 12,
+      "displayName": 14,
+      "summary": 29,
+      "status": 6
+    }
+  }
+}
