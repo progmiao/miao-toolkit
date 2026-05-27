@@ -146,7 +146,7 @@ function Invoke-ToolInstall {
     }
 
     $depName = if ($Tool.displayName) { [string]$Tool.displayName } else { [string]$Tool.id }
-    Write-Host (Get-I18n -Key 'tool.deps.installing' -Vars @{ name = $depName }) -ForegroundColor Cyan
+    Write-Host (Get-I18n -Key 'page.toolDeps.installing' -Vars @{ name = $depName }) -ForegroundColor Cyan
     & $installScript
     if ($LASTEXITCODE -and $LASTEXITCODE -ne 0) {
         return $false

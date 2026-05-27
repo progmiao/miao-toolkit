@@ -53,9 +53,9 @@ function Write-ToolkitShellFooter {
     }
 
     $segments = @(
-        (Get-I18n -Key 'shell.footerExit')
-        $(if ($ShowBack) { (Get-I18n -Key 'shell.footerBack') } else { '' })
-        $(if ($ShowSettings) { (Get-I18n -Key 'shell.footerSettings') } else { '' })
+        (Get-I18n -Key 'common.action.quitEsc')
+        $(if ($ShowBack) { (Get-I18n -Key 'common.action.backQ') } else { '' })
+        $(if ($ShowSettings) { (Get-I18n -Key 'common.nav.settings') } else { '' })
         ''
         ''
     )

@@ -25,7 +25,7 @@ function Get-InstallPageToolStatusInfo {
     if (-not (Test-ToolDepInstalled $Tool)) {
         return @{
             needsAction = $true
-            tag         = (Get-I18n -Key 'install.pageStatusNotInstalled')
+            tag         = (Get-I18n -Key 'common.status.notInstalled')
             tagColor    = [System.ConsoleColor]::Red
         }
     }
@@ -54,13 +54,13 @@ function Get-InstallPageToolStatusInfo {
         }
 
         $tag = if ($latest) {
-            Get-I18n -Key 'install.pageStatusUpdateAvailable' -Vars @{
+            Get-I18n -Key 'page.install.pageStatusUpdateAvailable' -Vars @{
                 current = $displayVersion
                 latest  = "v$latest"
             }
         }
         else {
-            Get-I18n -Key 'install.pageStatusUpdateAvailableShort'
+            Get-I18n -Key 'page.install.pageStatusUpdateAvailableShort'
         }
 
         return @{
@@ -71,10 +71,10 @@ function Get-InstallPageToolStatusInfo {
     }
 
     $tag = if ($displayVersion) {
-        Get-I18n -Key 'install.pageStatusInstalled' -Vars @{ version = $displayVersion }
+        Get-I18n -Key 'page.install.pageStatusInstalled' -Vars @{ version = $displayVersion }
     }
     else {
-        Get-I18n -Key 'menu.toolStatusInstalled'
+        Get-I18n -Key 'common.status.installed'
     }
 
     return @{
@@ -106,7 +106,7 @@ function Show-InstallDepsMultiSelectMenu {
 
     $items = @(Get-InstallDepsPageTools -Tools $Tools -FocusToolIds $FocusToolIds)
     if ($items.Count -eq 0) {
-        Write-FixedLine $Shell.Layout.ListStartRow (Get-I18n -Key 'install.noTargets') -Color DarkGray
+        Write-FixedLine $Shell.Layout.ListStartRow (Get-I18n -Key 'page.install.noTargets') -Color DarkGray
         Start-Sleep -Milliseconds 600
         return (Get-ShellNavMarker -Action 'back')
     }
@@ -134,7 +134,7 @@ function Show-InstallDepsMultiSelectMenu {
         }
     }
 
-    $header = New-ToolkitMenuHeader -SectionTitle (Get-I18n -Key 'install.pageTitle') -HideSectionTitle
+    $header = New-ToolkitMenuHeader -SectionTitle (Get-I18n -Key 'page.install.pageTitle') -HideSectionTitle
     $renderFooter = New-ShellDefaultFooterRenderer -Shell $Shell -ShowHelp -ShowBack
 
     function Redraw-InstallDepsList {
@@ -169,7 +169,7 @@ function Show-InstallDepsMultiSelectMenu {
 
     Enter-ConsoleDrawBatch
     Redraw-InstallDepsList
-    & $renderFooter @{ FlashMessage = (Get-I18n -Key 'install.pageFooterHint') }
+    & $renderFooter @{ FlashMessage = (Get-InstallDepsFooterHint) }
     Complete-ConsoleDrawBatch -ToolkitShell $Shell
 
     try {
@@ -267,7 +267,7 @@ function Show-InstallDepsMultiSelectMenu {
                         }
 
                         if ($actionable.Count -eq 0) {
-                            $flashMessage = Get-I18n -Key 'install.pageNothingToDo'
+                            $flashMessage = Get-I18n -Key 'page.install.pageNothingToDo'
                             break
                         }
 
@@ -277,40 +277,40 @@ function Show-InstallDepsMultiSelectMenu {
                         foreach ($tool in $actionable) {
                             $info = Get-InstallPageToolStatusInfo -Tool $tool
                             $label = if (-not (Test-ToolDepInstalled $tool)) {
-                                (Get-I18n -Key 'install.statusInstalling')
+                                (Get-I18n -Key 'common.status.installing')
                             }
                             else {
-                                (Get-I18n -Key 'install.statusUpdating')
+                                (Get-I18n -Key 'common.status.updating')
                             }
                             Write-Host " $($tool.displayName)  $label" -ForegroundColor Cyan
                             $ok = Invoke-ToolInstall -Tool $tool -Preview:$Preview
                             if (-not $ok) {
                                 $failed += $tool.id
-                                Write-Host "       $(Get-I18n -Key 'install.statusFailed')" -ForegroundColor Red
+                                Write-Host "       $(Get-I18n -Key 'common.status.failed')" -ForegroundColor Red
                             }
                             else {
-                                Write-Host "       $(Get-I18n -Key 'install.statusDone')" -ForegroundColor Green
+                                Write-Host "       $(Get-I18n -Key 'common.status.done')" -ForegroundColor Green
                             }
                         }
 
                         Write-Host ''
                         if ($failed.Count -gt 0) {
-                            Write-Host (Get-I18n -Key 'install.batchFailed' -Vars @{ tools = ($failed -join ', ') }) -ForegroundColor Red
+                            Write-Host (Get-I18n -Key 'page.install.batchFailed' -Vars @{ tools = ($failed -join ', ') }) -ForegroundColor Red
                         }
                         else {
-                            Write-Host (Get-I18n -Key 'install.batchComplete') -ForegroundColor Green
+                            Write-Host (Get-I18n -Key 'page.install.batchComplete') -ForegroundColor Green
                         }
                         Write-Host ''
-                        Read-Host (Get-I18n -Key 'install.pagePressEnterToBack')
+                        Read-Host (Get-I18n -Key 'page.install.pagePressEnterToBack')
 
                         [void]$selectedSet.Clear()
                         Clear-DepsStateCache
                         Initialize-ToolkitShellBodyView -Shell $Shell `
-                            -SectionTitle (Get-I18n -Key 'install.pageTitle') `
+                            -SectionTitle (Get-I18n -Key 'page.install.pageTitle') `
                             -FooterTemplate DefaultBar
                         Enter-ConsoleDrawBatch
                         Redraw-InstallDepsList
-                        & $renderFooter @{ FlashMessage = (Get-I18n -Key 'install.pageFooterHint') }
+                        & $renderFooter @{ FlashMessage = (Get-InstallDepsFooterHint) }
                         Complete-ConsoleDrawBatch -ToolkitShell $Shell
                         continue
                     }
@@ -332,7 +332,7 @@ function Show-InstallDepsMultiSelectMenu {
                 elseif ($selectionChanged -or ($key.Key -eq 'Spacebar')) {
                     Redraw-InstallDepsList
                 }
-                $hint = if ($flashMessage) { $flashMessage } else { (Get-I18n -Key 'install.pageFooterHint') }
+                $hint = if ($flashMessage) { $flashMessage } else { (Get-InstallDepsFooterHint) }
                 & $renderFooter @{ FlashMessage = $hint }
                 Complete-ConsoleDrawBatch -ToolkitShell $Shell
             }
@@ -352,7 +352,7 @@ function Invoke-InstallDepsPage {
     )
 
     Initialize-ToolkitShellBodyView -Shell $Shell `
-        -SectionTitle (Get-I18n -Key 'install.pageTitle') `
+        -SectionTitle (Get-I18n -Key 'page.install.pageTitle') `
         -FooterTemplate DefaultBar
 
     return Show-InstallDepsMultiSelectMenu -Shell $Shell -Tools $Tools `

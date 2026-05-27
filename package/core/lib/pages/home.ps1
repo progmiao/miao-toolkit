@@ -4,9 +4,9 @@ function Get-ToolStatusLabel {
     param([string]$Status)
 
     if ($Status -eq 'notInstalled') {
-        return Get-I18n -Key 'menu.toolStatusNotInstalled'
+        return Get-I18n -Key 'common.status.notInstalled'
     }
-    return Get-I18n -Key 'menu.toolStatusInstalled'
+    return Get-I18n -Key 'common.status.installed'
 }
 
 function Get-ToolStatusColor {
@@ -138,7 +138,7 @@ function Build-HomeToolListRowSpec {
         [string]$Gap
     )
 
-    $num = $DisplayNumber.ToString().PadLeft($NumWidth, '0')
+    $num = Format-ListDisplayNumber -Number $DisplayNumber -NumWidth $NumWidth
     $mark = if ($Selected) { '>' } else { ' ' }
     $prefix = " $mark $num$Gap"
 
@@ -244,7 +244,7 @@ function Invoke-HomePage {
         }
 
         Initialize-ToolkitShellBodyView -Shell $Shell `
-            -SectionTitle (Get-I18n -Key 'menu.toolList') `
+            -SectionTitle (Get-I18n -Key 'page.home.toolList') `
             -FooterTemplate MenuSplit
     }
 
@@ -309,7 +309,7 @@ function Invoke-HomePage {
             -Summary $part.Summary -RowSpec $spec
     }.GetNewClosure()
 
-    return Show-PaginatedMenu -Header $header -Items $Tools -CountLabel (Get-I18n -Key 'menu.countToolsShort') `
+    return Show-PaginatedMenu -Header $header -Items $Tools -CountLabel (Get-I18n -Key 'common.unit.toolShort') `
         -GetItemLabel $getLabel `
         -LetterKeys @{ s = $settingsEntry; h = $helpEntry } `
         -HideColHeader -FooterLayout Split `

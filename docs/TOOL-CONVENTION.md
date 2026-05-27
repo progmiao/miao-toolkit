@@ -110,7 +110,23 @@ package/tools/<id>/              # <id> = 命令名，如 node → miao node
 }
 ```
 
-## 四、新建工具检查清单
+## 四、工具文案（i18n）
+
+| 位置 | 内容 |
+|------|------|
+| `tools/<id>/i18n/zh.json`、`en.json` | 本工具 `displayName`、菜单项、工具内提示等 |
+| 工具箱 `core/i18n` | Shell、设置、依赖专页、**公共操作**（`common.action.*`、`common.nav.*`） |
+
+工具脚本需要与工具箱一致的底栏/确认文案时，在已 `Load-Core` 的前提下使用：
+
+```powershell
+Get-ToolkitI18n -Key 'common.action.confirmEnter'
+Get-ToolkitI18n -Key 'common.nav.settings'
+```
+
+详见 [I18N.md](I18N.md)。**不要**把 `common.*` 复制进工具 json。
+
+## 五、新建工具检查清单
 
 ```
 □ package/tools/<id>/
@@ -119,7 +135,7 @@ package/tools/<id>/              # <id> = 命令名，如 node → miao node
 □ miao list 自动出现
 ```
 
-## 五、发布包与依赖安装
+## 六、发布包与依赖安装
 
 **随工具箱一起发布：** 各工具 `index.json`、脚本、**`help.md`**（不含 `DESIGN.md`、`_prototype/`）。
 

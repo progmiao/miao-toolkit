@@ -34,7 +34,7 @@ miao-toolkit/
 | 目录 | 装到本机后路径 | 做什么 |
 |------|----------------|--------|
 | **`bin/`** | `%LOCALAPPDATA%\Miao\bin\` | **`miao` 命令入口**。含 `miao.ps1` + `miao.cmd`；**仅此目录加入 PATH** |
-| **`core/`** | `%LOCALAPPDATA%\Miao\core\` | **工具箱内核**。`manifest.json`；`lib/`（`bootstrap/Load-Core.ps1`、`config/`、`domain/`、`pages/`、`ui/`） |
+| **`core/`** | `%LOCALAPPDATA%\Miao\core\` | **工具箱内核**。[`manifest.json`](../package/core/manifest.json)（[MANIFEST.md](MANIFEST.md)）；`lib/`（`bootstrap/Load-Core.ps1`、`config/`、`domain/`、`pages/`、`ui/`） |
 | **`scripts/`** | 一般**不**装到用户机 | **仓库/发布用**。`install.ps1` / `uninstall.ps1` / `bootstrap.ps1`：开发本地安装、或 winget/bootstrap 安装 Miao 时调用；**不是** `miao install` 那个命令 |
 | **`tools/`** | `%LOCALAPPDATA%\Miao\tools\` | **各子工具**。每个 `<id>/` 自包含：`index.json` 注册、`index.ps1` 入口、`install.ps1` 装外部依赖（如 Volta） |
 
@@ -151,6 +151,8 @@ help 来源：`package/tools/<id>/help.md`。
 | [UPDATE.md](UPDATE.md) | 发布与更新 |
 | [CLI.md](CLI.md) | 命令、help |
 | [UX.md](UX.md) | 交互 |
+| [MANIFEST.md](MANIFEST.md) | `core/manifest.json` 字段说明 |
+| [I18N.md](I18N.md) | `core/i18n` 分区与 `Get-ToolkitI18n` |
 
 | 工具 | 设计 | 使用 |
 |------|------|------|

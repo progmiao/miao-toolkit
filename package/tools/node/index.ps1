@@ -11,7 +11,6 @@ param(
     [switch]$SetDefault,
 
     [int]$PageSize = 0,
-    [int]$LoadMore = 0,
     [int]$ViewHeight = 0,
     [switch]$LtsOnly
 )
@@ -38,9 +37,8 @@ if (Test-Path $pathsLib) {
     }
 }
 
-$paging = Resolve-MenuPagingDefaults -PageSize $PageSize -LoadMore $LoadMore -ViewHeight $ViewHeight
+$paging = Resolve-MenuPagingDefaults -PageSize $PageSize -ViewHeight $ViewHeight
 $PageSize = $paging.PageSize
-$LoadMore = $paging.LoadMore
 $ViewHeight = $paging.ViewHeight
 
 function Get-ToolConfig {

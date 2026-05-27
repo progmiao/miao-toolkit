@@ -1,11 +1,11 @@
 {
   "brand": {
     "title": "Miao Toolkit",
+    "author": "ProgMiao",
     "description": "Windows CLI tool integration and management platform"
   },
   "header": {
     "welcomeLine": "Welcome to Miao!",
-    "subtitleTemplate": "{author}  ·  v{version}  ·  {releaseDate}",
     "fallbackLogoMiddle": "   ( {shortName} )   "
   },
   "panel": {
@@ -15,115 +15,65 @@
     "versionReleaseLine": "v{version}  ·  {releaseDate}",
     "emailLine": "Email: {email}"
   },
-  "update": {
-    "pageTitle": "Update toolkit",
-    "checkFailed": "Could not check for updates. Try again later.",
-    "statusLatest": "You are on the latest version",
-    "statusAvailable": "New version available: v{latestVersion}",
-    "latestReleaseLabel": "Latest release",
-    "executePlaceholder": "[Preview] Update execution not implemented yet",
-    "pressEscToBack": "Enter / Esc to go back",
-    "sessionHint": "[!] A new Miao version v{latestVersion} is available (current v{currentVersion}). Run miao update or winget upgrade miao."
-  },
-  "menu": {
-    "toolList": "Tools",
-    "defaultSection": "Menu",
-    "noToolsRegistered": "No tools registered",
-    "countTools": "tools",
-    "countItems": "items",
-    "colHeader": "     #  Option",
-    "footerNavPage": "Page {current}/{total}",
-    "footerNavCount": "Total {count}",
-    "footerNavSelect": "↑↓ select",
-    "footerNavPageTurn": "←→ page",
-    "footerActionEnter": "Enter confirm",
-    "footerActionEsc": "Esc quit",
-    "footerActionSettings": "S Settings",
-    "footerActionHelp": "H Help",
-    "countToolsShort": "",
-    "toolStatusInstalled": "Installed",
-    "toolStatusNotInstalled": "Not installed",
-    "toolStatusUpdateAvailable": "Update available",
-    "pageStatus": "Page {current}/{total}  |  ",
-    "pageStatusTotal": " {count} {unit} total",
-    "hintSelect": " ↑↓ select  ←→ page  |  #{index}  |  Enter confirm  Esc quit",
-    "hintInputSuffix": " |  input: {buffer}",
-    "hintSettingsShortcut": "S Settings",
-    "flashDisabledNumber": "This option is not available yet",
-    "flashInvalidNumber": "Number not found",
-    "flashDisabledItem": "This option is not available yet",
-    "toolMenuDefaultTitle": "Tool menu"
-  },
-  "branded": {
-    "footerScroll": "↑↓ scroll",
-    "footerEscBack": "Esc back"
-  },
-  "shell": {
-    "footerExit": "Esc quit",
-    "footerBack": "Q back",
-    "footerSettings": "S Settings",
-    "exitConfirmYes": "Y yes",
-    "exitConfirmNo": "N cancel",
-    "exitConfirmPrompt": "Quit?"
-  },
-  "afterTool": {
-    "title": "Next",
-    "returnList": "[Enter]  Back to tool list",
-    "exit": "[Q]      Quit {shortName}",
-    "promptFallback": "Enter for list / Q to quit"
-  },
-  "help": {
-    "pageTitle": "Help",
-    "commandsTitle": "Commands:",
-    "toolsTitle": "Tools:",
-    "unknownCommand": "Run miao -helper for help",
-    "toolHelpMissing": "No help available for tool {toolId}",
-    "cmdMenu": "Tool list",
-    "cmdList": "List tools",
-    "cmdVersion": "Show version",
-    "cmdHelp": "Help",
-    "cmdInstall": "Install/update all tool dependencies",
-    "cmdInstallTool": "Install/update one tool's dependencies",
-    "cmdUninstallTool": "Uninstall one tool's dependencies",
-    "cmdUpdate": "Open toolkit update page",
-    "cmdLang": "Change UI language",
-    "cmdSettings": "Open settings menu",
-    "cmdTool": "Open a tool"
-  },
-  "install": {
-    "batchTitle": "Install/update all tool dependencies",
-    "pageTitle": "Dependency install/update",
-    "pageStatusNotInstalled": "Not installed",
-    "pageStatusInstalled": "Installed {version}",
-    "pageStatusUpdateAvailable": "Update {current} → {latest}",
-    "pageStatusUpdateAvailableShort": "Update available",
-    "pageFooterHint": "Space select  |  Enter confirm  |  Q/Esc back",
-    "pageNothingToDo": "Selected tools need no install or update",
-    "pagePressEnterToBack": "Press Enter to go back",
-    "noTargets": "No tools require external dependencies",
-    "unknownTool": "Unknown tool: {toolId}",
-    "noExternalDeps": "Tool {toolId} has no external dependencies",
-    "missingUninstallScript": "Tool {toolId} is missing uninstall.ps1",
-    "uninstalling": "Uninstalling dependencies for {name}…",
-    "uninstallNeedsToolId": "Specify a tool, e.g. miao uninstall node",
-    "statusUpToDate": "Up to date, skipped",
-    "statusInstalling": "Installing…",
-    "statusUpdating": "Updating…",
-    "statusDone": "Done",
-    "statusFailed": "Failed",
-    "batchComplete": "All done",
-    "batchFailed": "Failed tools: {tools}"
-  },
-  "tool": {
-    "deps": {
-      "installLabel": "Install/update",
-      "installSummary": "Install or update this tool's dependencies",
-      "uninstallLabel": "Uninstall",
-      "uninstallSummary": "Uninstall this tool's dependencies",
-      "statusUpToDate": "Dependencies are up to date",
-      "pressEnterToBack": "Press Enter to return to the menu",
-      "installing": "Installing dependencies for {name}…"
+  "common": {
+    "hintSeparator": " · ",
+    "action": {
+      "navSelect": "↑↓ select",
+      "navPage": "←→ page",
+      "navScroll": "↑↓ scroll",
+      "confirmEnter": "Enter confirm",
+      "quitEsc": "Esc quit",
+      "backEsc": "Esc back",
+      "backQ": "Q back",
+      "confirmY": "Y yes",
+      "cancelN": "N cancel",
+      "toggleSpace": "Space select",
+      "inputBuffer": "input: {buffer}",
+      "currentIndex": "#{index}"
+    },
+    "nav": {
+      "settings": "S Settings",
+      "help": "H Help"
+    },
+    "label": {
+      "version": "Version",
+      "releaseDate": "Released",
+      "locale": "UI language"
+    },
+    "status": {
+      "installed": "Installed",
+      "notInstalled": "Not installed",
+      "done": "Done",
+      "failed": "Failed",
+      "installing": "Installing…",
+      "updating": "Updating…"
+    },
+    "unit": {
+      "item": "items",
+      "toolShort": ""
+    },
+    "pagination": {
+      "page": "Page {current}/{total}",
+      "totalCount": " {count} {unit} total"
+    },
+    "cmd": {
+      "menu": "Tool list",
+      "list": "List tools",
+      "version": "Show version",
+      "help": "Help",
+      "install": "Install/update all tool dependencies",
+      "installTool": "Install/update one tool's dependencies",
+      "uninstallTool": "Uninstall one tool's dependencies",
+      "update": "Open toolkit update page",
+      "lang": "Change UI language",
+      "settings": "Open settings menu",
+      "tool": "Open a tool"
     }
+  },
+  "flash": {
+    "disabledNumber": "This option is not available yet",
+    "invalidNumber": "Number not found",
+    "disabledItem": "This option is not available yet"
   },
   "error": {
     "pathsNotInitialized": "{title} is not initialized. Start via the miao command.",
@@ -132,37 +82,98 @@
     "toolMissingEntry": "Tool {toolId} is missing entry: {entry}",
     "missingInstallScript": "Missing dependency install script: {path}",
     "missingManifest": "core/manifest.json not found",
-    "unsupportedLocale": "Unsupported language: {locale}"
+    "unsupportedLocale": "Unsupported language: {locale}",
+    "languageChangeFailed": "Could not change language: {detail}"
   },
-  "settings": {
-    "menuEntry": "Settings",
-    "menuEntrySummary": "Language, version, update and help",
-    "sectionTitle": "Settings",
-    "languageSectionTitle": "Language",
-    "languageTitle": "Language",
-    "languageChanged": "Switched to {locale}",
-    "languageAlreadyCurrent": "Already using {locale}",
-    "versionTitle": "Version",
-    "versionLabel": "Version",
-    "releaseDateLabel": "Released",
-    "repositoryLabel": "Repository",
-    "localeLabel": "UI language",
-    "pressEnterToBack": "Press Enter to go back",
-    "locale": {
-      "zh": "简体中文",
-      "en": "English"
+  "warn": {
+    "toolNumberMissing": "Tool {toolId} has no number in index.json; using temporary number 9999",
+    "toolNumberDuplicate": "Duplicate tool number {number} ({firstId} / {secondId})"
+  },
+  "shell": {
+    "exitConfirmPrompt": "Quit?"
+  },
+  "page": {
+    "home": {
+      "toolList": "Tools",
+      "defaultSection": "Menu",
+      "noToolsRegistered": "No tools registered",
+      "colHeader": "     #  Option",
+      "toolMenuDefaultTitle": "Tool menu"
     },
-    "action": {
-      "lang": "Language",
-      "langSummary": "Change UI language",
-      "version": "Version info",
-      "versionSummary": "Toolkit version and release",
-      "update": "Update toolkit",
-      "updateSummary": "Update Miao itself",
-      "help": "Help",
-      "helpSummary": "Commands and tools overview",
-      "install": "Install/update dependencies",
-      "installSummary": "Open dependency page to select and batch install or update"
+    "afterTool": {
+      "title": "Next",
+      "returnList": "[Enter]  Back to tool list",
+      "exit": "[Q]      Quit {shortName}",
+      "promptFallback": "Enter for list / Q to quit"
+    },
+    "help": {
+      "pageTitle": "Help",
+      "commandsTitle": "Commands:",
+      "toolsTitle": "Tools:",
+      "unknownCommand": "Run miao -helper for help",
+      "toolHelpMissing": "No help available for tool {toolId}"
+    },
+    "install": {
+      "pageTitle": "Dependency install/update",
+      "pageStatusInstalled": "Installed {version}",
+      "pageStatusUpdateAvailable": "Update {current} → {latest}",
+      "pageStatusUpdateAvailableShort": "Update available",
+      "pageNothingToDo": "Selected tools need no install or update",
+      "pagePressEnterToBack": "Press Enter to go back",
+      "noTargets": "No tools require external dependencies",
+      "unknownTool": "Unknown tool: {toolId}",
+      "noExternalDeps": "Tool {toolId} has no external dependencies",
+      "missingUninstallScript": "Tool {toolId} is missing uninstall.ps1",
+      "uninstalling": "Uninstalling dependencies for {name}…",
+      "uninstallNeedsToolId": "Specify a tool, e.g. miao uninstall node",
+      "batchComplete": "All done",
+      "batchFailed": "Failed tools: {tools}"
+    },
+    "update": {
+      "pageTitle": "Update toolkit",
+      "checkFailed": "Could not check for updates. Try again later.",
+      "statusLatest": "You are on the latest version",
+      "statusAvailable": "New version available: v{latestVersion}",
+      "latestReleaseLabel": "Latest release",
+      "executeNotImplemented": "In-app update is not available yet. Use winget upgrade miao.",
+      "sessionHint": "[!] A new Miao version v{latestVersion} is available (current v{currentVersion}). Run miao update or winget upgrade miao."
+    },
+    "settings": {
+      "menuEntry": "Settings",
+      "menuEntrySummary": "Language, version, update and help",
+      "sectionTitle": "Settings",
+      "versionTitle": "Version",
+      "pressEnterToBack": "Press Enter to go back",
+      "action": {
+        "lang": "Language",
+        "langSummary": "Change UI language",
+        "version": "Version info",
+        "versionSummary": "Toolkit version and release",
+        "update": "Update toolkit",
+        "updateSummary": "Update Miao itself",
+        "help": "Help",
+        "helpSummary": "Commands and tools overview",
+        "install": "Install/update dependencies",
+        "installSummary": "Open dependency page to select and batch install or update"
+      }
+    },
+    "lang": {
+      "sectionTitle": "Language",
+      "title": "Language",
+      "changed": "Switched to {locale}",
+      "alreadyCurrent": "Already using {locale}",
+      "locale": {
+        "zh": "简体中文",
+        "en": "English"
+      }
+    },
+    "toolDeps": {
+      "installLabel": "Install/update",
+      "installSummary": "Install or update this tool's dependencies",
+      "uninstallLabel": "Uninstall",
+      "uninstallSummary": "Uninstall this tool's dependencies",
+      "pressEnterToBack": "Press Enter to return to the menu",
+      "installing": "Installing dependencies for {name}…"
     }
   }
 }

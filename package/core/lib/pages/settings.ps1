@@ -4,8 +4,8 @@ function New-SettingsMenuEntry {
     return [pscustomobject]@{
         _kind       = 'settings'
         id          = 'settings'
-        displayName = (Get-I18n -Key 'settings.menuEntry')
-        summary     = (Get-I18n -Key 'settings.menuEntrySummary')
+        displayName = (Get-I18n -Key 'page.settings.menuEntry')
+        summary     = (Get-I18n -Key 'page.settings.menuEntrySummary')
     }
 }
 
@@ -18,32 +18,32 @@ function Get-SettingsActions {
     return @(
         [pscustomobject]@{
             id      = 'lang'
-            label   = (Get-I18n -Key 'settings.action.lang')
-            summary = (Get-I18n -Key 'settings.action.langSummary')
+            label   = (Get-I18n -Key 'page.settings.action.lang')
+            summary = (Get-I18n -Key 'page.settings.action.langSummary')
             enabled = $true
         }
         [pscustomobject]@{
             id      = 'version'
-            label   = (Get-I18n -Key 'settings.action.version')
-            summary = (Get-I18n -Key 'settings.action.versionSummary')
+            label   = (Get-I18n -Key 'page.settings.action.version')
+            summary = (Get-I18n -Key 'page.settings.action.versionSummary')
             enabled = $true
         }
         [pscustomobject]@{
             id      = 'update'
-            label   = (Get-I18n -Key 'settings.action.update')
-            summary = (Get-I18n -Key 'settings.action.updateSummary')
+            label   = (Get-I18n -Key 'page.settings.action.update')
+            summary = (Get-I18n -Key 'page.settings.action.updateSummary')
             enabled = $true
         }
         [pscustomobject]@{
             id      = 'help'
-            label   = (Get-I18n -Key 'settings.action.help')
-            summary = (Get-I18n -Key 'settings.action.helpSummary')
+            label   = (Get-I18n -Key 'page.settings.action.help')
+            summary = (Get-I18n -Key 'page.settings.action.helpSummary')
             enabled = $true
         }
         [pscustomobject]@{
             id      = 'install'
-            label   = (Get-I18n -Key 'settings.action.install')
-            summary = (Get-I18n -Key 'settings.action.installSummary')
+            label   = (Get-I18n -Key 'page.settings.action.install')
+            summary = (Get-I18n -Key 'page.settings.action.installSummary')
             enabled = $true
         }
     )
@@ -70,7 +70,7 @@ function Show-SettingsMenu {
     $actions = @(Get-SettingsActions)
 
     if ($ToolkitShell) {
-        return Show-PaginatedMenu -Header $header -Items $actions -CountLabel (Get-I18n -Key 'menu.countItems') `
+        return Show-PaginatedMenu -Header $header -Items $actions -CountLabel (Get-I18n -Key 'common.unit.item') `
             -GetItemLabel ${function:Format-SettingsActionLabel} `
             -TestItemEnabled ${function:Test-SettingsActionEnabled} `
             -HideColHeader -ToolkitShell $ToolkitShell -RenderFooter $RenderFooter `
@@ -78,8 +78,8 @@ function Show-SettingsMenu {
             -LetterKeys @{ h = (Get-ShellNavMarker -Action 'help') }
     }
 
-    $headerFull = New-ToolkitMenuHeader -SectionTitle (Get-I18n -Key 'settings.sectionTitle')
-    return Show-PaginatedMenu -Header $headerFull -Items $actions -CountLabel (Get-I18n -Key 'menu.countItems') `
+    $headerFull = New-ToolkitMenuHeader -SectionTitle (Get-I18n -Key 'page.settings.sectionTitle')
+    return Show-PaginatedMenu -Header $headerFull -Items $actions -CountLabel (Get-I18n -Key 'common.unit.item') `
         -GetItemLabel ${function:Format-SettingsActionLabel} `
         -TestItemEnabled ${function:Test-SettingsActionEnabled}
 }
@@ -95,7 +95,7 @@ function Invoke-SettingsPage {
 
     while ($true) {
         Initialize-ToolkitShellBodyView -Shell $Shell `
-            -SectionTitle (Get-I18n -Key 'settings.sectionTitle') `
+            -SectionTitle (Get-I18n -Key 'page.settings.sectionTitle') `
             -FooterTemplate DefaultBar
 
         $picked = Show-SettingsMenu -ToolkitShell $Shell -RenderFooter $renderFooter -EscMeansBack
@@ -136,21 +136,21 @@ function Invoke-ShellSettingsView {
 
 function Wait-SettingsContinue {
     Write-Host ''
-    Read-Host (Get-I18n -Key 'settings.pressEnterToBack')
+    Read-Host (Get-I18n -Key 'page.settings.pressEnterToBack')
 }
 
 function Show-ToolkitVersionInfo {
     $manifest = Get-Manifest
     $released = Format-ReleaseDate $manifest.releaseDate
     $lines = @(
-        "$(Get-I18n -Key 'settings.versionLabel'): $($manifest.version)"
-        "$(Get-I18n -Key 'settings.releaseDateLabel'): $released"
+        "$(Get-I18n -Key 'common.label.version'): $($manifest.version)"
+        "$(Get-I18n -Key 'common.label.releaseDate'): $released"
         (Format-ProductAuthorLine)
         (Format-ProductEmailLine)
-        "$(Get-I18n -Key 'settings.localeLabel'): $(Get-CurrentLocale)"
+        "$(Get-I18n -Key 'common.label.locale'): $(Get-CurrentLocale)"
     )
 
-    Write-MessageBlock -Title (Get-I18n -Key 'settings.versionTitle') -Lines $lines -TitleColor Cyan
+    Write-MessageBlock -Title (Get-I18n -Key 'page.settings.versionTitle') -Lines $lines -TitleColor Cyan
     Wait-SettingsContinue
 }
 

@@ -105,10 +105,84 @@ function Set-UserLocale {
 function Get-LocaleDisplayName {
     param([string]$LocaleCode)
 
-    $key = "settings.locale.$LocaleCode"
+    $key = "page.lang.locale.$LocaleCode"
     $name = Get-I18nRaw -Key $key
     if ([string]::IsNullOrWhiteSpace($name)) { return $LocaleCode }
     return $name
+}
+
+function Get-I18nHintSeparator {
+    $sep = Get-I18nRaw -Key 'common.hintSeparator'
+    if ([string]::IsNullOrEmpty($sep)) { return ' |  ' }
+    return $sep
+}
+
+function Join-I18nParts {
+    param(
+        [string[]]$Keys,
+        [hashtable]$Vars = @{},
+        [string]$Separator = ''
+    )
+
+    if ([string]::IsNullOrEmpty($Separator)) {
+        $Separator = Get-I18nHintSeparator
+    }
+
+    $parts = @()
+    foreach ($key in $Keys) {
+        if ([string]::IsNullOrWhiteSpace($key)) { continue }
+        $text = Get-I18n -Key $key -Vars $Vars
+        if (-not [string]::IsNullOrWhiteSpace($text)) {
+            $parts += $text
+        }
+    }
+
+    if ($parts.Count -eq 0) { return '' }
+    return ($parts -join $Separator)
+}
+
+function Get-MenuListHintLine {
+    param(
+        [int]$Index = 0,
+        [string]$NumberBuffer = ''
+    )
+
+    $hint = Join-I18nParts -Keys @(
+        'common.action.navSelect'
+        'common.action.navPage'
+        'common.action.currentIndex'
+        'common.action.confirmEnter'
+        'common.action.quitEsc'
+    ) -Vars @{ index = $Index }
+
+    if (-not [string]::IsNullOrEmpty($NumberBuffer)) {
+        $hint += (Get-I18nHintSeparator) + (Get-I18n -Key 'common.action.inputBuffer' -Vars @{ buffer = $NumberBuffer })
+    }
+
+    return $hint
+}
+
+function Get-InstallDepsFooterHint {
+    return (Join-I18nParts -Keys @(
+        'common.action.toggleSpace'
+        'common.action.confirmEnter'
+        'common.action.backQ'
+    ))
+}
+
+function Get-ToolkitI18nRaw {
+    param([string]$Key)
+
+    return Get-I18nRaw -Key $Key
+}
+
+function Get-ToolkitI18n {
+    param(
+        [string]$Key,
+        [hashtable]$Vars = @{}
+    )
+
+    return Get-I18n -Key $Key -Vars $Vars
 }
 
 function Get-I18nCatalog {
@@ -249,4 +323,10 @@ function Get-BrandTitle {
     $title = Get-I18nRaw -Key 'brand.title'
     if ([string]::IsNullOrWhiteSpace($title)) { return 'brand.title' }
     return $title
+}
+
+function Get-BrandAuthorName {
+    $name = Get-I18nRaw -Key 'brand.author'
+    if ([string]::IsNullOrWhiteSpace($name)) { return 'brand.author' }
+    return $name
 }

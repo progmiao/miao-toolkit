@@ -74,7 +74,7 @@ function Discover-Tools {
 
         if ($tool.enabled -eq $false) { return }
         if ([int]$tool.number -le 0) {
-            Write-Warning "工具 $($tool.id) 未配置 number，请在 index.json 中设置全局唯一编号"
+            Write-Warning (Get-I18n -Key 'warn.toolNumberMissing' -Vars @{ toolId = $tool.id })
             $tool.number = 9999
         }
         $tool['_root'] = $_.FullName
@@ -85,7 +85,11 @@ function Discover-Tools {
     foreach ($t in $result) {
         $n = [int]$t.number
         if ($seen.ContainsKey($n)) {
-            Write-Warning "工具编号重复: $n ($($seen[$n]) / $($t.id))"
+            Write-Warning (Get-I18n -Key 'warn.toolNumberDuplicate' -Vars @{
+                number   = $n
+                firstId  = $seen[$n]
+                secondId = $t.id
+            })
         }
         else {
             $seen[$n] = $t.id

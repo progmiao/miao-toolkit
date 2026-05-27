@@ -138,7 +138,7 @@ function Get-LogoColumnWidth {
 
 function Format-ProductAuthorLine {
     return Get-I18n -Key 'panel.authorLine' -Vars @{
-        author = (Get-Manifest).author
+        author = (Get-BrandAuthorName)
     }
 }
 
@@ -805,7 +805,7 @@ function New-ToolkitMenuHeader {
     )
 
     if (-not $HideSectionTitle -and -not $SectionTitle) {
-        $SectionTitle = Get-I18n -Key 'menu.toolList'
+        $SectionTitle = Get-I18n -Key 'page.home.toolList'
     }
 
     if (-not $Version) {
@@ -829,7 +829,7 @@ function New-ToolMenuHeader {
     try { $version = (Get-Manifest).version } catch { }
 
     if ([string]::IsNullOrWhiteSpace($SectionTitle)) {
-        $SectionTitle = Get-I18n -Key 'menu.toolMenuDefaultTitle'
+        $SectionTitle = Get-I18n -Key 'page.home.toolMenuDefaultTitle'
     }
 
     return @{
@@ -924,7 +924,7 @@ function Write-MenuHeader {
             "  $($Header.SectionTitle)"
         }
         else {
-            "  $(Get-I18n -Key 'menu.defaultSection')"
+            "  $(Get-I18n -Key 'page.home.defaultSection')"
         }
         Write-FixedLine $row $section -Color White
     }
@@ -1221,9 +1221,9 @@ function Update-PaginatedMenuFooter {
         $footerColCount = 5
 
         $actionSegments = @(
-            (Get-I18n -Key 'menu.footerActionEsc')
-            (Get-I18n -Key 'menu.footerActionSettings')
-            (Get-I18n -Key 'menu.footerActionHelp')
+            (Get-I18n -Key 'common.action.quitEsc')
+            (Get-I18n -Key 'common.nav.settings')
+            (Get-I18n -Key 'common.nav.help')
             ''
             ''
         )
@@ -1246,14 +1246,14 @@ function Update-PaginatedMenuFooter {
         }
 
         $navSegments = @(
-            (Get-I18n -Key 'menu.footerNavPage' -Vars @{
+            (Get-I18n -Key 'common.pagination.page' -Vars @{
                 current = (Format-MenuPageNumber -Value ($PageIndex + 1) -PageCount $PageCount)
                 total   = (Format-MenuPageNumber -Value $PageCount -PageCount $PageCount)
             })
-            (Get-I18n -Key 'menu.footerNavCount' -Vars @{ count = $ItemCount })
-            (Get-I18n -Key 'menu.footerNavSelect')
-            (Get-I18n -Key 'menu.footerNavPageTurn')
-            (Get-I18n -Key 'menu.footerActionEnter')
+            (Get-I18n -Key 'common.pagination.totalCount' -Vars @{ count = $ItemCount; unit = $CountLabel })
+            (Get-I18n -Key 'common.action.navSelect')
+            (Get-I18n -Key 'common.action.navPage')
+            (Get-I18n -Key 'common.action.confirmEnter')
         )
 
         if ($script:ConsoleDrawBatchDepth -gt 0 -and (Test-ConsoleBufferDrawAvailable)) {
@@ -1275,21 +1275,18 @@ function Update-PaginatedMenuFooter {
     }
     else {
         $index = if ($SelectedIndex -ge 0) { $SelectedIndex + 1 } else { 0 }
-        $hint = Get-I18n -Key 'menu.hintSelect' -Vars @{ index = $index }
-        if (-not [string]::IsNullOrEmpty($NumberBuffer)) {
-            $hint += Get-I18n -Key 'menu.hintInputSuffix' -Vars @{ buffer = $NumberBuffer }
-        }
+        $hint = Get-MenuListHintLine -Index $index -NumberBuffer $NumberBuffer
         foreach ($extra in $FooterExtraHints) {
             if ($extra) { $hint += " |  $extra" }
         }
         Write-FixedLine $HintRow $hint -Color DarkGray
     }
 
-    $pageText = Get-I18n -Key 'menu.pageStatus' -Vars @{
+    $pageText = Get-I18n -Key 'common.pagination.page' -Vars @{
         current = (Format-MenuPageNumber -Value ($PageIndex + 1) -PageCount $PageCount)
         total   = (Format-MenuPageNumber -Value $PageCount -PageCount $PageCount)
     }
-    $status = $pageText + (Get-I18n -Key 'menu.pageStatusTotal' -Vars @{ count = $ItemCount; unit = $CountLabel })
+    $status = $pageText + (Get-I18n -Key 'common.pagination.totalCount' -Vars @{ count = $ItemCount; unit = $CountLabel })
     Write-FixedLine $StatusRow $status -Color DarkGray
 }
 
@@ -1368,20 +1365,11 @@ function Format-MenuNumberedRow {
         [int]$NumWidth,
         [bool]$Selected,
         [bool]$Disabled,
-        [int]$DisplayNumber = 0,
-        [switch]$ZeroPadDisplayNumber
+        [int]$DisplayNumber = 0
     )
 
     $numValue = if ($DisplayNumber -gt 0) { $DisplayNumber } else { $GlobalIndex + 1 }
-    if ($ZeroPadDisplayNumber) {
-        $num = $numValue.ToString().PadLeft($NumWidth, '0')
-    }
-    else {
-        $num = $numValue.ToString()
-        if ($NumWidth -gt $num.Length) {
-            $num = $num.PadLeft($NumWidth, ' ')
-        }
-    }
+    $num = Format-ListDisplayNumber -Number $numValue -NumWidth $NumWidth
     $mark = if ($Selected) { '>' } else { ' ' }
     return " $mark $num  $Label"
 }
@@ -1553,6 +1541,15 @@ function Redraw-PaginatedMenuPage {
     $viewport = $Layout.ListViewportHeight
     if ($viewport -le 0) { $viewport = $PageSize }
 
+    if ($Items.Count -eq 0) {
+        Write-FixedLine $Layout.ListStartRow " $(Get-I18n -Key 'page.home.noToolsRegistered')" -Color DarkGray
+        for ($row = 1; $row -lt $viewport; $row++) {
+            Write-FixedLine ($Layout.ListStartRow + $row) '' -Selected $false
+        }
+        Clear-MenuListChrome -Layout $Layout -VisibleRowsDrawn 1
+        return
+    }
+
     $pageStart = $PageIndex * $PageSize
     $itemsOnPage = 0
     if ($Items.Count -gt 0) {
@@ -1640,10 +1637,17 @@ function Show-PaginatedMenu {
         [switch]$EscMeansBack
     )
 
-    if ($Items.Count -eq 0) { return $null }
+    if (-not $PSBoundParameters.ContainsKey('HideColHeader')) {
+        $HideColHeader = $true
+    }
+
+    $resolveNumberFn = $ResolveMenuNumber
+    if (-not $resolveNumberFn) {
+        $resolveNumberFn = ${function:Resolve-ListNumberIndexDefault}
+    }
 
     if (-not $CountLabel) {
-        $CountLabel = Get-I18n -Key 'menu.countItems'
+        $CountLabel = Get-I18n -Key 'common.unit.item'
     }
 
     if ($PageSize -le 0) {
@@ -1665,12 +1669,22 @@ function Show-PaginatedMenu {
         $numWidth = $NumberDisplayWidth
     }
     else {
-        $numWidth = Get-MenuNumberWidth -TotalCount $Items.Count
+        $maxDisplay = 0
+        for ($i = 0; $i -lt $Items.Count; $i++) {
+            $dn = if ($GetItemDisplayNumber) {
+                & $GetItemDisplayNumber $Items[$i] $i
+            }
+            else {
+                $i + 1
+            }
+            if ($dn -gt $maxDisplay) { $maxDisplay = $dn }
+        }
+        $numWidth = Get-ListNumberDisplayWidth -MaxNumber $maxDisplay
     }
     $pageCount = [Math]::Max(1, [Math]::Ceiling($Items.Count / [double]$PageSize))
 
     $pageIndex = 0
-    $selectedIndex = 0
+    $selectedIndex = if ($Items.Count -eq 0) { -1 } else { 0 }
     $numberBuffer = ''
     $flashMessage = ''
     $listScrollOffset = 0
@@ -1678,14 +1692,17 @@ function Show-PaginatedMenu {
     function Apply-MenuNumberBuffer {
         param([string]$Buffer)
         if ([string]::IsNullOrEmpty($Buffer)) { return }
+        if ($Items.Count -eq 0) {
+            Set-Variable -Name flashMessage -Value (Get-I18n -Key 'flash.invalidNumber') -Scope 1
+            return
+        }
         $num = [int]$Buffer
-        if ($ResolveMenuNumber) {
-            $idx = & $ResolveMenuNumber $Items $num
-        }
-        else {
-            $idx = $num - 1
-        }
+        $idx = & $resolveNumberFn $Items $num
         if ($idx -ge 0 -and $idx -lt $Items.Count) {
+            if (-not (& $TestItemEnabled $Items[$idx] $idx)) {
+                Set-Variable -Name flashMessage -Value (Get-I18n -Key 'flash.disabledNumber') -Scope 1
+                return
+            }
             $newPage = [Math]::Floor($idx / [double]$PageSize)
             Set-Variable -Name selectedIndex -Value $idx -Scope 1
             Set-Variable -Name pageIndex -Value $newPage -Scope 1
@@ -1694,7 +1711,7 @@ function Show-PaginatedMenu {
                 -ItemCount $Items.Count -ViewportHeight $layout.ListViewportHeight
         }
         else {
-            Set-Variable -Name flashMessage -Value (Get-I18n -Key 'menu.flashInvalidNumber') -Scope 1
+            Set-Variable -Name flashMessage -Value (Get-I18n -Key 'flash.invalidNumber') -Scope 1
         }
     }
 
@@ -1746,7 +1763,7 @@ function Show-PaginatedMenu {
     }
 
     if (-not $layout.HideColHeader) {
-        Write-FixedLine $layout.ColHeaderRow (Get-I18n -Key 'menu.colHeader') -Color DarkGray
+        Write-FixedLine $layout.ColHeaderRow (Get-I18n -Key 'page.home.colHeader') -Color DarkGray
     }
 
     Set-MenuListScrollOffset -ScrollOffset ([ref]$listScrollOffset) `
@@ -1906,10 +1923,10 @@ function Show-PaginatedMenu {
                     }
                     'Enter' {
                         $numberBuffer = ''
-                        if ($selectedIndex -ge 0) {
+                        if ($selectedIndex -ge 0 -and $selectedIndex -lt $Items.Count) {
                             $item = $Items[$selectedIndex]
                             if (-not (& $TestItemEnabled $item $selectedIndex)) {
-                                $flashMessage = Get-I18n -Key 'menu.flashDisabledItem'
+                                $flashMessage = Get-I18n -Key 'flash.disabledItem'
                             }
                             else {
                                 Set-MenuInputCursorPosition -Layout $layout -ToolkitShell $ToolkitShell
@@ -1994,7 +2011,7 @@ function Show-InteractiveMenu {
         $ViewHeight = Get-MenuPageSize
     }
     if (-not $CountLabel) {
-        $CountLabel = Get-I18n -Key 'menu.countItems'
+        $CountLabel = Get-I18n -Key 'common.unit.item'
     }
 
     $header = @{
@@ -2002,7 +2019,7 @@ function Show-InteractiveMenu {
         Description  = $Subtitle
         Developer    = ''
         Version      = ''
-        SectionTitle = (Get-I18n -Key 'menu.defaultSection')
+        SectionTitle = (Get-I18n -Key 'page.home.defaultSection')
     }
 
     $getLabel = {
@@ -2033,9 +2050,9 @@ function Write-MessageBlock {
 }
 
 function Show-AfterToolPrompt {
-    Write-MessageBlock -Title (Get-I18n -Key 'afterTool.title') -Lines @(
-        (Get-I18n -Key 'afterTool.returnList'),
-        (Get-I18n -Key 'afterTool.exit')
+    Write-MessageBlock -Title (Get-I18n -Key 'page.afterTool.title') -Lines @(
+        (Get-I18n -Key 'page.afterTool.returnList'),
+        (Get-I18n -Key 'page.afterTool.exit')
     )
 
     if ($Host.Name -eq 'ConsoleHost') {
@@ -2050,7 +2067,7 @@ function Show-AfterToolPrompt {
         catch { }
     }
 
-    $line = Read-Host (Get-I18n -Key 'afterTool.promptFallback')
+    $line = Read-Host (Get-I18n -Key 'page.afterTool.promptFallback')
     if ($line -match '^[qQ]$') { return 'exit' }
     return 'list'
 }

@@ -16,13 +16,14 @@ miao-toolkit/
 │   │   ├── miao.ps1               # CLI 主入口 → bootstrap/Load-Core.ps1
 │   │   └── miao.cmd
 │   ├── core/
-│   │   ├── manifest.json
+│   │   ├── manifest.json          # 字段说明 → docs/MANIFEST.md
 │   │   ├── i18n/
 │   │   └── lib/
 │   │       ├── bootstrap/
 │   │       │   └── Load-Core.ps1  # 唯一 dot-source 入口
 │   │       ├── config/
-│   │       │   ├── Paths.ps1
+│   │       │   ├── Paths.ps1       # Get-Manifest、分页、仓库 URL
+│   │       │   ├── ListLayout.ps1  # 列表列宽、编号、CLI 前缀（非 manifest）
 │   │       │   ├── UserConfig.ps1
 │   │       │   └── I18n.ps1
 │   │       ├── domain/
@@ -56,9 +57,13 @@ miao-toolkit/
 ```
 %LOCALAPPDATA%\Miao\
 ├── bin\           ← PATH
-├── core\          ← manifest.json + lib/
+├── core\          ← manifest.json + lib/（manifest 见 [MANIFEST.md](MANIFEST.md)）
 └── tools\
 ```
+
+### `core/manifest.json`
+
+产品元数据与全局 `pageSize`；界面文案在 `i18n/`（结构见 **[I18N.md](I18N.md)**），列表列宽等在 `lib/config/ListLayout.ps1`。运行时由 `Get-Manifest()`（`config/Paths.ps1`）读取。字段表与维护约定见 **[MANIFEST.md](MANIFEST.md)**。
 
 ### `core/lib/` 命名约定
 
@@ -120,7 +125,7 @@ Session `viewStack`：`ToolList` → `Help` / `Settings` / `Lang` / `Update`。
 |------|------|------|
 | CLI 入口 | `bin/miao.ps1` | 解析参数，路由 |
 | 加载 | `bootstrap/Load-Core.ps1` | 按序 dot-source |
-| 路径/配置 | `config/Paths.ps1`、`Deps-State.ps1` 等 | 安装根、`MIAO_HOME`、i18n、deps-state |
+| 路径/配置 | `config/Paths.ps1`、`ListLayout.ps1`、`Deps-State.ps1` 等 | 安装根、`manifest.json`（[MANIFEST.md](MANIFEST.md)）、i18n、列表布局常量、deps-state |
 | 发现 | `domain/Discover-Tools.ps1` | 扫描 index.json |
 | 工具启动 | `domain/Invoke-Tool.ps1` | 执行 `index.ps1` |
 | 依赖状态 | `config/Deps-State.ps1`、`domain/Ensure-ToolDeps.ps1` | deps-state 读写；install/uninstall 后写版本 |

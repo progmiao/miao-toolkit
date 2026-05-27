@@ -10,6 +10,7 @@ $script:MiaoCoreLibDir = $LibDirectory
 $lib = $LibDirectory
 
 . (Join-Path $lib 'config\Paths.ps1')
+. (Join-Path $lib 'config\ListLayout.ps1')
 . (Join-Path $lib 'config\UserConfig.ps1')
 . (Join-Path $lib 'config\Deps-State.ps1')
 . (Join-Path $lib 'config\I18n.ps1')

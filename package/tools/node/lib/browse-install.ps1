@@ -2,7 +2,6 @@
 
 param(
     [int]$PageSize = 0,
-    [int]$LoadMore = 0,
     [int]$ViewHeight = 0,
     [switch]$LtsOnly
 )
@@ -12,14 +11,14 @@ $ErrorActionPreference = 'Stop'
 $toolRoot = Split-Path $PSScriptRoot -Parent
 $coreLib = Join-Path $toolRoot '..\..\core\lib'
 . (Join-Path $coreLib 'config\Paths.ps1')
+. (Join-Path $coreLib 'config\ListLayout.ps1')
 . (Join-Path $coreLib 'config\UserConfig.ps1')
 . (Join-Path $coreLib 'config\I18n.ps1')
 . (Join-Path $coreLib 'ui\console\Console-Menu.ps1')
 Initialize-PathsFromToolRoot -ToolRoot $toolRoot
 
-$paging = Resolve-MenuPagingDefaults -PageSize $PageSize -LoadMore $LoadMore -ViewHeight $ViewHeight
+$paging = Resolve-MenuPagingDefaults -PageSize $PageSize -ViewHeight $ViewHeight
 $PageSize = $paging.PageSize
-$LoadMore = $paging.LoadMore
 $ViewHeight = $paging.ViewHeight
 
 $configPath = Join-Path $toolRoot 'index.json'
@@ -147,6 +146,7 @@ $header = New-ToolMenuHeader -ToolConfig $toolConfig -SectionTitle '浏览并安
 $header.Description = 'Enter 确认后执行: volta install node@版本'
 
 $selected = Show-PaginatedMenu -Header $header -Items $items -CountLabel '个版本' `
+    -HideColHeader `
     -GetItemLabel ${function:Format-NodeVersionLabel}
 
 if (-not $selected) {

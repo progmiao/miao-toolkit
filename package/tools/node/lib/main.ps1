@@ -8,7 +8,6 @@ param(
     [string]$ToolRoot,
 
     [int]$PageSize = 0,
-    [int]$LoadMore = 0,
     [int]$ViewHeight = 0,
     [switch]$LtsOnly
 )
@@ -17,6 +16,7 @@ $ErrorActionPreference = 'Stop'
 
 $coreLib = Join-Path $ToolRoot '..\..\core\lib'
 . (Join-Path $coreLib 'config\Paths.ps1')
+. (Join-Path $coreLib 'config\ListLayout.ps1')
 . (Join-Path $coreLib 'config\UserConfig.ps1')
 . (Join-Path $coreLib 'config\I18n.ps1')
 . (Join-Path $coreLib 'config\Deps-State.ps1')
@@ -26,9 +26,8 @@ $coreLib = Join-Path $ToolRoot '..\..\core\lib'
 . (Join-Path $coreLib 'ui\console\Console-Menu.ps1')
 Initialize-PathsFromToolRoot -ToolRoot $ToolRoot
 
-$paging = Resolve-MenuPagingDefaults -PageSize $PageSize -LoadMore $LoadMore -ViewHeight $ViewHeight
+$paging = Resolve-MenuPagingDefaults -PageSize $PageSize -ViewHeight $ViewHeight
 $PageSize = $paging.PageSize
-$LoadMore = $paging.LoadMore
 $ViewHeight = $paging.ViewHeight
 
 $preview = Test-MiaoDevMode
@@ -65,7 +64,7 @@ function Invoke-NodeAction {
         return 1
     }
 
-    & $scriptPath -PageSize $PageSize -LoadMore $LoadMore -ViewHeight $ViewHeight -LtsOnly:$LtsOnly
+    & $scriptPath -PageSize $PageSize -ViewHeight $ViewHeight -LtsOnly:$LtsOnly
     return $LASTEXITCODE
 }
 
@@ -75,6 +74,7 @@ while ($true) {
     $menuItems = @(Get-ToolMenuItems -BusinessActions @($Config.actions) -Tool $tool)
 
     $picked = Show-PaginatedMenu -Header $header -Items $menuItems -CountLabel '个功能' `
+        -HideColHeader `
         -GetItemLabel ${function:Format-NodeActionLabel} `
         -TestItemEnabled ${function:Test-NodeActionEnabled}
 

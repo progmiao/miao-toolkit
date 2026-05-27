@@ -60,8 +60,8 @@ function Write-ShellExitFooter {
 
     $segments = @(
         (Get-I18n -Key 'shell.exitConfirmPrompt')
-        (Get-I18n -Key 'shell.exitConfirmYes')
-        (Get-I18n -Key 'shell.exitConfirmNo')
+        (Get-I18n -Key 'common.action.confirmY')
+        (Get-I18n -Key 'common.action.cancelN')
     )
     Write-MenuBarLine -Row $bottomRow -InnerWidth $lineWidth -Segments $segments `
         -ColumnCount $footerColCount -Color ([System.ConsoleColor]::Yellow)

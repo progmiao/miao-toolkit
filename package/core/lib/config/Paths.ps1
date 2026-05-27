@@ -75,10 +75,9 @@ function Get-ManifestTemplateVars {
 
     $manifest = Get-Manifest
     $vars = @{
-        packageName = [string]$manifest.packageName
         shortName   = if ($manifest.shortName) { [string]$manifest.shortName } else { 'Miao' }
         title       = (Get-I18nRaw -Key 'brand.title')
-        author      = [string]$manifest.author
+        author      = (Get-BrandAuthorName)
         description = (Get-I18nRaw -Key 'brand.description')
         version     = [string]$manifest.version
         releaseDate = (Format-ReleaseDate $manifest.releaseDate)
@@ -93,7 +92,6 @@ function Get-ManifestTemplateVars {
 function Get-UserAgent {
     $manifest = Get-Manifest
     if ($manifest.userAgent) { return [string]$manifest.userAgent }
-    if ($manifest.packageName) { return [string]$manifest.packageName }
     return 'Miao-Toolkit'
 }
 
@@ -118,15 +116,7 @@ function Get-MenuNumberDisplayWidth {
         [int]$MaxNumber = 0
     )
 
-    $manifest = Get-Manifest
-    $minDisplay = 2
-    if ($manifest.menu -and ($null -ne $manifest.menu.numberDisplayWidth)) {
-        $minDisplay = [Math]::Max(1, [int]$manifest.menu.numberDisplayWidth)
-    }
-
-    $value = if ($MaxNumber -gt 0) { $MaxNumber } elseif ($TotalCount -gt 0) { $TotalCount } else { 1 }
-    $countDigits = ([string]$value).Length
-    return [Math]::Max($minDisplay, $countDigits)
+    return Get-ListNumberDisplayWidth -TotalCount $TotalCount -MaxNumber $MaxNumber
 }
 
 function Get-MenuNumberWidth {
@@ -134,7 +124,7 @@ function Get-MenuNumberWidth {
         [int]$TotalCount = 0,
         [int]$MaxNumber = 0
     )
-    return Get-MenuNumberDisplayWidth -TotalCount $TotalCount -MaxNumber $MaxNumber
+    return Get-ListNumberDisplayWidth -TotalCount $TotalCount -MaxNumber $MaxNumber
 }
 
 function Get-ToolCommandName {
@@ -144,11 +134,7 @@ function Get-ToolCommandName {
 }
 
 function Get-MenuCliCommandPrefix {
-    $manifest = Get-Manifest
-    if ($manifest.menu -and $manifest.menu.cliCommandPrefix) {
-        return [string]$manifest.menu.cliCommandPrefix
-    }
-    return 'miao'
+    return [string]$script:ToolkitCliCommandPrefix
 }
 
 function Get-ToolMenuCommand {
@@ -166,70 +152,52 @@ function Test-MiaoDevMode {
 }
 
 function Get-MenuColumnGap {
-    $manifest = Get-Manifest
-    if ($manifest.menu -and ($null -ne $manifest.menu.columnGap)) {
-        return [Math]::Max(1, [int]$manifest.menu.columnGap)
-    }
-    return 2
+    return [Math]::Max(1, [int]$script:ToolkitListColumnGap)
 }
 
 function Get-ToolListColumnWidths {
-    $manifest = Get-Manifest
-    $defaults = @{
-        command     = 12
-        displayName = 14
-        summary     = 29
-        status      = 6
+    return @{
+        command     = [int]$script:ToolkitToolListColumnWidths.command
+        displayName = [int]$script:ToolkitToolListColumnWidths.displayName
+        summary     = [int]$script:ToolkitToolListColumnWidths.summary
+        status      = [int]$script:ToolkitToolListColumnWidths.status
     }
-    if ($manifest.menu -and $manifest.menu.toolListColumns) {
-        $cols = $manifest.menu.toolListColumns
-        foreach ($key in @($defaults.Keys)) {
-            if ($null -ne $cols.$key) {
-                $defaults[$key] = [Math]::Max(1, [int]$cols.$key)
-            }
-        }
-    }
-    return $defaults
 }
 
 function Get-MenuPageNumberDisplayWidth {
     param([int]$PageCount = 1)
 
-    $manifest = Get-Manifest
-    $minDisplay = 2
-    if ($manifest.menu -and ($null -ne $manifest.menu.pageNumberDisplayWidth)) {
-        $minDisplay = [Math]::Max(1, [int]$manifest.menu.pageNumberDisplayWidth)
-    }
     $digits = ([string][Math]::Max(1, $PageCount)).Length
-    return [Math]::Max($minDisplay, $digits)
+    return [Math]::Max($script:ListPageNumberMinDisplayWidth, $digits)
 }
 
-function Get-MenuPageSize {
+function Get-PagingPageSize {
     $manifest = Get-Manifest
+    if ($null -ne $manifest.pageSize) {
+        return [int]$manifest.pageSize
+    }
+    if ($manifest.paging -and $manifest.paging.pageSize) {
+        return [int]$manifest.paging.pageSize
+    }
     if ($manifest.menu -and $manifest.menu.pageSize) {
         return [int]$manifest.menu.pageSize
     }
     return 10
 }
 
-function Get-MenuLoadMore {
-    $manifest = Get-Manifest
-    if ($manifest.menu -and $manifest.menu.loadMore) {
-        return [int]$manifest.menu.loadMore
-    }
-    return (Get-MenuPageSize)
+function Get-MenuPageSize {
+    return Get-PagingPageSize
 }
 
 function Get-BrandSeparatorExtra {
-    $manifest = Get-Manifest
-    if ($manifest.menu -and ($null -ne $manifest.menu.brandSeparatorExtra)) {
-        return [int]$manifest.menu.brandSeparatorExtra
-    }
-    return 1
+    return [int]$script:ToolkitBrandSeparatorExtra
 }
 
 function Get-BrandContactEmail {
     $manifest = Get-Manifest
+    if ($manifest.email) {
+        return [string]$manifest.email
+    }
     if ($manifest.contact -and $manifest.contact.email) {
         return [string]$manifest.contact.email
     }
@@ -253,17 +221,14 @@ function Get-RepositoryBrowseUrl {
 function Resolve-MenuPagingDefaults {
     param(
         [int]$PageSize = 0,
-        [int]$LoadMore = 0,
         [int]$ViewHeight = 0
     )
 
     $resolvedPageSize = if ($PageSize -gt 0) { $PageSize } else { Get-MenuPageSize }
-    $resolvedLoadMore = if ($LoadMore -gt 0) { $LoadMore } else { Get-MenuLoadMore }
     $resolvedViewHeight = if ($ViewHeight -gt 0) { $ViewHeight } else { $resolvedPageSize }
 
     return @{
         PageSize   = $resolvedPageSize
-        LoadMore   = $resolvedLoadMore
         ViewHeight = $resolvedViewHeight
     }
 }

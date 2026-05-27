@@ -63,7 +63,7 @@ function Get-ToolsWithExternalDeps {
     foreach ($id in $ToolIds) {
         $tool = $filtered | Where-Object { $_.id -eq $id } | Select-Object -First 1
         if (-not $tool) {
-            Write-Warning (Get-I18n -Key 'install.unknownTool' -Vars @{ toolId = $id })
+            Write-Warning (Get-I18n -Key 'page.install.unknownTool' -Vars @{ toolId = $id })
             continue
         }
         $result += $tool
@@ -78,13 +78,13 @@ function Invoke-ToolUninstall {
     )
 
     if (-not (Test-ToolHasExternalDeps $Tool)) {
-        Write-Host (Get-I18n -Key 'install.noExternalDeps' -Vars @{ toolId = $Tool.id }) -ForegroundColor DarkGray
+        Write-Host (Get-I18n -Key 'page.install.noExternalDeps' -Vars @{ toolId = $Tool.id }) -ForegroundColor DarkGray
         return $true
     }
 
     $uninstallScript = Join-Path $Tool._root 'uninstall.ps1'
     if (-not (Test-Path $uninstallScript)) {
-        Write-Host (Get-I18n -Key 'install.missingUninstallScript' -Vars @{ toolId = $Tool.id }) -ForegroundColor Red
+        Write-Host (Get-I18n -Key 'page.install.missingUninstallScript' -Vars @{ toolId = $Tool.id }) -ForegroundColor Red
         return $false
     }
 
@@ -93,7 +93,7 @@ function Invoke-ToolUninstall {
         return $true
     }
 
-    Write-Host (Get-I18n -Key 'install.uninstalling' -Vars @{ name = $Tool.displayName }) -ForegroundColor Cyan
+    Write-Host (Get-I18n -Key 'page.install.uninstalling' -Vars @{ name = $Tool.displayName }) -ForegroundColor Cyan
     & $uninstallScript
     if ($LASTEXITCODE -and $LASTEXITCODE -ne 0) {
         return $false
@@ -121,13 +121,13 @@ function Invoke-ToolkitUninstallDeps {
     )
 
     if ($ToolIds.Count -eq 0) {
-        Write-Host (Get-I18n -Key 'install.uninstallNeedsToolId') -ForegroundColor Red
+        Write-Host (Get-I18n -Key 'page.install.uninstallNeedsToolId') -ForegroundColor Red
         return 1
     }
 
     $targets = @(Get-ToolsWithExternalDeps -Tools $Tools -ToolIds $ToolIds)
     if ($targets.Count -eq 0) {
-        Write-Host (Get-I18n -Key 'install.noTargets') -ForegroundColor DarkGray
+        Write-Host (Get-I18n -Key 'page.install.noTargets') -ForegroundColor DarkGray
         return 1
     }
 
@@ -150,8 +150,8 @@ function Get-ToolDependencyInstallMenuAction {
     return [pscustomobject]@{
         _kind   = 'toolDeps'
         id      = 'deps-install'
-        label   = (Get-I18n -Key 'tool.deps.installLabel')
-        summary = (Get-I18n -Key 'tool.deps.installSummary')
+        label   = (Get-I18n -Key 'page.toolDeps.installLabel')
+        summary = (Get-I18n -Key 'page.toolDeps.installSummary')
         enabled = $true
     }
 }
@@ -166,8 +166,8 @@ function Get-ToolDependencyMenuActions {
         [pscustomobject]@{
             _kind   = 'toolDeps'
             id      = 'deps-uninstall'
-            label   = (Get-I18n -Key 'tool.deps.uninstallLabel')
-            summary = (Get-I18n -Key 'tool.deps.uninstallSummary')
+            label   = (Get-I18n -Key 'page.toolDeps.uninstallLabel')
+            summary = (Get-I18n -Key 'page.toolDeps.uninstallSummary')
             enabled = $true
         }
     )
@@ -203,20 +203,20 @@ function Invoke-ToolDependencyMenuAction {
         'deps-install' {
             $ok = Invoke-ToolInstall -Tool $Tool -Preview:$Preview
             if ($ok) {
-                Write-Host (Get-I18n -Key 'install.statusDone') -ForegroundColor Green
+                Write-Host (Get-I18n -Key 'common.status.done') -ForegroundColor Green
                 return 0
             }
 
-            Write-Host (Get-I18n -Key 'install.statusFailed') -ForegroundColor Red
+            Write-Host (Get-I18n -Key 'common.status.failed') -ForegroundColor Red
             return 1
         }
         'deps-uninstall' {
             if (Invoke-ToolUninstall -Tool $Tool -Preview:$Preview) {
-                Write-Host (Get-I18n -Key 'install.statusDone') -ForegroundColor Green
+                Write-Host (Get-I18n -Key 'common.status.done') -ForegroundColor Green
                 return 0
             }
 
-            Write-Host (Get-I18n -Key 'install.statusFailed') -ForegroundColor Red
+            Write-Host (Get-I18n -Key 'common.status.failed') -ForegroundColor Red
             return 1
         }
         default {
@@ -227,5 +227,5 @@ function Invoke-ToolDependencyMenuAction {
 
 function Wait-ToolDependencyMenuContinue {
     Write-Host ''
-    Read-Host (Get-I18n -Key 'tool.deps.pressEnterToBack')
+    Read-Host (Get-I18n -Key 'page.toolDeps.pressEnterToBack')
 }

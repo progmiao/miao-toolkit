@@ -17,10 +17,10 @@ function Invoke-LangPage {
 
     $header = New-ToolkitMenuHeader -HideSectionTitle
     Initialize-ToolkitShellBodyView -Shell $Shell `
-        -SectionTitle (Get-I18n -Key 'settings.languageSectionTitle') `
+        -SectionTitle (Get-I18n -Key 'page.lang.sectionTitle') `
         -FooterTemplate DefaultBar
     $renderFooter = New-ShellDefaultFooterRenderer -Shell $Shell -ShowHelp -ShowBack
-    $picked = Show-PaginatedMenu -Header $header -Items $items -CountLabel (Get-I18n -Key 'menu.countItems') `
+    $picked = Show-PaginatedMenu -Header $header -Items $items -CountLabel (Get-I18n -Key 'common.unit.item') `
         -GetItemLabel {
             param($Item, $Index)
             return $Item.label
@@ -69,8 +69,8 @@ function Show-LanguagePicker {
         }
     )
 
-    $headerFull = New-ToolkitMenuHeader -SectionTitle (Get-I18n -Key 'settings.languageSectionTitle')
-    $picked = Show-PaginatedMenu -Header $headerFull -Items $items -CountLabel (Get-I18n -Key 'menu.countItems') `
+    $headerFull = New-ToolkitMenuHeader -SectionTitle (Get-I18n -Key 'page.lang.sectionTitle')
+    $picked = Show-PaginatedMenu -Header $headerFull -Items $items -CountLabel (Get-I18n -Key 'common.unit.item') `
         -GetItemLabel {
             param($Item, $Index)
             return $Item.label
@@ -84,14 +84,14 @@ function Show-LanguagePicker {
     }
 
     if ((Get-CurrentLocale) -eq $picked.id) {
-        Write-MessageBlock -Title (Get-I18n -Key 'settings.languageTitle') `
-            -Lines @(Get-I18n -Key 'settings.languageAlreadyCurrent' -Vars @{ locale = (Get-LocaleDisplayName $picked.id) }) `
+        Write-MessageBlock -Title (Get-I18n -Key 'page.lang.title') `
+            -Lines @(Get-I18n -Key 'page.lang.alreadyCurrent' -Vars @{ locale = (Get-LocaleDisplayName $picked.id) }) `
             -TitleColor Yellow
     }
     else {
         Set-UserLocale $picked.id
-        Write-MessageBlock -Title (Get-I18n -Key 'settings.languageTitle') `
-            -Lines @(Get-I18n -Key 'settings.languageChanged' -Vars @{ locale = (Get-LocaleDisplayName $picked.id) }) `
+        Write-MessageBlock -Title (Get-I18n -Key 'page.lang.title') `
+            -Lines @(Get-I18n -Key 'page.lang.changed' -Vars @{ locale = (Get-LocaleDisplayName $picked.id) }) `
             -TitleColor Green
     }
 
@@ -124,11 +124,15 @@ function Invoke-LangCommand {
         default {
             try {
                 Set-UserLocale $sub
-                Write-Host (Get-I18n -Key 'settings.languageChanged' -Vars @{ locale = (Get-LocaleDisplayName $sub) })
+                Write-Host (Get-I18n -Key 'page.lang.changed' -Vars @{ locale = (Get-LocaleDisplayName $sub) })
                 return 0
             }
             catch {
-                Write-Host $_.Exception.Message -ForegroundColor Red
+                $detail = $_.Exception.Message
+                if ([string]::IsNullOrWhiteSpace($detail)) {
+                    $detail = $_.Exception.GetType().FullName
+                }
+                Write-Host (Get-I18n -Key 'error.languageChangeFailed' -Vars @{ detail = $detail }) -ForegroundColor Red
                 return 1
             }
         }

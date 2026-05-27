@@ -4,27 +4,27 @@ function Get-ToolkitUpdateStatusLines {
     param($Info)
 
     if (-not $Info) {
-        return @((New-BrandedHelpLine -Text (Get-I18n -Key 'update.checkFailed')))
+        return @((New-BrandedHelpLine -Text (Get-I18n -Key 'page.update.checkFailed')))
     }
 
     $lines = @(
-        (New-BrandedHelpLine -Text "$(Get-I18n -Key 'settings.versionLabel'): v$($Info.CurrentVersion)")
-        (New-BrandedHelpLine -Text "$(Get-I18n -Key 'settings.releaseDateLabel'): $($Info.CurrentReleasedAt)")
+        (New-BrandedHelpLine -Text "$(Get-I18n -Key 'common.label.version'): v$($Info.CurrentVersion)")
+        (New-BrandedHelpLine -Text "$(Get-I18n -Key 'common.label.releaseDate'): $($Info.CurrentReleasedAt)")
     )
 
     if ($Info.IsLatest) {
-        $lines += New-BrandedHelpLine -Text (Get-I18n -Key 'update.statusLatest')
+        $lines += New-BrandedHelpLine -Text (Get-I18n -Key 'page.update.statusLatest')
     }
     else {
-        $lines += New-BrandedHelpLine -Text (Get-I18n -Key 'update.statusAvailable' -Vars @{
+        $lines += New-BrandedHelpLine -Text (Get-I18n -Key 'page.update.statusAvailable' -Vars @{
             latestVersion = $Info.LatestVersion
         })
         if ($Info.LatestReleasedAt -and $Info.LatestReleasedAt -ne '-') {
-            $lines += New-BrandedHelpLine -Text "$(Get-I18n -Key 'update.latestReleaseLabel'): $($Info.LatestReleasedAt)"
+            $lines += New-BrandedHelpLine -Text "$(Get-I18n -Key 'page.update.latestReleaseLabel'): $($Info.LatestReleasedAt)"
         }
     }
 
-    $lines += New-BrandedHelpLine -Text (Get-I18n -Key 'update.executePlaceholder')
+    $lines += New-BrandedHelpLine -Text (Get-I18n -Key 'page.update.executeNotImplemented')
     return $lines
 }
 
@@ -35,7 +35,7 @@ function Invoke-UpdatePage {
     $info = Get-UpdateAvailability
     $lines = Get-ToolkitUpdateStatusLines -Info $info
     return Invoke-ToolkitShellContentView -Shell $Shell `
-        -SectionTitle (Get-I18n -Key 'update.pageTitle') `
+        -SectionTitle (Get-I18n -Key 'page.update.pageTitle') `
         -Lines $lines -ShowBack
 }
 
@@ -65,7 +65,7 @@ function Start-ToolkitUpdatePage {
         $letterKeys['s'] = New-SettingsMenuEntry
     }
 
-    $null = Show-BrandedContentPage -SectionTitle (Get-I18n -Key 'update.pageTitle') `
+    $null = Show-BrandedContentPage -SectionTitle (Get-I18n -Key 'page.update.pageTitle') `
         -Lines $lines -LetterKeys $letterKeys
 
     return 0

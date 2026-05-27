@@ -125,7 +125,7 @@ function Invoke-SessionUpdateHint {
     $info = Get-UpdateAvailability
     if ($info.IsLatest) { return }
 
-    $message = Get-I18n -Key 'update.sessionHint' -Vars @{
+    $message = Get-I18n -Key 'page.update.sessionHint' -Vars @{
         latestVersion  = $info.LatestVersion
         currentVersion = $info.CurrentVersion
     }
