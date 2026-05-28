@@ -3,8 +3,8 @@
   "logo": "ascii-logo.txt",
   "email": "455855199@qq.com",
 
-  "version": "0.1.0-dev",
-  "releaseDate": "2026-05-24",
+  "version": "0.1.0",
+  "releaseDate": "2026-05-28",
 
   "repository": "ProgMiao/miao-toolkit",
   "userAgent": "Miao-Toolkit",
