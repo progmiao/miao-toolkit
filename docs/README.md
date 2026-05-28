@@ -17,7 +17,10 @@ miao-toolkit/
 │
 ├── dev/                       ← 仅仓库开发用（不进安装包）
 │   ├── dev-miao.ps1           ← 本地预览 miao
-│   └── ensure-utf8bom.ps1     ← 维护 package/dev 下 ps1 的 UTF-8 BOM
+│   └── ensure-utf8bom.ps1     ← 维护 package/dev/release 下 ps1 的 UTF-8 BOM
+│
+├── release/                   ← 维护者发版脚本（不进安装包）
+│   └── pack.ps1               ← 打 GitHub Release zip → dist/
 │
 └── package/                   ← ★ 安装包源码（winget 发布此目录内容）
     ├── bin/                   ← 命令入口，唯一加入 PATH 的目录
@@ -149,6 +152,7 @@ help 来源：`package/tools/<id>/help.md`。
 | [TOOL-CONVENTION.md](TOOL-CONVENTION.md) | 工具目录约定 |
 | [INSTALL.md](INSTALL.md) | 安装、winget |
 | [UPDATE.md](UPDATE.md) | 发布与更新 |
+| [RELEASE.md](RELEASE.md) | 维护者：main 发版清单 |
 | [CLI.md](CLI.md) | 命令、help |
 | [UX.md](UX.md) | 交互 |
 | [MANIFEST.md](MANIFEST.md) | `core/manifest.json` 字段说明 |

@@ -55,3 +55,9 @@ CodeCoverage/
 *.VisualState.xml
 TestResult.xml
 nunit-*.xml
+
+# Miao release zip output (see release/pack.ps1)
+dist/
+
+# Repo release tooling (.NET template ignores [Rr]elease/)
+!/release/
