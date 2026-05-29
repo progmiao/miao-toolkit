@@ -19,6 +19,9 @@ x86/
 [Aa][Rr][Mm]64/
 bld/
 [Bb]in/
+# Miao CLI entry (must stay versioned; see package/bin/)
+!package/bin/
+!package/bin/**
 [Oo]bj/
 [Ll]og/
 [Ll]ogs/
