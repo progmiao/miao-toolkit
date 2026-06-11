@@ -1,5 +1,73 @@
 ﻿# Shell 布局：header / title / content / footer 行号 metrics
 
+function Get-ToolkitShellContentMetrics {
+    param(
+        [hashtable]$Shell = $null,
+        [int]$BrandInnerWidth = 0
+    )
+
+    $inner = [int]$BrandInnerWidth
+    if ($inner -le 0 -and $Shell) {
+        if ($Shell.BrandInnerWidth -gt 0) {
+            $inner = [int]$Shell.BrandInnerWidth
+        }
+        elseif ($Shell.Layout -and $Shell.Layout.BrandInnerWidth -gt 0) {
+            $inner = [int]$Shell.Layout.BrandInnerWidth
+        }
+    }
+    if ($inner -le 0) {
+        $inner = Get-BrandInnerWidth
+    }
+
+    $lineWidth = Get-BrandSeparatorLineWidth -BrandInnerWidth $inner
+    return @{
+        StartColumn = 1
+        InnerWidth  = $inner
+        LineWidth   = $lineWidth
+        EndColumn   = 1 + $lineWidth
+    }
+}
+
+function Get-ToolkitShellContentLineWidth {
+    param(
+        [hashtable]$Shell = $null,
+        [int]$BrandInnerWidth = 0
+    )
+
+    if ($Shell -and $Shell.ContentMetrics -and [int]$Shell.ContentMetrics.EndColumn -gt 0) {
+        return [int]$Shell.ContentMetrics.EndColumn
+    }
+
+    if ($BrandInnerWidth -le 0 -and $Shell) {
+        if ([int]$Shell.BrandInnerWidth -gt 0) {
+            $BrandInnerWidth = [int]$Shell.BrandInnerWidth
+        }
+        elseif ($Shell.Layout -and [int]$Shell.Layout.BrandInnerWidth -gt 0) {
+            $BrandInnerWidth = [int]$Shell.Layout.BrandInnerWidth
+        }
+    }
+
+    if ($BrandInnerWidth -le 0) { return 0 }
+    return 1 + (Get-BrandSeparatorLineWidth -BrandInnerWidth $BrandInnerWidth)
+}
+
+function Sync-ToolkitShellContentMetrics {
+    param([hashtable]$Shell)
+
+    if (-not $Shell) { return $null }
+
+    $metrics = Get-ToolkitShellContentMetrics -Shell $Shell
+    $Shell['ContentMetrics'] = $metrics
+    if ($Shell.Layout) {
+        $Shell.Layout['ContentMetrics'] = $metrics
+        $Shell.Layout['BrandInnerWidth'] = $metrics.InnerWidth
+        $Shell.Layout['ContentStartColumn'] = $metrics.StartColumn
+        $Shell.Layout['ContentLineWidth'] = $metrics.EndColumn
+    }
+    $Shell['BrandInnerWidth'] = $metrics.InnerWidth
+    return $metrics
+}
+
 function Get-ShellLayoutConstants {
     return @{
         SectionCapRows    = 2
@@ -44,7 +112,7 @@ function Get-ShellHomeContentRows {
 
 function Get-ShellViewContentRows {
     param(
-        [ValidateSet('MenuSplit', 'DefaultBar')]
+        [ValidateSet('ListWithToolbar', 'SystemToolbarOnly')]
         [string]$FooterTemplate,
         [int]$ConsoleHeight = 0,
         [int]$BrandRowCount = 0
@@ -52,15 +120,15 @@ function Get-ShellViewContentRows {
 
     $c = Get-ShellLayoutConstants
     $cHome = Get-ShellHomeContentRows -ConsoleHeight $ConsoleHeight -BrandRowCount $BrandRowCount
-    $dRows = if ($FooterTemplate -eq 'MenuSplit') { $c.HomeDRows } else { $c.SubDRows }
+    $dRows = if ($FooterTemplate -eq 'ListWithToolbar') { $c.HomeDRows } else { $c.SubDRows }
 
     return $cHome + ($c.HomeDRows - $dRows)
 }
 
 function Get-ShellLayoutMetrics {
     param(
-        [ValidateSet('MenuSplit', 'DefaultBar')]
-        [string]$FooterTemplate = 'MenuSplit',
+        [ValidateSet('ListWithToolbar', 'SystemToolbarOnly')]
+        [string]$FooterTemplate = 'ListWithToolbar',
         [int]$ConsoleHeight = 0,
         [hashtable]$Shell = $null
     )
@@ -69,8 +137,8 @@ function Get-ShellLayoutMetrics {
 
     $c = Get-ShellLayoutConstants
     $brandRowCount = Get-ShellBrandRowCount -Shell $Shell
-    $dRows = if ($FooterTemplate -eq 'MenuSplit') { $c.HomeDRows } else { $c.SubDRows }
-    $footerBarRows = if ($FooterTemplate -eq 'MenuSplit') { $c.HomeFooterBarRows } else { $c.SubFooterBarRows }
+    $dRows = if ($FooterTemplate -eq 'ListWithToolbar') { $c.HomeDRows } else { $c.SubDRows }
+    $footerBarRows = if ($FooterTemplate -eq 'ListWithToolbar') { $c.HomeFooterBarRows } else { $c.SubFooterBarRows }
     $listViewport = Get-ShellViewContentRows -FooterTemplate $FooterTemplate `
         -ConsoleHeight $ConsoleHeight -BrandRowCount $brandRowCount
     $homeNatural = $brandRowCount + $c.SectionCapRows + $c.ListSlotRows + $c.HomeDRows
@@ -103,7 +171,7 @@ function Get-ShellLayoutMetrics {
 
     if ($expanded) {
         $metrics.GapRow = $listEnd + 1
-        if ($FooterTemplate -eq 'MenuSplit') {
+        if ($FooterTemplate -eq 'ListWithToolbar') {
             $metrics.HintRow = $listEnd + 2
             $metrics.StatusRow = $listEnd + 3
             $metrics.ToolbarRow = $metrics.StatusRow
@@ -117,7 +185,7 @@ function Get-ShellLayoutMetrics {
     else {
         $metrics.StatusRow = $ConsoleHeight - 1
         $metrics.ToolbarRow = $ConsoleHeight - 1
-        if ($FooterTemplate -eq 'MenuSplit') {
+        if ($FooterTemplate -eq 'ListWithToolbar') {
             $metrics.HintRow = $ConsoleHeight - 2
             $metrics.GapRow = $ConsoleHeight - 3
             $metrics.ListEndRow = [Math]::Max($listStart, $ConsoleHeight - 4)
@@ -137,7 +205,7 @@ function Get-ShellLayoutMetrics {
 function Update-ToolkitShellViewLayout {
     param(
         [hashtable]$Shell,
-        [ValidateSet('MenuSplit', 'DefaultBar')]
+        [ValidateSet('ListWithToolbar', 'SystemToolbarOnly')]
         [string]$FooterTemplate,
         [switch]$WithSectionTitle
     )
@@ -153,6 +221,8 @@ function Update-ToolkitShellViewLayout {
             $layout['BrandInnerWidth'] = Get-BrandInnerWidth -Header $header
         }
     }
+
+    $null = Sync-ToolkitShellContentMetrics -Shell $Shell
 
     $metrics = Get-ShellLayoutMetrics -FooterTemplate $FooterTemplate -Shell $Shell
     $c = Get-ShellLayoutConstants

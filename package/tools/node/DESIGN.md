@@ -39,11 +39,11 @@
 
 | # | 菜单名（采用长名） | 二级行为 | Volta 对应 | 阶段 |
 |---|-------------------|----------|------------|------|
-| 1 | **浏览并安装** | nodejs.org 全版本列表，Enter 安装 | `volta install node@x` | **v1** |
-| 2 | **为项目指定** | 当前目录项目 pin 列表 | `volta pin node@x` | v2 |
-| 3 | **设置全局默认** | 已安装 Node 单选设 default；可跳转完整列表 | `volta install node@x` | v1.1 |
+| 1 | **浏览并安装** | nodejs.org 全版本列表，Enter 安装 | `volta install node@x` | **已实现** |
+| 2 | **为项目指定** | 当前目录项目 pin 列表 | `volta pin node@x` | **已实现** |
+| 3 | **设置全局默认** | 已安装 Node 单选设 default | `volta install node@x` | **已实现** |
 
-**v1 实现：** 仅开放 [1]；[2][3] 在菜单中预留（灰显或「即将推出」），结构与参数先定好便于扩展。
+业务 action 的 `command` 为 `install` / `pin` / `default`。依赖菜单同名 `install` / `update` / `uninstall` 由 `_kind: toolDeps` 区分。
 
 ### 快捷参数（跳过一级菜单）
 
@@ -75,23 +75,22 @@ miao node -d          # v1.1
 - Enter → `volta install node@版本`
 - 固定视口菜单，无整屏闪烁
 
-### 二级 · 为项目指定（v2，结构预留）
+### 二级 · 为项目指定
 
 - 需当前目录有 `package.json`
-- 未装版本：**默认「安装并指定」**；可选「仅指定」（pin 后 Volta 首次使用时 fetch）
-- Enter → `volta pin node@x`（+ 按需 install）
+- 列表：已安装版本 + nodejs.org 远程版本（支持 `-LtsOnly`）
+- 未装版本：Enter → `volta pin node@x`（Volta 按需拉取）
 
-### 二级 · 设置全局默认（v1.1，结构预留）
+### 二级 · 设置全局默认
 
 - 主列表：**仅已安装** Node（`volta list`），单选 → `volta install node@x` 设 default
-- 可选入口：跳转「浏览并安装」全列表
+- 无已装版本时提示先「浏览并安装」
 
 ### 不包含
 
 - Volta 子命令通用转发
 - npm / yarn / pnpm 管理（后续独立工具）
 - nvm、fnm 等非 Volta 安装方式
-- v1：`volta pin` 交互、设 default 二级（仅预留菜单项）
 
 ---
 
@@ -105,8 +104,9 @@ miao node -d          # v1.1
 
 | 触发 | 行为 |
 |------|------|
-| **依赖管理专页 / 工具内「安装/更新」** | **安装或更新** Volta（`install.ps1` 完整流程） |
-| **进入工具** | **不**自动装；菜单按 deps-state 展示 |
+| **依赖管理专页 / 工具内「安装」或「更新」** | **安装或更新** Volta（`install.ps1`） |
+| **工具内「卸载」** | `uninstall.ps1` |
+| **进入工具** | **不**自动装；菜单按 deps-state 展示；可更新性后台探测 |
 
 成功后 core 写入 `deps-state.json`；首页只读 state 显示已装/未装。
 
@@ -144,9 +144,10 @@ miao node -d          # v1.1
 | 文件 | 职责 | 阶段 |
 |------|------|------|
 | `lib/main.ps1` | 一级功能选择（读 `index.json` → `actions`） | v1 |
-| `lib/browse-install.ps1` | 浏览并安装（版本列表 UI） | v1 |
-| `lib/pin-project.ps1` | 为项目指定 | v2 |
-| `lib/set-default.ps1` | 设置全局默认 | v1.1 |
+| `lib/volta-node.ps1` | Volta / 版本列表公共辅助 | 已实现 |
+| `lib/browse-install.ps1` | 浏览并安装（版本列表 UI） | 已实现 |
+| `lib/pin-project.ps1` | 为项目指定 | 已实现 |
+| `lib/set-default.ps1` | 设置全局默认 | 已实现 |
 
 功能注册在 **`index.json` → `actions`**；`index.ps1` 只负责路由。
 
@@ -225,16 +226,16 @@ miao node [@args]
 
 ## 九、开发阶段
 
-| 阶段 | 交付 |
-|------|------|
-| **v1** | `index.ps1` + `lib/main.ps1` + `lib/browse-install.ps1` + `-i`；菜单 [2][3] 预留 |
-| **v1.1** | `lib/set-default.ps1` + `-d` |
-| **v2** | `lib/pin-project.ps1` + `-p` |
+| 阶段 | 交付 | 状态 |
+|------|------|------|
+| **v1** | 浏览并安装 + 依赖菜单规范 | 已完成 |
+| **v1.1** | 设置全局默认 | 已完成 |
+| **v2** | 为项目指定 | 已完成 |
 
 ---
 
-## 十、待完善项（非阻塞 v1）
+## 十、待完善项
 
-- [ ] `-LtsOnly` 写入 help.md 推荐场景（第 10 步）
-- [ ] v1 菜单 [2][3] 灰显文案
+- [ ] `-LtsOnly` 写入 help.md 推荐场景
 - [ ] install 成功后是否询问 pin（默认否）
+- [ ] 菜单等待输入时后台探测完成后的即时刷新（当前为返回菜单后刷新）

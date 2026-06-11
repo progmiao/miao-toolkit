@@ -1,13 +1,11 @@
-﻿# Shell 底栏：gap + toolbar（Home=MenuSplit D=3，Sub=DefaultBar D=2）
+﻿# Shell 底栏：ListWithToolbar（列表双行）/ SystemToolbarOnly（单行系统工具栏）
 
 function Write-ToolkitShellFooter {
     param(
         [hashtable]$Shell,
-        [ValidateSet('MenuSplit', 'DefaultBar')]
+        [ValidateSet('ListWithToolbar', 'SystemToolbarOnly')]
         [string]$Template,
-        [switch]$ShowSettings,
-        [switch]$ShowHelp,
-        [switch]$ShowBack,
+        [hashtable]$ToolbarConfig = $null,
         [string]$FlashMessage = '',
         [hashtable]$MenuFooter = $null
     )
@@ -19,7 +17,7 @@ function Write-ToolkitShellFooter {
         Write-FixedLine $layout.GapRow '' -Color DarkGray
     }
 
-    if ($Template -eq 'MenuSplit') {
+    if ($Template -eq 'ListWithToolbar') {
         if (-not $MenuFooter) { return }
         $splitFlash = if (-not [string]::IsNullOrWhiteSpace($FlashMessage)) {
             $FlashMessage
@@ -32,7 +30,9 @@ function Write-ToolkitShellFooter {
             -ItemCount $MenuFooter.ItemCount -SelectedIndex $MenuFooter.SelectedIndex `
             -NumberBuffer $MenuFooter.NumberBuffer -CountLabel $MenuFooter.CountLabel `
             -FooterLayout Split -BrandInnerWidth $barWidth `
-            -FlashMessage $splitFlash
+            -MenuSplitActionSegments $MenuFooter.MenuSplitActionSegments `
+            -FlashMessage $splitFlash `
+            -MultiSelectNav:([bool]$MenuFooter.MultiSelectNav)
         Clear-ToolkitShellBelowFooter -Shell $Shell
         return
     }
@@ -44,6 +44,10 @@ function Write-ToolkitShellFooter {
     $lineWidth = Get-BrandSeparatorLineWidth -BrandInnerWidth $barWidth
     $footerColCount = 5
 
+    if (-not $ToolbarConfig) {
+        $ToolbarConfig = New-ShellSystemToolbarConfig
+    }
+
     if (-not [string]::IsNullOrWhiteSpace($FlashMessage)) {
         Write-MenuBarLine -Row $layout.ToolbarRow -InnerWidth $lineWidth `
             -Segments @($FlashMessage, '', '', '', '') -ColumnCount $footerColCount `
@@ -52,21 +56,18 @@ function Write-ToolkitShellFooter {
         return
     }
 
-    $segments = @(
-        (Get-I18n -Key 'common.action.quitEsc')
-        $(if ($ShowBack) { (Get-I18n -Key 'common.action.backQ') } else { '' })
-        $(if ($ShowSettings) { (Get-I18n -Key 'common.nav.settings') } else { '' })
-        ''
-        ''
-    )
-    Write-MenuBarLine -Row $layout.ToolbarRow -InnerWidth $lineWidth -Segments $segments -ColumnCount $footerColCount
+    $barSegments = Format-ShellSystemToolbarBarSegments -Segments $ToolbarConfig.Segments -ColumnCount $footerColCount
+    Write-MenuBarLine -Row $layout.ToolbarRow -InnerWidth $lineWidth `
+        -Segments $barSegments -ColumnCount $footerColCount
     Clear-ToolkitShellBelowFooter -Shell $Shell
 }
 
+# 兼容旧名
 function Read-ToolkitShellDefaultBarKey {
     param(
         [hashtable]$Shell,
-        [switch]$ShowSettings,
+        [hashtable]$ToolbarConfig = $null,
+        [switch]$ShowSysShortcut,
         [switch]$ShowHelp,
         [switch]$ShowBack,
         [switch]$Scrollable,
@@ -74,55 +75,54 @@ function Read-ToolkitShellDefaultBarKey {
         [int]$MaxScroll
     )
 
-    $confirm = Read-ShellExitIfActive -Shell $Shell
-    if ($null -ne $confirm) {
-        return $confirm
+    if (-not $ToolbarConfig) {
+        $ToolbarConfig = New-ShellSystemToolbarConfig `
+            -HideBack:(-not $ShowBack) `
+            -HideSystem:(-not $ShowSysShortcut) `
+            -HideHelp:(-not $ShowHelp)
     }
 
-    Prepare-ToolkitShellBodyDraw -Shell $Shell
-    $key = [Console]::ReadKey($true)
+    return Read-ShellSystemToolbarKey -Shell $Shell -ToolbarConfig $ToolbarConfig `
+        -Scrollable:$Scrollable -ScrollOffset $ScrollOffset -MaxScroll $MaxScroll
+}
 
-    if ($key.Key -eq 'Escape') {
-        Request-ShellExit -Shell $Shell
-        return 'exitConfirm'
-    }
-    if ($ShowBack -and $key.KeyChar -match '^[qQ]$') {
-        return (Get-ShellNavMarker -Action 'back')
-    }
-    if ($ShowSettings -and $key.KeyChar -match '^[sS]$') {
-        return (Get-ShellNavMarker -Action 'settings')
-    }
-    if ($ShowHelp -and $key.KeyChar -match '^[hH]$') {
-        return (Get-ShellNavMarker -Action 'help')
-    }
-    if ($Scrollable) {
-        if ($key.Key -eq 'UpArrow' -and $ScrollOffset.Value -gt 0) {
-            $ScrollOffset.Value--
-            return 'scroll'
-        }
-        if ($key.Key -eq 'DownArrow' -and $ScrollOffset.Value -lt $MaxScroll) {
-            $ScrollOffset.Value++
-            return 'scroll'
+function New-ShellSystemToolbarFooterRenderer {
+    param(
+        [hashtable]$Shell,
+        [hashtable]$ToolbarConfig
+    )
+
+    $capturedShell = $Shell
+    $capturedToolbar = $ToolbarConfig
+    $fnWriteFooter = ${function:Write-ToolkitShellFooter}
+    if (-not $fnWriteFooter) {
+        $cmd = Get-Command Write-ToolkitShellFooter -CommandType Function -ErrorAction SilentlyContinue
+        if ($cmd) {
+            $fnWriteFooter = $cmd.ScriptBlock
         }
     }
+    if (-not $fnWriteFooter) {
+        throw 'Write-ToolkitShellFooter is not available.'
+    }
 
-    return $null
+    return {
+        param($InvokeArgs = @{})
+
+        $flash = ''
+        if ($null -ne $InvokeArgs -and $InvokeArgs -is [hashtable] -and $InvokeArgs.ContainsKey('FlashMessage')) {
+            $flash = [string]$InvokeArgs.FlashMessage
+        }
+
+        & $fnWriteFooter -Shell $capturedShell -Template SystemToolbarOnly `
+            -ToolbarConfig $capturedToolbar -FlashMessage $flash
+    }.GetNewClosure()
 }
 
 function New-ShellDefaultFooterRenderer {
     param(
         [hashtable]$Shell,
-        [switch]$ShowSettings,
-        [switch]$ShowHelp,
-        [switch]$ShowBack
+        [hashtable]$ToolbarConfig
     )
 
-    $writeFooter = Get-Item -Path function:Write-ToolkitShellFooter
-    return {
-        param([hashtable]$FooterState)
-
-        & $writeFooter -Shell $Shell -Template DefaultBar `
-            -ShowSettings:$ShowSettings -ShowHelp:$ShowHelp -ShowBack:$ShowBack `
-            -FlashMessage $(if ($FooterState.FlashMessage) { [string]$FooterState.FlashMessage } else { '' })
-    }.GetNewClosure()
+    return New-ShellSystemToolbarFooterRenderer -Shell $Shell -ToolbarConfig $ToolbarConfig
 }

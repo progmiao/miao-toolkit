@@ -11,6 +11,7 @@ package/tools/<id>/              # <id> = 命令名，如 node → miao node
 ├── index.json                   # ★ 必须。注册 + 可扩展配置
 ├── index.ps1                    # ★ 必须。统一入口
 ├── install.ps1                  # ★ 必须。该工具外部依赖的安装/更新
+├── uninstall.ps1                # 有 dependencies 时必须。卸载第三方依赖
 ├── help.md                      # ★ 必须。帮助文档（miao help 读取）
 ├── DESIGN.md                    # ★ 必须。开发者设计（不进 winget 包）
 ├── lib/                         # 可选。子功能脚本
@@ -33,6 +34,7 @@ package/tools/<id>/              # <id> = 命令名，如 node → miao node
 | `index.json` | 是 | 注册；`dependencies` 供 **deps-state 状态** 与 **依赖管理专页** 展示/策略 |
 | `index.ps1` | 是 | **唯一**对外入口；复杂逻辑放 `lib/` |
 | `install.ps1` | 是 | 装/升第三方依赖；**无外部依赖时写空操作**（直接 return） |
+| `uninstall.ps1` | 有 `dependencies` 时 | 卸第三方依赖；成功后由 core 删除 deps-state 条目 |
 | `help.md` | 是 | 帮助文档，`miao help <id>` 输出 |
 | `DESIGN.md` | 是 | 开发者设计；仅 GitHub 仓库，不进 winget 包 |
 | `lib/*.ps1` | 否 | 子功能模块 |
@@ -45,40 +47,88 @@ package/tools/<id>/              # <id> = 命令名，如 node → miao node
 
 | 字段 | 默认 | 说明 |
 |------|------|------|
-| `id` | **文件夹名** | `tools/node/` → `miao node` |
+| `id` | **文件夹名** | 内部目录标识（deps-state、脚本路径）；不对外展示 |
+| `command` | **文件夹名** | CLI 命令与列表「命令」列，如 `miao node` 中的 `node` |
 | `entry` | `"index.ps1"` | 入口脚本 |
 | `install` | `"install.ps1"` | 依赖安装脚本 |
 | `help` | `"help.md"` | 帮助文件路径 |
 | `interactive` | `true` | 是否交互式工具 |
 
-### 建议显式填写
+### 必须显式填写
 
 | 字段 | 说明 |
 |------|------|
-| `displayName` | 主菜单显示名 |
-| `summary` | 一行简介，`-helper` 用 |
-| `category` | 分类（如 runtime） |
-| `dependencies` | 见下节 |
+| `no` | 列表编号（原 `number`） |
+| `command` | CLI 命令，列表「命令」列与 `miao <command>` 路由 |
+| `name` | **i18n 全路径键**（如 `node.name`），与 `i18n/{code}.json` 嵌套结构对应；缺省解析为「无法识别」 |
+| `description` | **i18n 全路径键**（如 `node.description`）；可为空键，解析后允许空字符串 |
+| `dependencies` | 见下节（无外部依赖时可省略） |
+
+列表三列统一为 **`command` / `name` / `description`**（设置、语言、工具内菜单等同理）。
 
 ### `dependencies` 字段
 
 ```json
-"dependencies": [{
-  "name": "volta",
-  "checkCommand": "volta --version",
-  "install": { "type": "winget", "packageId": "Volta.Volta" },
-  "updatePolicy": "latest"
-}]
+"dependencies": {
+  "menus": {
+    "install": "node.deps.install",
+    "update": "node.deps.update",
+    "uninstall": "node.deps.uninstall"
+  },
+  "packages": [{
+    "name": "volta",
+    "checkCommand": "volta --version",
+    "install": { "type": "winget", "packageId": "Volta.Volta" },
+    "updatePolicy": "latest"
+  }]
+}
 ```
+
+| 子字段 | 说明 |
+|--------|------|
+| `menus` | 可选。工具内 install/update/uninstall 菜单**介绍**的 i18n 键；缺省用 core 默认 |
+| `packages` | 第三方包列表（原 `dependencies` 数组内容） |
+
+仍支持旧版 **`dependencies` 为数组**（无 `menus`），仅声明包、介绍全用 core 默认。
 
 | 用途 | 谁用 |
 |------|------|
 | **安装记录** | core 在 `install.ps1` 成功后写入 `%APPDATA%\Miao\deps-state.json`（含版本） |
-| **首页已装/未装** | 只读 deps-state，**不**调用 `checkCommand` |
+| **首页已装/未装** | 首页不展示；依赖状态在工具内菜单与 `miao install` 专页 |
 | **依赖管理专页** | 展示 `[未安装]` / 版本 / 可更新；Enter 后跑 `install.ps1` |
-| **工具内菜单** | 未装仅「安装/更新」；已装为业务 actions + 安装/更新/卸载 |
+| **工具内菜单** | 见下节「工具内依赖菜单」 |
 
-`checkCommand` 仍写在配置中，供 **install.ps1 安装后验证** 及开发调试；**不**用于首页或进工具时的自动检测。
+`checkCommand` 仍写在配置中，供 **install.ps1 安装后验证** 及开发调试；**不**用于工具内菜单是否已装的判断（菜单读 deps-state）。
+
+### 工具内依赖菜单（core 统一）
+
+由 `Get-ToolMenuItems`（`Invoke-ToolkitDeps.ps1`）拼装，工具 **不手写** 安装/更新/卸载项。
+
+| deps-state | 菜单顺序 |
+|------------|----------|
+| 无 `dependencies` 或 `requiresInstall: false` | 仅 `actions` 业务功能 |
+| 未安装 | 仅 `install`（安装） |
+| 已安装 | 业务 `actions` →（后台探测到可更新时）`update` → `uninstall` |
+
+- **是否已装**：只读 `%APPDATA%\Miao\deps-state.json`（`Test-ToolDepInstalled`），进入工具时不查 winget。
+- **是否可更新**：`Start-ToolDependencyUpgradeProbe` 后台 Job 调用 `Test-ToolDependencyNeedsUpgrade`，**不阻塞**首屏菜单；探测完成后下一轮菜单刷新时追加 `update`。
+- **列表命令列**：`install` / `update` / `uninstall`（与 `miao install|update|uninstall <tool>` 一致；与业务子命令 `miao node install` 等同名但 `_kind` 不同）。
+- **执行**：菜单 `install` / `update` → `Invoke-ToolInstall` → `install.ps1`；`uninstall` → `uninstall.ps1`。
+- **名称**：固定 core `page.toolDeps.installLabel` / `updateLabel` / `uninstallLabel`（安装 / 更新 / 删除）。
+- **介绍**：`dependencies.menus.install|update|uninstall` 填 i18n 全路径键；未配置或当前语种无译文时，用 core `page.toolDeps.*Summary`。
+
+有二级菜单的工具在 `lib/main.ps1` 中：
+
+```powershell
+$dependencyUpgradeAvailable = $false
+$probeChanged = Update-ToolDependencyMenuProbe -Tool $tool -Shell $ToolkitShell `
+    -UpgradeAvailable ([ref]$dependencyUpgradeAvailable)
+$menuItems = Get-ToolMenuItems -BusinessActions @($Config.actions) -Tool $tool `
+    -DependencyUpgradeAvailable:$dependencyUpgradeAvailable
+# 依赖项选中后：Reset-ToolDependencyUpgradeProbe；Clear-DepsStateCache
+```
+
+业务 `actions[].command` 勿与系统依赖菜单命令冲突：`install`、`update`、`uninstall`（后者仅 `_kind: toolDeps` 使用）。
 
 ### 可选扩展字段
 
@@ -98,30 +148,75 @@ package/tools/<id>/              # <id> = 命令名，如 node → miao node
 
 ```json
 {
-  "displayName": "Node.js 版本管理",
-  "summary": "通过 Volta 浏览、安装 Node.js 版本",
-  "category": "runtime",
-  "dependencies": [{
-    "name": "volta",
-    "checkCommand": "volta --version",
-    "install": { "type": "winget", "packageId": "Volta.Volta" },
-    "updatePolicy": "latest"
+  "no": 1,
+  "command": "node",
+  "name": "node.name",
+  "description": "node.description",
+  "dependencies": {
+    "menus": {
+      "install": "node.deps.install",
+      "update": "node.deps.update",
+      "uninstall": "node.deps.uninstall"
+    },
+    "packages": [{
+      "name": "volta",
+      "checkCommand": "volta --version",
+      "install": { "type": "winget", "packageId": "Volta.Volta" },
+      "updatePolicy": "latest"
+    }]
+  },
+  "actions": [{
+    "command": "install",
+    "name": "node.action.install.name",
+    "description": "node.action.install.description",
+    "script": "lib/browse-install.ps1",
+    "enabled": true
   }]
 }
 ```
+
+有 `dependencies.packages` 时还需 `uninstall.ps1`；可选 `dependencies.menus` 指向工具 i18n 介绍键（见下节）。node 已实现。
 
 ## 四、工具文案（i18n）
 
 | 位置 | 内容 |
 |------|------|
-| `tools/<id>/i18n/zh.json`、`en.json` | 本工具 `displayName`、菜单项、工具内提示等 |
-| 工具箱 `core/i18n` | Shell、设置、依赖专页、**公共操作**（`common.action.*`、`common.nav.*`） |
+| `tools/<id>/i18n/{code}.json` | 本工具文案（**扁平 JSON**，无 `locale`/`content`） |
+| 工具箱 `core/i18n` | `locale` + `content`；Shell、设置、依赖专页、**公共词** |
+
+工具语种文件示例（`node` 已试点；`{code}` 须与工具箱语种一致，如 `zh`、`en`）：
+
+```json
+{
+  "node": {
+    "name": "Node.js 版本管理",
+    "description": "基于 Volta 的 Node.js 版本浏览与安装",
+    "deps": {
+      "install": "安装 Volta，用于管理 Node.js 版本",
+      "update": "将 Volta 更新到最新版本",
+      "uninstall": "删除 Volta"
+    },
+    "action": {
+      "install": {
+        "name": "浏览并安装",
+        "description": "从版本列表安装 Node 到本机"
+      }
+    }
+  }
+}
+```
+
+`i18n/{code}.json`：`action` 以业务 **`command` 嵌套**；`deps.*` 为 `dependencies.menus.*` 指向键的译文。`index.json` 的 `name` / `description` / `dependencies.menus.*` 填**全路径 i18n 键**。无 `menus` 或某条未配时，依赖菜单介绍用 core 默认。各工具 i18n 按 `ToolRoot` 隔离加载、会话内缓存。
+
+`actions` 同样用 `command` + `name` / `description`（值为全路径 i18n 键）。
 
 工具脚本需要与工具箱一致的底栏/确认文案时，在已 `Load-Core` 的前提下使用：
 
 ```powershell
-Get-ToolkitI18n -Key 'common.action.confirmEnter'
-Get-ToolkitI18n -Key 'common.nav.settings'
+Get-ToolkitI18n -Key 'common.confirm'
+Get-ToolkitI18nKeyHint -Key 'Y' -LabelKey 'common.confirm'
+Format-I18nLabelLine -LabelKey 'common.author' -Value '...'
+Format-I18nPressEnterBack
 ```
 
 详见 [I18N.md](I18N.md)。**不要**把 `common.*` 复制进工具 json。
@@ -130,8 +225,10 @@ Get-ToolkitI18n -Key 'common.nav.settings'
 
 ```
 □ package/tools/<id>/
-□ index.json（displayName + summary）
+□ index.json（no、command、name、description 及 actions）
+□ i18n/zh.json、en.json（name/description 键对应的真实文案）
 □ index.ps1、install.ps1、help.md、DESIGN.md
+□ 有 dependencies 时：uninstall.ps1；lib/main.ps1 接 Get-ToolMenuItems + Update-ToolDependencyMenuProbe
 □ miao list 自动出现
 ```
 
@@ -144,7 +241,8 @@ Get-ToolkitI18n -Key 'common.nav.settings'
 | 场景 | 行为 |
 |------|------|
 | `miao install` / 设置 → 依赖管理 | 打开专页，多选后 **主动** 执行 `install.ps1` |
-| 工具内「安装/更新」 | **主动** 执行 `install.ps1` |
+| 工具内「安装」/「更新」 | **主动** 执行 `install.ps1` |
+| 工具内「卸载」 | **主动** 执行 `uninstall.ps1` |
 | 进入工具（菜单或 `miao node`） | **不**自动装；菜单按 deps-state 展示 |
 
 用户装完 Miao 后本地已有全部工具脚本；Volta 等第三方程序按上表策略安装，**非**装 Miao 时一并安装。

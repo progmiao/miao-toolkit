@@ -1,4 +1,4 @@
-$utf8bom = New-Object System.Text.UTF8Encoding $true
+﻿$utf8bom = New-Object System.Text.UTF8Encoding $true
 $root = Split-Path $PSScriptRoot -Parent
 
 function Write-BomRelative {

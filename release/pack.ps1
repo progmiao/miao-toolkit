@@ -1,4 +1,4 @@
-# Pack Miao for GitHub Release (bin + core + tools)
+﻿# Pack Miao for GitHub Release (bin + core + tools)
 #
 # From repo root:
 #   .\release\pack.ps1

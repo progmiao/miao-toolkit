@@ -1,179 +1,286 @@
-{
-  "brand": {
-    "title": "Miao Toolkit",
-    "author": "ProgMiao",
-    "description": "Windows CLI tool integration and management platform"
+﻿{
+  "locale": {
+    "order": 2,
+    "code": "en",
+    "name": "English"
   },
-  "header": {
-    "welcomeLine": "Welcome to Miao!",
-    "fallbackLogoMiddle": "   ( {shortName} )   "
-  },
-  "panel": {
-    "authorLine": "Author: {author}",
-    "versionLine": "Version: {version}",
-    "releaseDateLine": "Released: {releaseDate}",
-    "versionReleaseLine": "v{version}  ·  {releaseDate}",
-    "emailLine": "Email: {email}"
-  },
-  "common": {
-    "hintSeparator": " · ",
-    "action": {
-      "navSelect": "↑↓ select",
-      "navPage": "←→ page",
-      "navScroll": "↑↓ scroll",
-      "confirmEnter": "Enter confirm",
-      "quitEsc": "Esc quit",
-      "backEsc": "Esc back",
-      "backQ": "Q back",
-      "confirmY": "Y yes",
-      "cancelN": "N cancel",
-      "toggleSpace": "Space select",
-      "inputBuffer": "input: {buffer}",
-      "currentIndex": "#{index}"
-    },
-    "nav": {
-      "settings": "S Settings",
-      "help": "H Help"
-    },
-    "label": {
-      "version": "Version",
-      "releaseDate": "Released",
-      "locale": "UI language"
-    },
-    "status": {
+  "content": {
+    "common": {
+      "author": "Author",
+      "versionNo": "Version",
+      "email": "Email",
+      "confirm": "confirm",
+      "cancel": "cancel",
+      "back": "go back",
+      "quit": "quit",
+      "select": "select",
+      "pageTurn": "page",
+      "scroll": "scroll",
+      "toggle": "toggle",
+      "nothingSelected": "Select at least one item first",
+      "settings": "Settings",
+      "system": "System",
+      "help": "Help",
+      "menu": "Menu",
+      "option": "Option",
+      "nextStep": "Next",
+      "backToList": "for list",
+      "command": "Commands",
+      "unrecognized": "Unrecognized",
+      "tool": "Tools",
+      "language": "Language",
       "installed": "Installed",
       "notInstalled": "Not installed",
       "done": "Done",
       "failed": "Failed",
       "installing": "Installing…",
-      "updating": "Updating…"
-    },
-    "unit": {
+      "updating": "Updating…",
+      "version": "Version",
+      "releaseDate": "Released",
+      "localeUi": "UI language",
+      "press": "Press",
+      "input": "input",
+      "current": "#",
       "item": "items",
-      "toolShort": ""
-    },
-    "pagination": {
-      "page": "Page {current}/{total}",
-      "totalCount": " {count} {unit} total"
-    },
-    "cmd": {
-      "menu": "Tool list",
-      "list": "List tools",
-      "version": "Show version",
-      "help": "Help",
-      "install": "Install/update all tool dependencies",
-      "installTool": "Install/update one tool's dependencies",
-      "uninstallTool": "Uninstall one tool's dependencies",
-      "update": "Open toolkit update page",
-      "lang": "Change UI language",
-      "settings": "Open settings menu",
-      "tool": "Open a tool"
-    }
-  },
-  "flash": {
-    "disabledNumber": "This option is not available yet",
-    "invalidNumber": "Number not found",
-    "disabledItem": "This option is not available yet"
-  },
-  "error": {
-    "pathsNotInitialized": "{title} is not initialized. Start via the miao command.",
-    "unknownTool": "Unknown tool: {toolId}",
-    "unknownCommand": "Unknown command or tool: {command}",
-    "toolMissingEntry": "Tool {toolId} is missing entry: {entry}",
-    "missingInstallScript": "Missing dependency install script: {path}",
-    "missingManifest": "core/manifest.json not found",
-    "unsupportedLocale": "Unsupported language: {locale}",
-    "languageChangeFailed": "Could not change language: {detail}"
-  },
-  "warn": {
-    "toolNumberMissing": "Tool {toolId} has no number in index.json; using temporary number 9999",
-    "toolNumberDuplicate": "Duplicate tool number {number} ({firstId} / {secondId})"
-  },
-  "shell": {
-    "exitConfirmPrompt": "Quit?"
-  },
-  "page": {
-    "home": {
-      "toolList": "Tools",
-      "defaultSection": "Menu",
-      "noToolsRegistered": "No tools registered",
-      "colHeader": "     #  Option",
-      "toolMenuDefaultTitle": "Tool menu"
-    },
-    "afterTool": {
-      "title": "Next",
-      "returnList": "[Enter]  Back to tool list",
-      "exit": "[Q]      Quit {shortName}",
-      "promptFallback": "Enter for list / Q to quit"
-    },
-    "help": {
-      "pageTitle": "Help",
-      "commandsTitle": "Commands:",
-      "toolsTitle": "Tools:",
-      "unknownCommand": "Run miao -helper for help",
-      "toolHelpMissing": "No help available for tool {toolId}"
-    },
-    "install": {
-      "pageTitle": "Dependency install/update",
-      "pageStatusInstalled": "Installed {version}",
-      "pageStatusUpdateAvailable": "Update {current} → {latest}",
-      "pageStatusUpdateAvailableShort": "Update available",
-      "pageNothingToDo": "Selected tools need no install or update",
-      "pagePressEnterToBack": "Press Enter to go back",
-      "noTargets": "No tools require external dependencies",
-      "unknownTool": "Unknown tool: {toolId}",
-      "noExternalDeps": "Tool {toolId} has no external dependencies",
-      "missingUninstallScript": "Tool {toolId} is missing uninstall.ps1",
-      "uninstalling": "Uninstalling dependencies for {name}…",
-      "uninstallNeedsToolId": "Specify a tool, e.g. miao uninstall node",
-      "batchComplete": "All done",
-      "batchFailed": "Failed tools: {tools}"
-    },
-    "update": {
-      "pageTitle": "Update toolkit",
-      "checkFailed": "Could not check for updates. Try again later.",
-      "statusLatest": "You are on the latest version",
-      "statusAvailable": "New version available: v{latestVersion}",
-      "latestReleaseLabel": "Latest release",
-      "executeNotImplemented": "In-app update is not available yet. Use winget upgrade miao.",
-      "sessionHint": "[!] A new Miao version v{latestVersion} is available (current v{currentVersion}). Run miao update or winget upgrade miao."
-    },
-    "settings": {
-      "menuEntry": "Settings",
-      "menuEntrySummary": "Language, version, update and help",
-      "sectionTitle": "Settings",
-      "versionTitle": "Version",
-      "pressEnterToBack": "Press Enter to go back",
-      "action": {
-        "lang": "Language",
-        "langSummary": "Change UI language",
-        "version": "Version info",
-        "versionSummary": "Toolkit version and release",
-        "update": "Update toolkit",
-        "updateSummary": "Update Miao itself",
+      "piece": "",
+      "nth": "Page ",
+      "page": "",
+      "altogether": "",
+      "totalSuffix": " total",
+      "cmd": {
+        "menu": "Tool list",
+        "list": "List tools",
+        "version": "Show version",
         "help": "Help",
-        "helpSummary": "Commands and tools overview",
-        "install": "Install/update dependencies",
-        "installSummary": "Open dependency page to select and batch install or update"
+        "install": "Toolkit dependency install list",
+        "installTool": "Install/update one tool\u0027s dependencies",
+        "uninstall": "Toolkit dependency uninstall list",
+        "uninstallTool": "Uninstall one tool\u0027s dependencies",
+        "update": "Toolkit dependency update list",
+        "updateTool": "Update one tool\u0027s dependencies",
+        "sys": "Open system page",
+        "sysLang": "Change UI language",
+        "sysInit": "Initialize",
+        "sysUpdate": "Update toolkit",
+        "sysUninstall": "Uninstall toolkit",
+        "tool": "Open a tool"
       }
     },
-    "lang": {
-      "sectionTitle": "Language",
-      "title": "Language",
-      "changed": "Switched to {locale}",
-      "alreadyCurrent": "Already using {locale}",
-      "locale": {
-        "zh": "简体中文",
-        "en": "English"
-      }
+    "brand": {
+      "title": "Miao Toolkit",
+      "author": "ProgMiao",
+      "description": "Windows CLI tool integration and management platform",
+      "welcomeLine": "Welcome to Miao!"
     },
-    "toolDeps": {
-      "installLabel": "Install/update",
-      "installSummary": "Install or update this tool's dependencies",
-      "uninstallLabel": "Uninstall",
-      "uninstallSummary": "Uninstall this tool's dependencies",
-      "pressEnterToBack": "Press Enter to return to the menu",
-      "installing": "Installing dependencies for {name}…"
+    "message": {
+      "exitConfirmPrompt": "Quit?",
+      "disabledNumber": "This option is not available yet",
+      "invalidNumber": "Number not found",
+      "disabledItem": "This option is not available yet",
+      "pathsNotInitialized": "{title} is not initialized. Start via the miao command.",
+      "unknownTool": "Unknown tool: {toolId}",
+      "unknownCommand": "Unknown command or tool: {command}",
+      "toolMissingEntry": "Tool {toolId} is missing entry: {entry}",
+      "missingInstallScript": "Missing dependency install script: {path}",
+      "missingManifest": "core/manifest.json not found",
+      "unsupportedLocale": "Unsupported language: {locale}",
+      "languageChangeFailed": "Could not change language: {detail}",
+      "toolNoMissing": "Tool {command} has no no in index.json; using temporary number 9999",
+      "toolNoDuplicate": "Duplicate tool no {no} ({firstCommand} / {secondCommand})",
+      "mockToolNoEntry": "This menu test item has no entry",
+      "unknownSysCommand": "Unknown sys subcommand: {command}"
+    },
+    "page": {
+      "home": {
+        "toolList": "Tools",
+        "noToolsRegistered": "No tools registered",
+        "toolMenuDefaultTitle": "Tool menu"
+      },
+      "afterTool": {
+        "backToToolList": "Back to tool list"
+      },
+      "help": {
+        "unknownCommand": "Run miao -helper for help",
+        "toolHelpMissing": "No help available for tool {toolId}"
+      },
+      "install": {
+        "pageTitle": "Dependency install/update",
+        "pageStatusInstalled": "Installed {version}",
+        "pageStatusUpdateAvailable": "Update {current} → {latest}",
+        "pageStatusUpdateAvailableShort": "Update available",
+        "pageNothingToDo": "Selected tools need no install or update",
+        "noTargets": "No tools require external dependencies",
+        "unknownTool": "Unknown tool: {toolId}",
+        "noExternalDeps": "Tool {toolId} has no external dependencies",
+        "missingUninstallScript": "Tool {toolId} is missing uninstall.ps1",
+        "uninstalling": "Uninstalling dependencies for {name}…",
+        "uninstallNeedsToolId": "Specify a tool, e.g. miao uninstall node",
+        "batchComplete": "All done",
+        "batchFailed": "Failed tools: {tools}"
+      },
+      "update": {
+        "pageTitle": "Update toolkit",
+        "checkFailed": "Could not check for updates. Try again later.",
+        "statusLatest": "You are on the latest version",
+        "statusAvailable": "New version available: v{latestVersion}",
+        "latestReleaseLabel": "Latest release",
+        "executeNotImplemented": "In-app update is not available yet. Use winget upgrade miao.",
+        "sessionHint": "[!] A new Miao version v{latestVersion} is available (current v{currentVersion}). Run miao sys update or winget upgrade miao."
+      },
+      "sys": {
+        "menuEntry": "System",
+        "menuEntrySummary": "Language, init, update and help",
+        "sectionTitle": "System",
+        "action": {
+          "langSummary": "Change UI language",
+          "init": "Initialize",
+          "initSummary": "Rebuild toolbox and per-tool init data (no install)",
+          "update": "Update toolkit",
+          "updateSummary": "Check and update Miao itself",
+          "uninstall": "Uninstall toolkit",
+          "uninstallSummary": "Remove Miao from this machine",
+          "helpSummary": "Commands and tools overview"
+        }
+      },
+      "sysUninstall": {
+        "pageTitle": "Uninstall toolkit",
+        "notImplemented": "Toolkit uninstall is not available yet. Use winget uninstall miao."
+      },
+      "init": {
+        "pageTitle": "Initialize",
+        "statusReady": "Preparing initialization…",
+        "statusComplete": "Initialization complete",
+        "statusFailed": "Initialization failed",
+        "logScanFingerprint": "Scanning config fingerprint…",
+        "logPrepareDirectory": "Preparing init directory…",
+        "logBrandBuilt": "Built {locale} brand snapshot",
+        "logCatalogBuilt": "Built {locale} tool catalog ({count} tools)",
+        "logHomeRowsBuilt": "Built {locale} home list data",
+        "logToolStateBuilt": "Probed dependency state for {toolId}",
+        "logComplete": "Initialization complete",
+        "logFailed": "Initialization failed: {detail}"
+      },
+      "toolboxDeps": {
+        "install": {
+          "pageTitle": "Toolkit · Install dependencies"
+        },
+        "update": {
+          "pageTitle": "Toolkit · Update dependencies",
+          "notImplemented": "Toolkit-level dependency update list is not available yet. Use miao update <tool> for a single tool."
+        },
+        "uninstall": {
+          "pageTitle": "Toolkit · Uninstall dependencies",
+          "notImplemented": "Toolkit-level dependency uninstall list is not available yet. Use miao uninstall <tool> for a single tool."
+        }
+      },
+      "lang": {
+        "inUse": "In use",
+        "changed": "Switched to {locale}",
+        "alreadyCurrent": "Already using {locale}"
+      },
+      "toolDeps": {
+        "toolCommandNeedsToolId": "Specify a tool, e.g. miao install node",
+        "installLabel": "Install deps",
+        "installSummary": "Install third-party dependencies for this tool",
+        "updateLabel": "Update deps",
+        "updateSummary": "Update this tool\u0027s third-party dependencies",
+        "uninstallLabel": "Uninstall deps",
+        "uninstallSummary": "Uninstall this tool\u0027s third-party dependencies",
+        "backTarget": " to the tool menu",
+        "installing": "Installing dependencies for {name}…"
+      },
+      "depOperation": {
+        "currentPrefix": "Now: ",
+        "statusReady": "Preparing…",
+        "statusDetect": "Checking {name}…",
+        "statusSkip": "Skipping {name}",
+        "statusReconcile": "Recording {name}",
+        "statusRun": "{command}",
+        "statusAction": "{name} — {action}",
+        "statusDone": "{name} done",
+        "statusFail": "{name} failed",
+        "statusStallWarn": "Still running — check for blocked UAC or installer… ({seconds}s idle)",
+        "statusLoading": "{spinner} Working… ({elapsed}s)",
+        "statusWingetStarting": "{spinner} Starting winget… ({elapsed}s)",
+        "statusInstallerPrompt": "{spinner} Confirm in the installer dialog… ({elapsed}s)",
+        "statusInstallerRunning": "{spinner} Installing, please wait… ({elapsed}s)",
+        "statusDownload": "Downloading/installing {percent}%",
+        "statusAllDone": "All done",
+        "statusFailed": "Failed",
+        "statusDownloadComplete": "Download complete",
+        "logSeparator": "────────────────────────────",
+        "logSectionPackage": "[{index}/{total}] {name}",
+        "logSectionTool": "Tool [{index}/{total}] {name}",
+        "logDetect": "Check {name}",
+        "logVersionDrift": "Recorded {recorded} differs from actual {actual}; correcting",
+        "logRecorded": "Recorded {version}",
+        "logInstalled": "Installed {version}",
+        "logDetected": "Detected {version}",
+        "logPolicyLine": "Policy {policy}",
+        "logSkip": "Satisfied → skip ({action})",
+        "logWillRun": "Will run: {action}",
+        "logInvokeWinget": "Run: {command}",
+        "logMayPrompt": "Confirm any UAC or installer/uninstaller prompts to continue",
+        "logWingetStarting": "Starting winget…",
+        "logInstallerLaunched": "Package ready, launching installer…",
+        "logStartInstall": "Starting package install…",
+        "logStartUninstall": "Starting package uninstall…",
+        "logWaitOther": "Waiting for another install/uninstall to finish…",
+        "logDownloading": "Downloading…",
+        "logDownloadPercent": "Download progress {percent}%",
+        "logDownloadComplete": "Download complete",
+        "logInstallPercent": "Install progress {percent}%",
+        "logInstallComplete": "Install complete",
+        "logVerifying": "Verifying package…",
+        "logVerifyComplete": "Installer hash verified",
+        "logInstalling": "Installing…",
+        "logUninstalling": "Uninstalling…",
+        "logWorking": "winget is running, please wait…",
+        "logStallWarn": "No output for a while — check for blocked UAC or installer ({seconds}s)",
+        "policy": {
+          "latest": "Always latest"
+        },
+        "action": {
+          "Install": "Install",
+          "Upgrade": "Upgrade",
+          "Repair": "Repair",
+          "Reconcile": "Record state",
+          "Uninstall": "Uninstall",
+          "Skip": "Skip"
+        },
+        "logAlreadyLatest": "{name} is already up to date",
+        "logAlreadyRemoved": "{name} is not installed or already removed",
+        "logStallTimeout": "Install timed out: no installer confirmation or progress detected",
+        "logUserCancelled": "Install was cancelled or not confirmed",
+        "logUacDeclined": {
+          "Install": "UAC elevation was declined; install did not run",
+          "Upgrade": "UAC elevation was declined; update did not run",
+          "Repair": "UAC elevation was declined; repair did not run",
+          "Uninstall": "UAC elevation was declined; uninstall did not run"
+        },
+        "logInstallerDeclined": {
+          "Install": "Install was cancelled",
+          "Upgrade": "Update was cancelled",
+          "Repair": "Repair was cancelled",
+          "Uninstall": "Uninstall was cancelled"
+        },
+        "summaryBatchCounts": "Succeeded {success}, failed {failed}",
+        "statusBatchDone": "All items processed (ok {success}, failed {failed})",
+        "logNoApplicableInstaller": "No applicable installer for {name} (package may not support the requested install scope)",
+        "logReconciled": "{name} recorded as {version}",
+        "packageDone": "{name} completed",
+        "packageFailed": "{name} failed (exit {code})",
+        "logUninstallVerified": "{name} uninstalled (package no longer detected)",
+        "verifyFailed": "Still cannot run after install: {command}",
+        "cancelled": "Cancelled",
+        "wingetMissing": "winget not found. Install App Installer first.",
+        "summaryComplete": "All done",
+        "summaryAllLatest": "All dependencies are up to date",
+        "summaryNothingToDo": "Nothing to install or update",
+        "summaryFailed": "Failed — see log above",
+        "summaryUninstallComplete": "Dependencies uninstalled; install record cleared",
+        "summaryUninstallNothing": "No installed dependencies detected; install record cleared"
+      }
     }
   }
 }

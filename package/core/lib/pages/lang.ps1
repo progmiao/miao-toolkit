@@ -1,31 +1,53 @@
-﻿# 语言选择页
+﻿# 语言选择页（单选列表；摘要列标记当前语种）
+
+function Get-LangLocaleMenuItems {
+    return @(
+        foreach ($entry in @(Get-ToolkitLocaleRegistry)) {
+            [pscustomobject]@{
+                command     = [string]$entry.code
+                name        = [string]$entry.name
+                enabled     = $true
+            }
+        }
+    )
+}
+
+function Get-LangLocaleSummaryText {
+    param([string]$LocaleCode)
+
+    if ((Get-CurrentLocale) -eq $LocaleCode) {
+        return (Get-I18n -Key 'page.lang.inUse')
+    }
+    return ''
+}
+
+function Get-LangListRows {
+    return ConvertTo-ShellListRows -Items @(Get-LangLocaleMenuItems) -KeepSource -MapCells {
+        param($Item, [int]$Index)
+        @(
+            (Get-ShellListItemCommand $Item)
+            [string]$Item.name
+            (Get-LangLocaleSummaryText -LocaleCode $Item.command)
+        )
+    }
+}
 
 function Invoke-LangPage {
     param([hashtable]$Shell)
 
-    $locales = @((Get-I18nConfig).locales | ForEach-Object { [string]$_ })
-    $items = @(
-        foreach ($code in $locales) {
-            $current = (Get-CurrentLocale -eq $code)
-            $mark = if ($current) { ' *' } else { '' }
-            [pscustomobject]@{
-                id    = $code
-                label = "$(Get-LocaleDisplayName $code)$mark"
-            }
-        }
-    )
+    $toolbar = New-ShellSystemToolbarConfig -HideSystem
 
-    $header = New-ToolkitMenuHeader -HideSectionTitle
-    Initialize-ToolkitShellBodyView -Shell $Shell `
-        -SectionTitle (Get-I18n -Key 'page.lang.sectionTitle') `
-        -FooterTemplate DefaultBar
-    $renderFooter = New-ShellDefaultFooterRenderer -Shell $Shell -ShowHelp -ShowBack
-    $picked = Show-PaginatedMenu -Header $header -Items $items -CountLabel (Get-I18n -Key 'common.unit.item') `
-        -GetItemLabel {
-            param($Item, $Index)
-            return $Item.label
-        } `
-        -HideColHeader -ToolkitShell $Shell -RenderFooter $renderFooter -EscMeansBack
+    $currentLocale = Get-CurrentLocale
+    if (-not $Shell.HeaderLocale -or $Shell.HeaderLocale -ne $currentLocale) {
+        Clear-ShellSingleSelectListCache -Shell $Shell -CacheKey 'Lang'
+    }
+
+    $picked = Invoke-ShellSingleSelectList -Shell $Shell `
+        -SectionTitle (Format-I18nSelectLanguageSectionTitle) `
+        -Rows (Get-LangListRows) `
+        -CacheKey 'Lang' `
+        -ColumnLayout (New-ShellListColumnLayout -Preset MenuList) `
+        -ToolbarConfig $toolbar
 
     if (-not $picked) {
         return (Get-ShellNavMarker -Action 'back')
@@ -34,9 +56,13 @@ function Invoke-LangPage {
         return $picked
     }
 
-    if ((Get-CurrentLocale) -ne $picked.id) {
-        Set-UserLocale $picked.id
+    if ((Get-CurrentLocale) -ne $picked.command) {
+        Set-UserLocale $picked.command
         Update-ToolkitShellBrandHeader -Shell $Shell
+        Clear-ShellSingleSelectListCache -Shell $Shell -CacheKey 'Lang'
+        Clear-ShellSingleSelectListCache -Shell $Shell -CacheKey 'Home'
+        Clear-ShellSingleSelectListCache -Shell $Shell -CacheKey 'Sys'
+        Clear-ShellSingleSelectListCache -Shell $Shell -CacheKey 'Node'
     }
 
     return (Get-ShellNavMarker -Action 'back')
@@ -57,24 +83,7 @@ function Show-LanguagePicker {
         return (Start-ToolkitShellSession -Tools $Tools -InitialView Lang)
     }
 
-    $locales = @((Get-I18nConfig).locales | ForEach-Object { [string]$_ })
-    $items = @(
-        foreach ($code in $locales) {
-            $current = (Get-CurrentLocale -eq $code)
-            $mark = if ($current) { ' *' } else { '' }
-            [pscustomobject]@{
-                id    = $code
-                label = "$(Get-LocaleDisplayName $code)$mark"
-            }
-        }
-    )
-
-    $headerFull = New-ToolkitMenuHeader -SectionTitle (Get-I18n -Key 'page.lang.sectionTitle')
-    $picked = Show-PaginatedMenu -Header $headerFull -Items $items -CountLabel (Get-I18n -Key 'common.unit.item') `
-        -GetItemLabel {
-            param($Item, $Index)
-            return $Item.label
-        }
+    $picked = Show-LanguageMenu -WithSectionTitle
 
     if (-not $picked) {
         return $null
@@ -83,19 +92,46 @@ function Show-LanguagePicker {
         return $null
     }
 
-    if ((Get-CurrentLocale) -eq $picked.id) {
-        Write-MessageBlock -Title (Get-I18n -Key 'page.lang.title') `
-            -Lines @(Get-I18n -Key 'page.lang.alreadyCurrent' -Vars @{ locale = (Get-LocaleDisplayName $picked.id) }) `
+    if ((Get-CurrentLocale) -eq $picked.command) {
+        Write-MessageBlock -Title (Get-I18n -Key 'common.language') `
+            -Lines @(Get-I18n -Key 'page.lang.alreadyCurrent' -Vars @{ locale = (Get-LocaleDisplayName $picked.command) }) `
             -TitleColor Yellow
     }
     else {
-        Set-UserLocale $picked.id
-        Write-MessageBlock -Title (Get-I18n -Key 'page.lang.title') `
-            -Lines @(Get-I18n -Key 'page.lang.changed' -Vars @{ locale = (Get-LocaleDisplayName $picked.id) }) `
+        Set-UserLocale $picked.command
+        Write-MessageBlock -Title (Get-I18n -Key 'common.language') `
+            -Lines @(Get-I18n -Key 'page.lang.changed' -Vars @{ locale = (Get-LocaleDisplayName $picked.command) }) `
             -TitleColor Green
     }
 
-    return $picked.id
+    return $picked.command
+}
+
+function Show-LanguageMenu {
+    param(
+        [hashtable]$ToolkitShell = $null,
+        [switch]$WithSectionTitle
+    )
+
+    if ($ToolkitShell) {
+        return Invoke-LangPage -Shell $ToolkitShell
+    }
+
+    $header = if ($WithSectionTitle) {
+        New-ToolkitMenuHeader -SectionTitle (Format-I18nSelectLanguageSectionTitle)
+    }
+    else {
+        New-ToolkitMenuHeader -HideSectionTitle
+    }
+
+    $items = @(Get-LangLocaleMenuItems)
+    return Show-PaginatedMenu -Header $header -Items $items -CountLabel (Get-I18n -Key 'common.piece') `
+        -HideColHeader `
+        -GetItemLabel {
+            param($Item, [int]$Index)
+            $summary = Get-LangLocaleSummaryText -LocaleCode $Item.command
+            "$(Get-ShellListItemCommand $Item)    $($Item.name)    $summary"
+        }
 }
 
 function Invoke-LangCommand {
@@ -111,9 +147,11 @@ function Invoke-LangCommand {
     $sub = $Rest[0]
     switch -Regex ($sub) {
         '^(list|ls)$' {
-            foreach ($code in @((Get-I18nConfig).locales)) {
-                $mark = if ((Get-CurrentLocale) -eq $code) { ' *' } else { '' }
-                Write-Host "$code  $(Get-LocaleDisplayName $code)$mark"
+            $inUse = Get-I18n -Key 'page.lang.inUse'
+            foreach ($entry in @(Get-ToolkitLocaleRegistry)) {
+                $code = [string]$entry.code
+                $status = if ((Get-CurrentLocale) -eq $code) { $inUse } else { '' }
+                Write-Host "$code  $([string]$entry.name)  $status"
             }
             return 0
         }
@@ -132,7 +170,7 @@ function Invoke-LangCommand {
                 if ([string]::IsNullOrWhiteSpace($detail)) {
                     $detail = $_.Exception.GetType().FullName
                 }
-                Write-Host (Get-I18n -Key 'error.languageChangeFailed' -Vars @{ detail = $detail }) -ForegroundColor Red
+                Write-Host (Get-I18n -Key 'message.languageChangeFailed' -Vars @{ detail = $detail }) -ForegroundColor Red
                 return 1
             }
         }

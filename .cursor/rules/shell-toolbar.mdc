@@ -1,0 +1,26 @@
+---
+description: Bottom shell toolbar and Esc/exit behavior — do not change without explicit approval
+globs: package/core/lib/ui/shell/SystemToolbar.ps1,package/core/lib/ui/shell/Exit.ps1,package/core/lib/ui/shell/Footer.ps1
+alwaysApply: false
+---
+
+# Shell bottom toolbar (frozen)
+
+Unless the user **explicitly** asks to change the shared toolbar component, do **not** modify Esc/exit logic in:
+
+- `package/core/lib/ui/shell/SystemToolbar.ps1`
+- `package/core/lib/ui/shell/Exit.ps1` (exit confirm flow)
+
+## Required behavior
+
+- **Esc once** → show bottom exit confirmation bar (`Request-ShellExit` / `exitConfirm`)
+- **On confirm bar** → Y or Esc confirms quit; N cancels
+- Do **not** map Esc to “back”, “dismiss page”, or Enter-equivalent without user approval
+
+## Allowed in feature pages (e.g. `DepOperationView.ps1`)
+
+- Pass existing flags such as `-AllowEnter` so **Enter** returns after an operation completes
+- Fix input buffering in the **feature** layer (do not swallow Enter/Esc during winget poll)
+- Do **not** add toolbar shortcuts that bypass exit confirm
+
+If toolbar behavior must change, confirm with the user first.

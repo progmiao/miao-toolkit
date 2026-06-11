@@ -16,6 +16,11 @@ $ErrorActionPreference = 'Stop'
 $env:MIAO_DEV = '1'
 $env:MIAO_SKIP_DEPS = '1'
 
+# 开发模式下重置跨次运行的 global 模块导出表（miao.ps1 每次是新 script 作用域）
+if (Test-Path variable:global:MiaoModuleExports) {
+    $global:MiaoModuleExports = @{}
+}
+
 $RepoRoot = Split-Path $PSScriptRoot -Parent
 $miaoPs1 = Join-Path $RepoRoot 'package\bin\miao.ps1'
 if (-not (Test-Path $miaoPs1)) {

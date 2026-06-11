@@ -4,7 +4,6 @@ function Prepare-ToolkitShellBodyDraw {
     param([hashtable]$Shell)
 
     Set-CursorVisible $false
-    Sync-ConsoleViewportTop
     Set-ToolkitShellInputCursor -Shell $Shell
 }
 
@@ -12,8 +11,10 @@ function Finalize-ToolkitShellBodyView {
     param([hashtable]$Shell)
 
     Set-CursorVisible $false
-    Sync-ConsoleViewportTop
     Set-ToolkitShellInputCursor -Shell $Shell
+    if ((Get-ConsoleViewportTop) -gt 0) {
+        $null = Sync-ConsoleViewportTop
+    }
 }
 
 function Set-ToolkitShellInputCursor {
@@ -26,21 +27,27 @@ function Set-ToolkitShellInputCursor {
     try { [Console]::SetCursorPosition(0, $safeRow) } catch {}
 }
 
+function Test-ToolkitShellUseBufferDraw {
+    return Test-ShellConsoleBatchDraw
+}
+
 function Initialize-ToolkitShellBodyView {
     param(
         [hashtable]$Shell,
         [string]$SectionTitle,
-        [ValidateSet('MenuSplit', 'DefaultBar')]
+        [ValidateSet('ListWithToolbar', 'SystemToolbarOnly')]
         [string]$FooterTemplate
     )
 
-    Enter-ConsoleDrawBatch
+    $useBatch = Test-ToolkitShellUseBufferDraw
+    if ($useBatch) { Enter-ConsoleDrawBatch }
 
     Prepare-ToolkitShellBodyDraw -Shell $Shell
 
     $previousLayout = Get-ToolkitShellLayoutSnapshot -Layout $Shell.Layout
 
     Update-ToolkitShellViewLayout -Shell $Shell -FooterTemplate $FooterTemplate -WithSectionTitle
+    $null = Sync-ToolkitShellContentMetrics -Shell $Shell
 
     if ($Shell.Layout.BodyDirty) {
         $Shell.Layout['BodyDirty'] = $false
@@ -49,13 +56,22 @@ function Initialize-ToolkitShellBodyView {
     Clear-ToolkitShellOrphanRows -Shell $Shell -PreviousLayout $previousLayout
     Write-ToolkitShellSectionTitle -Shell $Shell -Title $SectionTitle
 
-    Complete-ConsoleDrawBatch -ToolkitShell $Shell
+    if ($useBatch) {
+        $null = Complete-ConsoleDrawBatch -ToolkitShell $Shell
+    }
+    else {
+        Set-ToolkitShellInputCursor -Shell $Shell
+        if ((Get-ConsoleViewportTop) -gt 0) {
+            $null = Sync-ConsoleViewportTop
+        }
+    }
 }
 
 function Clear-ToolkitShellBody {
     param([hashtable]$Shell)
 
-    Enter-ConsoleDrawBatch
+    $useBatch = Test-ToolkitShellUseBufferDraw
+    if ($useBatch) { Enter-ConsoleDrawBatch }
 
     $layout = $Shell.Layout
     $startRow = $layout.ContentStartRow
@@ -67,5 +83,7 @@ function Clear-ToolkitShellBody {
     }
     $layout['BodyDirty'] = $false
 
-    Complete-ConsoleDrawBatch -ToolkitShell $Shell
+    if ($useBatch) {
+        $null = Complete-ConsoleDrawBatch -ToolkitShell $Shell
+    }
 }

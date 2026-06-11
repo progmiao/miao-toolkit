@@ -25,7 +25,7 @@ function Get-AsciiLogo {
 
     return @(
         '    /\___/\    '
-        (Get-I18n -Key 'header.fallbackLogoMiddle')
+        (Format-I18nFallbackLogoMiddle)
         '    \_____/   '
     )
 }
@@ -76,6 +76,27 @@ function Truncate-DisplayText {
     return $sb.ToString()
 }
 
+function Skip-DisplayTextColumns {
+    param(
+        [string]$Text,
+        [int]$SkipWidth
+    )
+
+    if ($SkipWidth -le 0 -or [string]::IsNullOrEmpty($Text)) { return $Text }
+
+    $sb = New-Object System.Text.StringBuilder
+    $skipped = 0
+    foreach ($ch in $Text.ToCharArray()) {
+        $charWidth = $(if (Test-WideCharacter $ch) { 2 } else { 1 })
+        if ($skipped + $charWidth -le $SkipWidth) {
+            $skipped += $charWidth
+            continue
+        }
+        [void]$sb.Append($ch)
+    }
+    return $sb.ToString()
+}
+
 function Pad-DisplayText {
     param(
         [string]$Text,
@@ -88,6 +109,39 @@ function Pad-DisplayText {
         return Truncate-DisplayText $text $TargetWidth
     }
     return $text + (' ' * ($TargetWidth - $width))
+}
+
+function Split-DisplayTextToLines {
+    param(
+        [string]$Text,
+        [int]$MaxWidth
+    )
+
+    if ($MaxWidth -le 0) {
+        return @([string]$Text)
+    }
+    if ([string]::IsNullOrEmpty($Text)) {
+        return @('')
+    }
+
+    $lines = New-Object 'System.Collections.Generic.List[string]'
+    $sb = New-Object System.Text.StringBuilder
+    $used = 0
+    foreach ($ch in $Text.ToCharArray()) {
+        $charWidth = $(if (Test-WideCharacter $ch) { 2 } else { 1 })
+        if ($used + $charWidth -gt $MaxWidth -and $sb.Length -gt 0) {
+            [void]$lines.Add($sb.ToString())
+            $null = $sb.Clear()
+            $used = 0
+        }
+        [void]$sb.Append($ch)
+        $used += $charWidth
+    }
+    if ($sb.Length -gt 0) {
+        [void]$lines.Add($sb.ToString())
+    }
+
+    return @($lines.ToArray())
 }
 
 function Get-BrandBlockRowCount {
@@ -123,7 +177,7 @@ function Center-DisplayText {
 function Format-LogoWelcomeLine {
     param([int]$LogoColumnWidth)
 
-    $line = Get-I18n -Key 'header.welcomeLine'
+    $line = Get-I18n -Key 'brand.welcomeLine'
     return Center-DisplayText $line $LogoColumnWidth
 }
 
@@ -137,9 +191,7 @@ function Get-LogoColumnWidth {
 }
 
 function Format-ProductAuthorLine {
-    return Get-I18n -Key 'panel.authorLine' -Vars @{
-        author = (Get-BrandAuthorName)
-    }
+    return Format-I18nLabelLine -LabelKey 'common.author' -Value (Get-BrandAuthorName)
 }
 
 function Format-ProductVersionLine {
@@ -148,17 +200,13 @@ function Format-ProductVersionLine {
     $verLabel = ($Version -replace '^v', '').Trim()
     if ([string]::IsNullOrWhiteSpace($verLabel)) { $verLabel = '0.0.0' }
 
-    return Get-I18n -Key 'panel.versionLine' -Vars @{
-        version = $verLabel
-    }
+    return Format-I18nLabelLine -LabelKey 'common.versionNo' -Value $verLabel
 }
 
 function Format-ProductReleaseDateLine {
     param([string]$ReleaseDate)
 
-    return Get-I18n -Key 'panel.releaseDateLine' -Vars @{
-        releaseDate = $ReleaseDate
-    }
+    return Format-I18nLabelLine -LabelKey 'common.releaseDate' -Value $ReleaseDate
 }
 
 function Format-ProductVersionReleaseLine {
@@ -168,17 +216,14 @@ function Format-ProductVersionReleaseLine {
     if ([string]::IsNullOrWhiteSpace($verLabel)) { $verLabel = '0.0.0' }
     $released = Format-ReleaseDate (Get-Manifest).releaseDate
 
-    return Get-I18n -Key 'panel.versionReleaseLine' -Vars @{
-        version     = $verLabel
-        releaseDate = $released
-    }
+    return "v$verLabel  ·  $released"
 }
 
 function Format-ProductEmailLine {
     $email = Get-BrandContactEmail
     if ([string]::IsNullOrWhiteSpace($email)) { return '' }
 
-    return Get-I18n -Key 'panel.emailLine' -Vars @{ email = $email }
+    return Format-I18nLabelLine -LabelKey 'common.email' -Value $email
 }
 
 function Get-ProductPanelRows {
@@ -247,6 +292,13 @@ function Format-BrandHorizontalLine {
     param([int]$BrandInnerWidth)
 
     return ' ' + ('═' * ($BrandInnerWidth + (Get-BrandSeparatorExtra)))
+}
+
+function Format-ToolkitShellContentSeparator {
+    param([int]$BrandInnerWidth)
+
+    if ($BrandInnerWidth -le 0) { return '' }
+    return ' ' + ('─' * (Get-BrandSeparatorLineWidth -BrandInnerWidth $BrandInnerWidth))
 }
 
 function Format-BrandSectionCapLine {
@@ -401,8 +453,12 @@ function Reset-ConsoleViewportTop {
 
 $script:ConsoleDrawBatchDepth = 0
 
+function Test-ShellConsoleBatchDraw {
+    return ($env:MIAO_BUFFER_DRAW -eq '1') -and (Test-ConsoleBufferDrawAvailable)
+}
+
 function Enter-ConsoleDrawBatch {
-    if ($script:ConsoleDrawBatchDepth -le 0) {
+    if ($script:ConsoleDrawBatchDepth -le 0 -and (Test-ShellConsoleBatchDraw)) {
         try { [Console]::SetCursorPosition(0, 0) } catch {}
     }
     $script:ConsoleDrawBatchDepth++
@@ -415,8 +471,9 @@ function Complete-ConsoleDrawBatch {
         $script:ConsoleDrawBatchDepth--
     }
     if ($script:ConsoleDrawBatchDepth -gt 0) { return }
+    if (-not (Test-ShellConsoleBatchDraw)) { return }
 
-    Sync-ConsoleViewportTop
+    $null = Sync-ConsoleViewportTop
     try { [Console]::SetCursorPosition(0, 0) } catch {}
 }
 
@@ -449,12 +506,8 @@ function Prepare-ConsoleRowWrite {
 function Set-ConsoleCursorAfterRowWrite {
     param([int]$Row)
 
-    if (Test-ConsoleBottomRow -Row $Row) {
-        try { [Console]::SetCursorPosition(0, 0) } catch {}
-    }
-    else {
-        try { [Console]::SetCursorPosition(0, $Row) } catch {}
-    }
+    # 勿留在内容行或底栏行，否则后续写底栏会带动 WindowTop 跳动
+    try { [Console]::SetCursorPosition(0, 0) } catch {}
 }
 
 function Sync-ConsoleViewportTop {
@@ -492,9 +545,14 @@ function Set-MenuInputCursorPosition {
 }
 
 function Get-ConsoleLineWidth {
-    $width = [Console]::WindowWidth
-    if ($null -eq $width -or $width -lt 20) { return 80 }
-    return $width
+    try {
+        $width = [Console]::WindowWidth
+        if ($null -eq $width -or $width -lt 20) { return 80 }
+        return $width
+    }
+    catch {
+        return 80
+    }
 }
 
 function Get-SafeConsoleLineWidth {
@@ -594,13 +652,18 @@ function Test-UseConsoleBufferDraw {
     param([int]$Row = -1)
 
     if (-not (Test-ConsoleBufferDrawAvailable)) { return $false }
-    if ($script:ConsoleDrawBatchDepth -gt 0) { return $true }
+    # 底栏行始终走 RawUI，避免 SetCursor(末行)+Write-Host 触发视口下滚
     if ($Row -ge 0 -and (Test-ConsoleBottomRow -Row $Row)) { return $true }
+    # 列表等内容区默认 Write-Host；整页 batch 需 MIAO_BUFFER_DRAW=1
+    if ($env:MIAO_BUFFER_DRAW -ne '1') { return $false }
+    if ($script:ConsoleDrawBatchDepth -gt 0) { return $true }
     return $false
 }
 
 function Test-UseConsoleListBufferDraw {
-    return (Test-ConsoleBufferDrawAvailable)
+    if ($env:MIAO_BUFFER_DRAW -ne '1') { return $false }
+    if (-not (Test-ConsoleBufferDrawAvailable)) { return $false }
+    return ($script:ConsoleDrawBatchDepth -gt 0)
 }
 
 function New-ConsoleBufferRowCells {
@@ -639,6 +702,7 @@ function New-ConsoleBufferRowCells {
         $col = 0
         $colRef = [ref]$col
         foreach ($seg in $Segments) {
+            if (-not $seg) { continue }
             if ($col -ge $Width) { break }
             $fg = if ($seg.Color) { $seg.Color } else { $DefaultForeground }
             $bg = if ($seg.Background) { $seg.Background } else { $Background }
@@ -670,17 +734,106 @@ function Write-ConsoleBufferRowCells {
     $Host.UI.RawUI.SetBufferContents($origin, $block)
 }
 
+function Resolve-ConsoleContentHighlightRegion {
+    param(
+        [int]$Row,
+        [int]$ContentStartColumn = 0,
+        [int]$ContentLineWidth = 0
+    )
+
+    $rowWidth = Get-SafeWriteLineWidth -Row $Row
+    if ($ContentLineWidth -le 0) {
+        return @{
+            StartColumn = 0
+            EndColumn   = $rowWidth
+            RowWidth    = $rowWidth
+            Width       = $rowWidth
+        }
+    }
+
+    $start = [Math]::Max(0, $ContentStartColumn)
+    $end = [Math]::Min($ContentLineWidth, $rowWidth)
+    if ($end -lt $start) { $end = $start }
+
+    return @{
+        StartColumn = $start
+        EndColumn   = $end
+        RowWidth    = $rowWidth
+        Width       = $end - $start
+    }
+}
+
+function Limit-ConsoleBufferRowHighlightRegion {
+    param(
+        [System.Management.Automation.Host.BufferCell[]]$Cells,
+        [int]$StartColumn,
+        [int]$EndColumn
+    )
+
+    if ($StartColumn -le 0 -and $EndColumn -ge $Cells.Length) { return $Cells }
+
+    $surfaceBg = Get-ConsoleSurfaceBackground
+    $neutral = New-ConsoleBufferCell -Foreground ([System.ConsoleColor]::Gray) -Background $surfaceBg
+    for ($i = 0; $i -lt $Cells.Length; $i++) {
+        if ($i -lt $StartColumn -or $i -ge $EndColumn) {
+            $Cells[$i] = $neutral
+        }
+    }
+    return $Cells
+}
+
+function Write-ConsoleRowHighlightText {
+    param(
+        [string]$Text,
+        [int]$ContentStartColumn = 0,
+        [int]$ContentLineWidth = 0,
+        [hashtable]$Region = $null,
+        [System.ConsoleColor]$Foreground = [System.ConsoleColor]::Black,
+        [System.ConsoleColor]$Background = [System.ConsoleColor]::Cyan
+    )
+
+    if (-not $Region) {
+        throw 'Write-ConsoleRowHighlightText requires -Region.'
+    }
+
+    if ($Region.StartColumn -gt 0) {
+        Write-Host (' ' * $Region.StartColumn) -NoNewline
+    }
+
+    $highlightText = Skip-DisplayTextColumns -Text $Text -SkipWidth $Region.StartColumn
+    $textWidth = Get-DisplayWidth $highlightText
+    if ($textWidth -gt $Region.Width) {
+        $highlightText = Truncate-DisplayText $highlightText $Region.Width
+        $textWidth = Get-DisplayWidth $highlightText
+    }
+    $highlightPart = $highlightText + (' ' * ($Region.Width - $textWidth))
+    Write-Host $highlightPart -NoNewline -ForegroundColor $Foreground -BackgroundColor $Background
+
+    $rest = $Region.RowWidth - $Region.EndColumn
+    if ($rest -gt 0) {
+        Write-Host (' ' * $rest) -NoNewline
+    }
+}
+
 function Write-ConsoleBufferRow {
     param(
         [int]$Row,
         [string]$Text,
         [System.ConsoleColor]$Foreground = [System.ConsoleColor]::Gray,
-        [System.ConsoleColor]$Background = [System.ConsoleColor]::Black
+        [System.ConsoleColor]$Background = [System.ConsoleColor]::Black,
+        [int]$ContentLineWidth = 0,
+        [int]$ContentStartColumn = 0
     )
 
     $width = Get-SafeWriteLineWidth -Row $Row
     $cells = New-ConsoleBufferRowCells -Width $width -Text $Text -Foreground $Foreground `
         -Background $Background -DefaultForeground $Foreground
+    if ($Background -eq [System.ConsoleColor]::Cyan -and $ContentLineWidth -gt 0) {
+        $region = Resolve-ConsoleContentHighlightRegion -Row $Row `
+            -ContentStartColumn $ContentStartColumn -ContentLineWidth $ContentLineWidth
+        $cells = Limit-ConsoleBufferRowHighlightRegion -Cells $cells `
+            -StartColumn $region.StartColumn -EndColumn $region.EndColumn
+    }
     Write-ConsoleBufferRowCells -Row $Row -Cells $cells
 }
 
@@ -689,12 +842,20 @@ function Write-ConsoleBufferRowSegments {
         [int]$Row,
         [array]$Segments,
         [System.ConsoleColor]$DefaultForeground = [System.ConsoleColor]::Gray,
-        [System.ConsoleColor]$Background = [System.ConsoleColor]::Black
+        [System.ConsoleColor]$Background = [System.ConsoleColor]::Black,
+        [int]$ContentLineWidth = 0,
+        [int]$ContentStartColumn = 0
     )
 
     $width = Get-SafeWriteLineWidth -Row $Row
     $cells = New-ConsoleBufferRowCells -Width $width -Segments $Segments `
         -Background $Background -DefaultForeground $DefaultForeground
+    if ($ContentLineWidth -gt 0) {
+        $region = Resolve-ConsoleContentHighlightRegion -Row $Row `
+            -ContentStartColumn $ContentStartColumn -ContentLineWidth $ContentLineWidth
+        $cells = Limit-ConsoleBufferRowHighlightRegion -Cells $cells `
+            -StartColumn $region.StartColumn -EndColumn $region.EndColumn
+    }
     Write-ConsoleBufferRowCells -Row $Row -Cells $cells
 }
 
@@ -702,7 +863,9 @@ function Write-ConsoleBufferBlock {
     param(
         [int]$StartRow,
         [array]$RowSpecs,
-        [int]$Width = 0
+        [int]$Width = 0,
+        [int]$ContentLineWidth = 0,
+        [int]$ContentStartColumn = 0
     )
 
     if ($RowSpecs.Count -le 0) { return }
@@ -715,18 +878,40 @@ function Write-ConsoleBufferBlock {
 
     for ($r = 0; $r -lt $height; $r++) {
         $spec = $RowSpecs[$r]
+        if (-not $spec) {
+            $surfaceBg = Get-ConsoleSurfaceBackground
+            $rowCells = New-ConsoleBufferRowCells -Width $Width -Text '' `
+                -Foreground ([System.ConsoleColor]::DarkGray) -Background $surfaceBg `
+                -DefaultForeground ([System.ConsoleColor]::DarkGray)
+            for ($c = 0; $c -lt $Width; $c++) {
+                $block[$r, $c] = $rowCells[$c]
+            }
+            continue
+        }
         $rowCells = $null
         if ($null -ne $spec.Text -and $null -eq $spec.Segments) {
             $bg = if ($spec.Background) { $spec.Background } else { (Get-ConsoleSurfaceBackground) }
             $rowCells = New-ConsoleBufferRowCells -Width $Width -Text ([string]$spec.Text) `
                 -Foreground $spec.Foreground -Background $bg `
                 -DefaultForeground $spec.Foreground
+            if ($bg -eq [System.ConsoleColor]::Cyan -and $ContentLineWidth -gt 0) {
+                $region = Resolve-ConsoleContentHighlightRegion -Row ($StartRow + $r) `
+                    -ContentStartColumn $ContentStartColumn -ContentLineWidth $ContentLineWidth
+                $rowCells = Limit-ConsoleBufferRowHighlightRegion -Cells $rowCells `
+                    -StartColumn $region.StartColumn -EndColumn $region.EndColumn
+            }
         }
         else {
             $dfg = if ($spec.DefaultForeground) { $spec.DefaultForeground } else { [System.ConsoleColor]::Gray }
             $bg = if ($spec.Background) { $spec.Background } else { (Get-ConsoleSurfaceBackground) }
             $rowCells = New-ConsoleBufferRowCells -Width $Width -Segments $spec.Segments `
                 -Background $bg -DefaultForeground $dfg
+            if ($bg -eq [System.ConsoleColor]::Cyan -and $ContentLineWidth -gt 0) {
+                $region = Resolve-ConsoleContentHighlightRegion -Row ($StartRow + $r) `
+                    -ContentStartColumn $ContentStartColumn -ContentLineWidth $ContentLineWidth
+                $rowCells = Limit-ConsoleBufferRowHighlightRegion -Cells $rowCells `
+                    -StartColumn $region.StartColumn -EndColumn $region.EndColumn
+            }
         }
         for ($c = 0; $c -lt $Width; $c++) {
             $block[$r, $c] = $rowCells[$c]
@@ -743,7 +928,9 @@ function Write-FixedLine {
         [string]$Text,
         [bool]$Selected = $false,
         [System.ConsoleColor]$Color = [System.ConsoleColor]::Gray,
-        [switch]$Disabled
+        [switch]$Disabled,
+        [int]$ContentLineWidth = 0,
+        [int]$ContentStartColumn = 0
     )
 
     # 写满整行会触发 Windows 控制台自动换行/上滚，顶部分隔线会被挤没
@@ -765,7 +952,9 @@ function Write-FixedLine {
 
     if (Test-UseConsoleBufferDraw -Row $Row) {
         try {
-            Write-ConsoleBufferRow -Row $Row -Text $Text -Foreground $foreground -Background $background
+            Write-ConsoleBufferRow -Row $Row -Text $Text -Foreground $foreground -Background $background `
+                -ContentLineWidth $(if ($Selected) { $ContentLineWidth } else { 0 }) `
+                -ContentStartColumn $(if ($Selected) { $ContentStartColumn } else { 0 })
             return
         }
         catch {
@@ -781,16 +970,20 @@ function Write-FixedLine {
         $Text = Truncate-DisplayText $Text $width
         $textWidth = Get-DisplayWidth $Text
     }
-    $padded = $Text + (' ' * ($width - $textWidth))
 
     if ($Selected) {
-        Write-Host $padded -NoNewline -ForegroundColor Black -BackgroundColor Cyan
-    }
-    elseif ($Disabled) {
-        Write-Host $padded -NoNewline -ForegroundColor DarkGray
+        $region = Resolve-ConsoleContentHighlightRegion -Row $Row `
+            -ContentStartColumn $ContentStartColumn -ContentLineWidth $ContentLineWidth
+        Write-ConsoleRowHighlightText -Text $Text -Region $region
     }
     else {
-        Write-Host $padded -NoNewline -ForegroundColor $Color
+        $padded = $Text + (' ' * ($width - $textWidth))
+        if ($Disabled) {
+            Write-Host $padded -NoNewline -ForegroundColor DarkGray
+        }
+        else {
+            Write-Host $padded -NoNewline -ForegroundColor $Color
+        }
     }
 
     # 末行及上一行写完后勿把光标留在底栏，否则会触发缓冲上滚
@@ -924,16 +1117,195 @@ function Write-MenuHeader {
             "  $($Header.SectionTitle)"
         }
         else {
-            "  $(Get-I18n -Key 'page.home.defaultSection')"
+            "  $(Get-I18n -Key 'common.menu')"
         }
         Write-FixedLine $row $section -Color White
     }
 }
 
+function Get-MenuHeaderBrandSnapshot {
+    param(
+        [hashtable]$Header,
+        [string]$Locale = ''
+    )
+
+    $rows = @()
+    $row = 0
+    $brandInnerWidth = Get-BrandInnerWidth -Header $Header
+
+    $rows += @{
+        kind  = 'fixed'
+        row   = $row
+        text  = ''
+        color = [int][System.ConsoleColor]::DarkGray
+    }
+    $row++
+
+    if ($Header.HideSectionTitle) {
+        $rows += @{
+            kind  = 'fixed'
+            row   = $row
+            text  = (Format-BrandSectionCapLine -Title (Get-BrandTitle) -BrandInnerWidth $brandInnerWidth)
+            color = [int][System.ConsoleColor]::DarkCyan
+        }
+        $row++
+    }
+    else {
+        $rows += @{
+            kind  = 'fixed'
+            row   = $row
+            text  = (Format-BrandHorizontalLine -BrandInnerWidth $brandInnerWidth)
+            color = [int][System.ConsoleColor]::DarkCyan
+        }
+        $row++
+    }
+
+    $rows += @{
+        kind  = 'fixed'
+        row   = $row
+        text  = ''
+        color = [int][System.ConsoleColor]::DarkGray
+    }
+    $row++
+
+    $logoLines = @(Get-AsciiLogo)
+    $logoCol = Get-LogoColumnWidth
+    $panelRows = @(Get-ProductPanelRows -Header $Header)
+    $brandHeight = Get-BrandBlockRowCount -Header $Header
+    $welcomeRow = $brandHeight - 1
+
+    for ($r = 0; $r -lt $brandHeight; $r++) {
+        $isWelcomeRow = ($r -eq $welcomeRow)
+
+        if ($isWelcomeRow) {
+            $leftText = Format-LogoWelcomeLine -LogoColumnWidth $logoCol
+            $leftColor = [int][System.ConsoleColor]::Cyan
+            $rightText = Format-ProductEmailLine
+            $rightColor = [int][System.ConsoleColor]::DarkGray
+        }
+        elseif ($r -lt $logoLines.Count) {
+            $leftText = $logoLines[$r]
+            $leftColor = [int][System.ConsoleColor]::DarkCyan
+            if ($r -lt $panelRows.Count) {
+                $panelRow = $panelRows[$r]
+                $rightText = $panelRow.Text
+                $rightColor = [int]$panelRow.Color
+            }
+            else {
+                $rightText = ''
+                $rightColor = [int][System.ConsoleColor]::DarkGray
+            }
+        }
+        else {
+            $leftText = ''
+            $leftColor = [int][System.ConsoleColor]::DarkCyan
+            $rightText = ''
+            $rightColor = [int][System.ConsoleColor]::DarkGray
+        }
+
+        $rows += @{
+            kind             = 'brandRow'
+            row              = $row
+            leftText         = [string]$leftText
+            rightText        = [string]$rightText
+            leftColor        = $leftColor
+            rightColor       = $rightColor
+            logoColumnWidth  = $logoCol
+            gap              = 2
+            brandInnerWidth  = $brandInnerWidth
+        }
+        $row++
+    }
+
+    $rows += @{
+        kind  = 'fixed'
+        row   = $row
+        text  = ''
+        color = [int][System.ConsoleColor]::DarkGray
+    }
+    $row++
+
+    if (-not $Header.HideSectionTitle) {
+        $rows += @{
+            kind  = 'fixed'
+            row   = $row
+            text  = (Format-BrandHorizontalLine -BrandInnerWidth $brandInnerWidth)
+            color = [int][System.ConsoleColor]::DarkCyan
+        }
+        $row++
+
+        $rows += @{
+            kind  = 'fixed'
+            row   = $row
+            text  = ''
+            color = [int][System.ConsoleColor]::DarkGray
+        }
+        $row++
+
+        $section = if ($Header.SectionTitle) {
+            "  $($Header.SectionTitle)"
+        }
+        else {
+            "  $(Get-I18n -Key 'common.menu')"
+        }
+        $rows += @{
+            kind  = 'fixed'
+            row   = $row
+            text  = $section
+            color = [int][System.ConsoleColor]::White
+        }
+        $row++
+    }
+
+    return [pscustomobject]@{
+        locale          = if ($Locale) { $Locale } else { (Get-CurrentLocale) }
+        contentStartRow = (Get-MenuHeaderRowCount -Header $Header)
+        brandInnerWidth = $brandInnerWidth
+        rows            = $rows
+    }
+}
+
+function Write-MenuHeaderFromSnapshot {
+    param(
+        $Snapshot,
+        [int]$StartRow = 0
+    )
+
+    if (-not $Snapshot) { return }
+
+    foreach ($item in @($Snapshot.rows)) {
+        $drawRow = $StartRow + [int]$item.row
+        switch ([string]$item.kind) {
+            'brandRow' {
+                Write-HeaderBrandRow -Row $drawRow `
+                    -LeftText ([string]$item.leftText) `
+                    -RightText ([string]$item.rightText) `
+                    -LeftColor ([System.ConsoleColor][int]$item.leftColor) `
+                    -RightColor ([System.ConsoleColor][int]$item.rightColor) `
+                    -LogoColumnWidth ([int]$item.logoColumnWidth) `
+                    -Gap ([int]$item.gap) `
+                    -BrandInnerWidth ([int]$item.brandInnerWidth)
+            }
+            default {
+                $color = [System.ConsoleColor]::Gray
+                if ($null -ne $item.color -and [string]$item.color -match '^\d+$') {
+                    $color = [System.ConsoleColor][int]$item.color
+                }
+                Write-FixedLine $drawRow ([string]$item.text) -Color $color
+            }
+        }
+    }
+}
+
 function Get-ConsoleLineHeight {
-    $height = [Console]::WindowHeight
-    if ($null -eq $height -or $height -lt 10) { return 40 }
-    return $height
+    try {
+        $height = [Console]::WindowHeight
+        if ($null -eq $height -or $height -lt 10) { return 40 }
+        return $height
+    }
+    catch {
+        return 40
+    }
 }
 
 function Format-MenuTableCell {
@@ -1205,10 +1577,12 @@ function Update-PaginatedMenuFooter {
         [string]$NumberBuffer,
         [string]$CountLabel,
         [string[]]$FooterExtraHints = @(),
+        [string[]]$MenuSplitActionSegments = $null,
         [string]$FlashMessage = '',
         [ValidateSet('Default', 'Split')]
         [string]$FooterLayout = 'Default',
-        [int]$BrandInnerWidth = 0
+        [int]$BrandInnerWidth = 0,
+        [switch]$MultiSelectNav
     )
 
     if ($FooterLayout -eq 'Split') {
@@ -1218,55 +1592,83 @@ function Update-PaginatedMenuFooter {
         else {
             [Math]::Max(40, [Math]::Min((Get-ConsoleLineWidth - 2), 64))
         }
-        $footerColCount = 5
+        $navColCount = if ($MultiSelectNav) { 6 } else { 5 }
+        $actionColCount = 5
 
-        $actionSegments = @(
-            (Get-I18n -Key 'common.action.quitEsc')
-            (Get-I18n -Key 'common.nav.settings')
-            (Get-I18n -Key 'common.nav.help')
-            ''
-            ''
-        )
+        $actionSegments = if ($MenuSplitActionSegments -and $MenuSplitActionSegments.Count -gt 0) {
+            $MenuSplitActionSegments
+        }
+        else {
+            @(
+                (Get-I18nKeyHint -Key (Get-MiaoI18nKeys).Esc -LabelKey 'common.quit')
+                (Get-I18nKeyHint -Key 'S' -LabelKey 'common.system')
+                (Get-I18nKeyHint -Key 'H' -LabelKey 'common.help')
+                ''
+                ''
+            )
+        }
+        $actionSegments = @($actionSegments | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+        while ($actionSegments.Count -lt $actionColCount) {
+            $actionSegments += ''
+        }
+        if ($actionSegments.Count -gt $actionColCount) {
+            $actionSegments = @($actionSegments[0..($actionColCount - 1)])
+        }
+
+        $flashTopSegments = @($FlashMessage)
+        while ($flashTopSegments.Count -lt $navColCount) {
+            $flashTopSegments += ''
+        }
+        if ($flashTopSegments.Count -gt $navColCount) {
+            $flashTopSegments = @($flashTopSegments[0..($navColCount - 1)])
+        }
 
         if ($FlashMessage) {
-            if ($script:ConsoleDrawBatchDepth -gt 0 -and (Test-ConsoleBufferDrawAvailable)) {
+            if ((Test-UseConsoleBufferDraw) -and $script:ConsoleDrawBatchDepth -gt 0 -and (Test-ConsoleBufferDrawAvailable)) {
                 try {
                     Write-MenuBarLineBuffer -HintRow $HintRow -StatusRow $StatusRow -InnerWidth $lineWidth `
-                        -TopSegments @($FlashMessage, '', '', '', '') -BottomSegments $actionSegments `
-                        -ColumnCount $footerColCount -TopColor ([System.ConsoleColor]::Yellow)
+                        -TopSegments $flashTopSegments -BottomSegments $actionSegments `
+                        -ColumnCount $navColCount -TopColor ([System.ConsoleColor]::Yellow)
                     return
                 }
                 catch { }
             }
             Write-MenuBarLine -Row $HintRow -InnerWidth $lineWidth `
-                -Segments @($FlashMessage, '', '', '', '') -ColumnCount $footerColCount `
+                -Segments $flashTopSegments -ColumnCount $navColCount `
                 -Color ([System.ConsoleColor]::Yellow)
-            Write-MenuBarLine -Row $StatusRow -InnerWidth $lineWidth -ColumnCount $footerColCount -Segments $actionSegments
+            Write-MenuBarLine -Row $StatusRow -InnerWidth $lineWidth -ColumnCount $actionColCount -Segments $actionSegments
             return
         }
 
         $navSegments = @(
-            (Get-I18n -Key 'common.pagination.page' -Vars @{
-                current = (Format-MenuPageNumber -Value ($PageIndex + 1) -PageCount $PageCount)
-                total   = (Format-MenuPageNumber -Value $PageCount -PageCount $PageCount)
-            })
-            (Get-I18n -Key 'common.pagination.totalCount' -Vars @{ count = $ItemCount; unit = $CountLabel })
-            (Get-I18n -Key 'common.action.navSelect')
-            (Get-I18n -Key 'common.action.navPage')
-            (Get-I18n -Key 'common.action.confirmEnter')
+            (Format-I18nPaginationPage -Current (Format-MenuPageNumber -Value ($PageIndex + 1) -PageCount $PageCount) `
+                -Total (Format-MenuPageNumber -Value $PageCount -PageCount $PageCount))
+            (Format-I18nPaginationTotalCount -Count $ItemCount -Unit $CountLabel)
+            (Get-I18nArrowHint -Arrows (Get-MiaoI18nKeys).ArrowsUpDown -LabelKey 'common.select')
+            (Get-I18nArrowHint -Arrows (Get-MiaoI18nKeys).ArrowsLeftRight -LabelKey 'common.pageTurn')
         )
+        if ($MultiSelectNav) {
+            $navSegments += (Get-I18nKeyHint -Key (Get-MiaoI18nKeys).Space -LabelKey 'common.toggle')
+        }
+        $navSegments += (Get-I18nKeyHint -Key (Get-MiaoI18nKeys).Enter -LabelKey 'common.confirm')
+        while ($navSegments.Count -lt $navColCount) {
+            $navSegments += ''
+        }
+        if ($navSegments.Count -gt $navColCount) {
+            $navSegments = @($navSegments[0..($navColCount - 1)])
+        }
 
-        if ($script:ConsoleDrawBatchDepth -gt 0 -and (Test-ConsoleBufferDrawAvailable)) {
+        if ((Test-UseConsoleBufferDraw) -and $script:ConsoleDrawBatchDepth -gt 0 -and (Test-ConsoleBufferDrawAvailable)) {
             try {
                 Write-MenuBarLineBuffer -HintRow $HintRow -StatusRow $StatusRow -InnerWidth $lineWidth `
-                    -TopSegments $navSegments -BottomSegments $actionSegments -ColumnCount $footerColCount
+                    -TopSegments $navSegments -BottomSegments $actionSegments -ColumnCount $navColCount
                 return
             }
             catch { }
         }
 
-        Write-MenuBarLine -Row $HintRow -InnerWidth $lineWidth -Segments $navSegments -ColumnCount $footerColCount
-        Write-MenuBarLine -Row $StatusRow -InnerWidth $lineWidth -ColumnCount $footerColCount -Segments $actionSegments
+        Write-MenuBarLine -Row $HintRow -InnerWidth $lineWidth -Segments $navSegments -ColumnCount $navColCount
+        Write-MenuBarLine -Row $StatusRow -InnerWidth $lineWidth -ColumnCount $actionColCount -Segments $actionSegments
         return
     }
 
@@ -1282,11 +1684,9 @@ function Update-PaginatedMenuFooter {
         Write-FixedLine $HintRow $hint -Color DarkGray
     }
 
-    $pageText = Get-I18n -Key 'common.pagination.page' -Vars @{
-        current = (Format-MenuPageNumber -Value ($PageIndex + 1) -PageCount $PageCount)
-        total   = (Format-MenuPageNumber -Value $PageCount -PageCount $PageCount)
-    }
-    $status = $pageText + (Get-I18n -Key 'common.pagination.totalCount' -Vars @{ count = $ItemCount; unit = $CountLabel })
+    $pageText = Format-I18nPaginationPage -Current (Format-MenuPageNumber -Value ($PageIndex + 1) -PageCount $PageCount) `
+        -Total (Format-MenuPageNumber -Value $PageCount -PageCount $PageCount)
+    $status = $pageText + (Format-I18nPaginationTotalCount -Count $ItemCount -Unit $CountLabel)
     Write-FixedLine $StatusRow $status -Color DarkGray
 }
 
@@ -1340,6 +1740,13 @@ function Get-MenuLayout {
         $bottomRow = $statusRow
     }
 
+    $contentStartColumn = 0
+    $contentLineWidth = 0
+    if ($brandInnerWidth -gt 0) {
+        $contentStartColumn = 1
+        $contentLineWidth = 1 + (Get-BrandSeparatorLineWidth -BrandInnerWidth $brandInnerWidth)
+    }
+
     return @{
         HeaderRows         = $headerRows
         ColHeaderRow       = $colHeaderRow
@@ -1355,6 +1762,8 @@ function Get-MenuLayout {
         PinFooterToBottom  = [bool]$PinFooterToBottom
         FooterGapRows      = $FooterGapRows
         BrandInnerWidth    = $brandInnerWidth
+        ContentStartColumn = $contentStartColumn
+        ContentLineWidth   = $contentLineWidth
     }
 }
 
@@ -1371,7 +1780,8 @@ function Format-MenuNumberedRow {
     $numValue = if ($DisplayNumber -gt 0) { $DisplayNumber } else { $GlobalIndex + 1 }
     $num = Format-ListDisplayNumber -Number $numValue -NumWidth $NumWidth
     $mark = if ($Selected) { '>' } else { ' ' }
-    return " $mark $num  $Label"
+    $lead = ' ' * (Get-ShellSingleSelectListLeadingSpaces)
+    return "$lead$mark $num  $Label"
 }
 
 function Draw-PaginatedMenuRow {
@@ -1385,7 +1795,9 @@ function Draw-PaginatedMenuRow {
         [scriptblock]$TestItemEnabled,
         [bool]$Selected,
         [scriptblock]$GetItemDisplayNumber = $null,
-        [scriptblock]$DrawListRow = $null
+        [scriptblock]$DrawListRow = $null,
+        [int]$ContentLineWidth = 0,
+        [int]$ContentStartColumn = 0
     )
 
     $screenRow = $ListStartRow + $ViewRow
@@ -1406,7 +1818,8 @@ function Draw-PaginatedMenuRow {
         $text = Format-MenuNumberedRow -GlobalIndex $ItemIndex -Label $label `
             -NumWidth $NumWidth -Selected $Selected -Disabled:(-not $enabled) `
             -DisplayNumber $displayNumber
-        Write-FixedLine $screenRow $text -Selected $Selected -Disabled:(-not $enabled -and -not $Selected)
+        Write-FixedLine $screenRow $text -Selected $Selected -Disabled:(-not $enabled -and -not $Selected) `
+            -ContentLineWidth $ContentLineWidth -ContentStartColumn $ContentStartColumn
     }
     else {
         Write-FixedLine $screenRow '' -Selected $false
@@ -1437,19 +1850,32 @@ function Set-MenuListScrollOffset {
 function Write-ListRowFromSpec {
     param(
         [int]$ScreenRow,
-        [hashtable]$Spec
+        [hashtable]$Spec,
+        [int]$ContentLineWidth = 0,
+        [int]$ContentStartColumn = 0
     )
+
+    if (-not $Spec) { return }
+
+    $highlightWidth = 0
+    $highlightStart = 0
+    if ($Spec.Background -eq [System.ConsoleColor]::Cyan) {
+        $highlightWidth = $ContentLineWidth
+        $highlightStart = $ContentStartColumn
+    }
 
     if ($null -ne $Spec.Text -and $null -eq $Spec.Segments) {
         $bg = if ($Spec.Background) { $Spec.Background } else { (Get-ConsoleSurfaceBackground) }
         Write-ConsoleBufferRow -Row $ScreenRow -Text ([string]$Spec.Text) `
-            -Foreground $Spec.Foreground -Background $bg
+            -Foreground $Spec.Foreground -Background $bg -ContentLineWidth $highlightWidth `
+            -ContentStartColumn $highlightStart
     }
     else {
         $dfg = if ($Spec.DefaultForeground) { $Spec.DefaultForeground } else { [System.ConsoleColor]::Gray }
         $bg = if ($Spec.Background) { $Spec.Background } else { (Get-ConsoleSurfaceBackground) }
         Write-ConsoleBufferRowSegments -Row $ScreenRow -Segments $Spec.Segments `
-            -DefaultForeground $dfg -Background $bg
+            -DefaultForeground $dfg -Background $bg -ContentLineWidth $highlightWidth `
+            -ContentStartColumn $highlightStart
     }
 }
 
@@ -1467,12 +1893,20 @@ function Update-PaginatedMenuSelection {
         [scriptblock]$TestItemEnabled,
         [scriptblock]$GetItemDisplayNumber = $null,
         [scriptblock]$DrawListRow = $null,
-        [scriptblock]$GetListRowSpec = $null
+        [scriptblock]$GetListRowSpec = $null,
+        [int]$ContentLineWidth = 0,
+        [int]$ContentStartColumn = 0
     )
 
     $pageStart = $PageIndex * $PageSize
     $viewport = $Layout.ListViewportHeight
     if ($viewport -le 0) { $viewport = $PageSize }
+    if ($ContentLineWidth -le 0 -and $Layout.ContentLineWidth -gt 0) {
+        $ContentLineWidth = [int]$Layout.ContentLineWidth
+    }
+    if ($ContentStartColumn -le 0 -and $Layout.ContentStartColumn -gt 0) {
+        $ContentStartColumn = [int]$Layout.ContentStartColumn
+    }
 
     $oldLocal = $OldIndex - $pageStart - $ScrollOffset
     $newLocal = $NewIndex - $pageStart - $ScrollOffset
@@ -1486,7 +1920,10 @@ function Update-PaginatedMenuSelection {
                 }
                 $enabled = & $TestItemEnabled $Items[$OldIndex] $OldIndex
                 $spec = & $GetListRowSpec $OldIndex $false $NumWidth $displayNumber $enabled
-                Write-ListRowFromSpec -ScreenRow ($Layout.ListStartRow + $oldLocal) -Spec $spec
+                if ($spec) {
+                    Write-ListRowFromSpec -ScreenRow ($Layout.ListStartRow + $oldLocal) -Spec $spec `
+                        -ContentLineWidth $ContentLineWidth -ContentStartColumn $ContentStartColumn
+                }
             }
 
             if ($NewIndex -ge 0 -and $newLocal -ge 0 -and $newLocal -lt $viewport) {
@@ -1496,7 +1933,10 @@ function Update-PaginatedMenuSelection {
                 }
                 $enabled = & $TestItemEnabled $Items[$NewIndex] $NewIndex
                 $spec = & $GetListRowSpec $NewIndex $true $NumWidth $displayNumber $enabled
-                Write-ListRowFromSpec -ScreenRow ($Layout.ListStartRow + $newLocal) -Spec $spec
+                if ($spec) {
+                    Write-ListRowFromSpec -ScreenRow ($Layout.ListStartRow + $newLocal) -Spec $spec `
+                        -ContentLineWidth $ContentLineWidth -ContentStartColumn $ContentStartColumn
+                }
             }
             return
         }
@@ -1509,14 +1949,16 @@ function Update-PaginatedMenuSelection {
         Draw-PaginatedMenuRow -Items $Items -ListStartRow $Layout.ListStartRow -ViewRow $oldLocal `
             -ItemIndex $OldIndex -NumWidth $NumWidth -GetItemLabel $GetItemLabel `
             -TestItemEnabled $TestItemEnabled -Selected $false `
-            -GetItemDisplayNumber $GetItemDisplayNumber -DrawListRow $DrawListRow
+            -GetItemDisplayNumber $GetItemDisplayNumber -DrawListRow $DrawListRow `
+            -ContentLineWidth $ContentLineWidth -ContentStartColumn $ContentStartColumn
     }
 
     if ($NewIndex -ge 0 -and $newLocal -ge 0 -and $newLocal -lt $viewport) {
         Draw-PaginatedMenuRow -Items $Items -ListStartRow $Layout.ListStartRow -ViewRow $newLocal `
             -ItemIndex $NewIndex -NumWidth $NumWidth -GetItemLabel $GetItemLabel `
             -TestItemEnabled $TestItemEnabled -Selected $true `
-            -GetItemDisplayNumber $GetItemDisplayNumber -DrawListRow $DrawListRow
+            -GetItemDisplayNumber $GetItemDisplayNumber -DrawListRow $DrawListRow `
+            -ContentLineWidth $ContentLineWidth -ContentStartColumn $ContentStartColumn
     }
 }
 
@@ -1533,13 +1975,21 @@ function Redraw-PaginatedMenuPage {
         [scriptblock]$GetItemDisplayNumber = $null,
         [int]$ListScrollOffset = 0,
         [scriptblock]$DrawListRow = $null,
-        [scriptblock]$GetListRowSpec = $null
+        [scriptblock]$GetListRowSpec = $null,
+        [int]$ContentLineWidth = 0,
+        [int]$ContentStartColumn = 0
     )
 
     if ($PageSize -le 0) { $PageSize = $Layout.PageSize }
 
     $viewport = $Layout.ListViewportHeight
     if ($viewport -le 0) { $viewport = $PageSize }
+    if ($ContentLineWidth -le 0 -and $Layout.ContentLineWidth -gt 0) {
+        $ContentLineWidth = [int]$Layout.ContentLineWidth
+    }
+    if ($ContentStartColumn -le 0 -and $Layout.ContentStartColumn -gt 0) {
+        $ContentStartColumn = [int]$Layout.ContentStartColumn
+    }
 
     if ($Items.Count -eq 0) {
         Write-FixedLine $Layout.ListStartRow " $(Get-I18n -Key 'page.home.noToolsRegistered')" -Color DarkGray
@@ -1556,7 +2006,7 @@ function Redraw-PaginatedMenuPage {
         $itemsOnPage = [Math]::Min($PageSize, $Items.Count - $pageStart)
     }
 
-    if ($GetListRowSpec -and (Test-ConsoleBufferDrawAvailable)) {
+    if ($GetListRowSpec -and (Test-UseConsoleListBufferDraw)) {
         try {
             $rowSpecs = New-Object 'System.Collections.Generic.List[object]' $viewport
             $rowsDrawn = 0
@@ -1569,7 +2019,9 @@ function Redraw-PaginatedMenuPage {
                         $displayNumber = & $GetItemDisplayNumber $Items[$itemIndex] $itemIndex
                     }
                     $enabled = & $TestItemEnabled $Items[$itemIndex] $itemIndex
-                    $rowSpecs.Add((& $GetListRowSpec $itemIndex $selected $NumWidth $displayNumber $enabled))
+                    $rowSpec = & $GetListRowSpec $itemIndex $selected $NumWidth $displayNumber $enabled
+                    if (-not $rowSpec) { throw 'list row spec is null' }
+                    $rowSpecs.Add($rowSpec)
                     $rowsDrawn++
                 }
                 else {
@@ -1581,7 +2033,8 @@ function Redraw-PaginatedMenuPage {
                     })
                 }
             }
-            Write-ConsoleBufferBlock -StartRow $Layout.ListStartRow -RowSpecs @($rowSpecs.ToArray())
+            Write-ConsoleBufferBlock -StartRow $Layout.ListStartRow -RowSpecs @($rowSpecs.ToArray()) `
+                -ContentLineWidth $ContentLineWidth -ContentStartColumn $ContentStartColumn
             Clear-MenuListChrome -Layout $Layout -VisibleRowsDrawn $rowsDrawn -SkipViewportClear
             return
         }
@@ -1598,7 +2051,8 @@ function Redraw-PaginatedMenuPage {
             Draw-PaginatedMenuRow -Items $Items -ListStartRow $Layout.ListStartRow -ViewRow $row `
                 -ItemIndex $itemIndex -NumWidth $NumWidth -GetItemLabel $GetItemLabel `
                 -TestItemEnabled $TestItemEnabled -Selected $selected `
-                -GetItemDisplayNumber $GetItemDisplayNumber -DrawListRow $DrawListRow
+                -GetItemDisplayNumber $GetItemDisplayNumber -DrawListRow $DrawListRow `
+                -ContentLineWidth $ContentLineWidth -ContentStartColumn $ContentStartColumn
             $rowsDrawn++
         }
         else {
@@ -1609,11 +2063,61 @@ function Redraw-PaginatedMenuPage {
     Clear-MenuListChrome -Layout $Layout -VisibleRowsDrawn $rowsDrawn
 }
 
+function Test-MenuNumberBufferPrefix {
+    param(
+        [array]$Items,
+        [string]$Buffer,
+        [scriptblock]$GetItemDisplayNumber = $null,
+        [scriptblock]$TestItemEnabled = $null
+    )
+
+    if ([string]::IsNullOrEmpty($Buffer)) { return $true }
+    if ($Buffer -notmatch '^\d+$') { return $false }
+    if ($Items.Count -eq 0) { return $false }
+
+    for ($i = 0; $i -lt $Items.Count; $i++) {
+        if ($TestItemEnabled -and -not (& $TestItemEnabled $Items[$i] $i)) { continue }
+
+        $displayNumber = if ($GetItemDisplayNumber) {
+            & $GetItemDisplayNumber $Items[$i] $i
+        }
+        else {
+            $i + 1
+        }
+        if ([string]$displayNumber -like "$Buffer*") {
+            return $true
+        }
+    }
+
+    return $false
+}
+
+function Get-MenuMaxDisplayNumber {
+    param(
+        [array]$Items,
+        [scriptblock]$GetItemDisplayNumber = $null
+    )
+
+    $max = 0
+    for ($i = 0; $i -lt $Items.Count; $i++) {
+        $displayNumber = if ($GetItemDisplayNumber) {
+            & $GetItemDisplayNumber $Items[$i] $i
+        }
+        else {
+            $i + 1
+        }
+        if ([int]$displayNumber -gt $max) {
+            $max = [int]$displayNumber
+        }
+    }
+    return $max
+}
+
 function Show-PaginatedMenu {
     <#
     .SYNOPSIS
         统一分页菜单：固定顶栏 + 编号列表 + ↑↓ 选择 + ←→ 翻页 + 数字快速定位 + Enter 确认当前高亮项。
-        输入编号时保持列表高亮；Backspace 删空编号后恢复输入前选中项；方向键仅清空输入不影响选中。
+        最大编号 ≤9 时单键直选；≥10 时前缀累积（无效扩展静默忽略）；Backspace 逐位删除；方向键清空输入。
     #>
     param(
         [hashtable]$Header,
@@ -1624,6 +2128,7 @@ function Show-PaginatedMenu {
         [string]$CountLabel = '',
         [hashtable]$LetterKeys = @{},
         [string[]]$FooterExtraHints = @(),
+        [string[]]$MenuSplitActionSegments = $null,
         [switch]$HideColHeader,
         [ValidateSet('Default', 'Split')]
         [string]$FooterLayout = 'Default',
@@ -1647,7 +2152,7 @@ function Show-PaginatedMenu {
     }
 
     if (-not $CountLabel) {
-        $CountLabel = Get-I18n -Key 'common.unit.item'
+        $CountLabel = Get-I18n -Key 'common.item'
     }
 
     if ($PageSize -le 0) {
@@ -1660,27 +2165,29 @@ function Show-PaginatedMenu {
         if ($PageSize -le 0) {
             $PageSize = $layout.ListViewportHeight
         }
+        if (-not $layout.ContentLineWidth -or -not $layout.ContentStartColumn) {
+            $metrics = if ($ToolkitShell.ContentMetrics) {
+                $ToolkitShell.ContentMetrics
+            }
+            else {
+                Get-ToolkitShellContentMetrics -Shell $ToolkitShell
+            }
+            $layout['ContentStartColumn'] = [int]$metrics.StartColumn
+            $layout['ContentLineWidth'] = [int]$metrics.EndColumn
+        }
     }
     else {
         $layout = Get-MenuLayout -PageSize $PageSize -Header $Header -HideColHeader:$HideColHeader `
             -PinFooterToBottom:$pinFooter -FooterGapRows 0
     }
+    $maxDisplayNumber = Get-MenuMaxDisplayNumber -Items $Items -GetItemDisplayNumber $GetItemDisplayNumber
     if ($NumberDisplayWidth -gt 0) {
         $numWidth = $NumberDisplayWidth
     }
     else {
-        $maxDisplay = 0
-        for ($i = 0; $i -lt $Items.Count; $i++) {
-            $dn = if ($GetItemDisplayNumber) {
-                & $GetItemDisplayNumber $Items[$i] $i
-            }
-            else {
-                $i + 1
-            }
-            if ($dn -gt $maxDisplay) { $maxDisplay = $dn }
-        }
-        $numWidth = Get-ListNumberDisplayWidth -MaxNumber $maxDisplay
+        $numWidth = Get-ListNumberDisplayWidth -MaxNumber $maxDisplayNumber
     }
+    $singleDigitSelect = ($maxDisplayNumber -le 9)
     $pageCount = [Math]::Max(1, [Math]::Ceiling($Items.Count / [double]$PageSize))
 
     $pageIndex = 0
@@ -1692,15 +2199,12 @@ function Show-PaginatedMenu {
     function Apply-MenuNumberBuffer {
         param([string]$Buffer)
         if ([string]::IsNullOrEmpty($Buffer)) { return }
-        if ($Items.Count -eq 0) {
-            Set-Variable -Name flashMessage -Value (Get-I18n -Key 'flash.invalidNumber') -Scope 1
-            return
-        }
+        if ($Items.Count -eq 0) { return }
+
         $num = [int]$Buffer
         $idx = & $resolveNumberFn $Items $num
         if ($idx -ge 0 -and $idx -lt $Items.Count) {
             if (-not (& $TestItemEnabled $Items[$idx] $idx)) {
-                Set-Variable -Name flashMessage -Value (Get-I18n -Key 'flash.disabledNumber') -Scope 1
                 return
             }
             $newPage = [Math]::Floor($idx / [double]$PageSize)
@@ -1709,9 +2213,6 @@ function Show-PaginatedMenu {
             Set-MenuListScrollOffset -ScrollOffset ([ref]$listScrollOffset) `
                 -SelectedIndex $idx -PageIndex $newPage -PageSize $PageSize `
                 -ItemCount $Items.Count -ViewportHeight $layout.ListViewportHeight
-        }
-        else {
-            Set-Variable -Name flashMessage -Value (Get-I18n -Key 'flash.invalidNumber') -Scope 1
         }
     }
 
@@ -1734,14 +2235,15 @@ function Show-PaginatedMenu {
         }
 
         if ($ToolkitShell -and $FooterLayout -eq 'Split') {
-            Write-ToolkitShellFooter -Shell $ToolkitShell -Template MenuSplit -MenuFooter @{
-                PageIndex     = $pageIndex
-                PageCount     = $pageCount
-                ItemCount     = $Items.Count
-                SelectedIndex = $selectedIndex
-                NumberBuffer  = $numberBuffer
-                CountLabel    = $CountLabel
-                FlashMessage  = $FlashMessage
+            Write-ToolkitShellFooter -Shell $ToolkitShell -Template ListWithToolbar -MenuFooter @{
+                PageIndex               = $pageIndex
+                PageCount               = $pageCount
+                ItemCount               = $Items.Count
+                SelectedIndex           = $selectedIndex
+                NumberBuffer            = $numberBuffer
+                CountLabel              = $CountLabel
+                FlashMessage            = $FlashMessage
+                MenuSplitActionSegments = $MenuSplitActionSegments
             }
             return
         }
@@ -1750,6 +2252,7 @@ function Show-PaginatedMenu {
             -PageIndex $pageIndex -PageCount $pageCount -ItemCount $Items.Count `
             -SelectedIndex $selectedIndex -NumberBuffer $numberBuffer -CountLabel $CountLabel `
             -FooterExtraHints $FooterExtraHints -FooterLayout $FooterLayout `
+            -MenuSplitActionSegments $MenuSplitActionSegments `
             -BrandInnerWidth $layout.BrandInnerWidth -FlashMessage $FlashMessage
     }
 
@@ -1763,13 +2266,14 @@ function Show-PaginatedMenu {
     }
 
     if (-not $layout.HideColHeader) {
-        Write-FixedLine $layout.ColHeaderRow (Get-I18n -Key 'page.home.colHeader') -Color DarkGray
+        Write-FixedLine $layout.ColHeaderRow (Get-HomeListColHeader) -Color DarkGray
     }
 
     Set-MenuListScrollOffset -ScrollOffset ([ref]$listScrollOffset) `
         -SelectedIndex $selectedIndex -PageIndex $pageIndex -PageSize $PageSize `
         -ItemCount $Items.Count -ViewportHeight $layout.ListViewportHeight
-    if ($ToolkitShell) {
+    $useShellBatch = ($null -ne $ToolkitShell) -and (Test-ShellConsoleBatchDraw)
+    if ($useShellBatch) {
         Enter-ConsoleDrawBatch
     }
     & $redrawPage
@@ -1781,7 +2285,9 @@ function Show-PaginatedMenu {
             $flash = if ($FooterState.FlashMessage) { [string]$FooterState.FlashMessage } else { '' }
             & $invokeFooter -FlashMessage $flash
         }.GetNewClosure()
-        Complete-ConsoleDrawBatch -ToolkitShell $ToolkitShell
+    }
+    if ($useShellBatch) {
+        $null = Complete-ConsoleDrawBatch -ToolkitShell $ToolkitShell
     }
 
     try {
@@ -1799,6 +2305,7 @@ function Show-PaginatedMenu {
             $oldIndex = $selectedIndex
             $oldPage = $pageIndex
             $oldScroll = $listScrollOffset
+            $oldNumberBuffer = $numberBuffer
             $flashMessage = ''
             $pageStart = $pageIndex * $PageSize
             $itemsOnPage = [Math]::Min($PageSize, $Items.Count - $pageStart)
@@ -1807,7 +2314,7 @@ function Show-PaginatedMenu {
             $key = [Console]::ReadKey($true)
 
             if ($key.Key -eq 'Backspace') {
-                if (-not [string]::IsNullOrEmpty($numberBuffer)) {
+                if (-not $singleDigitSelect -and -not [string]::IsNullOrEmpty($numberBuffer)) {
                     $numberBuffer = $numberBuffer.Substring(0, $numberBuffer.Length - 1)
                     if (-not [string]::IsNullOrEmpty($numberBuffer)) {
                         Apply-MenuNumberBuffer -Buffer $numberBuffer
@@ -1815,18 +2322,32 @@ function Show-PaginatedMenu {
                 }
             }
             elseif ($key.KeyChar -match '^[0-9]$') {
-                $numberBuffer += $key.KeyChar
-                Apply-MenuNumberBuffer -Buffer $numberBuffer
+                if ($singleDigitSelect) {
+                    $digit = [string]$key.KeyChar
+                    if (Test-MenuNumberBufferPrefix -Items $Items -Buffer $digit `
+                        -GetItemDisplayNumber $GetItemDisplayNumber -TestItemEnabled $TestItemEnabled) {
+                        $numberBuffer = $digit
+                        Apply-MenuNumberBuffer -Buffer $numberBuffer
+                    }
+                }
+                else {
+                    $candidate = $numberBuffer + $key.KeyChar
+                    if (Test-MenuNumberBufferPrefix -Items $Items -Buffer $candidate `
+                        -GetItemDisplayNumber $GetItemDisplayNumber -TestItemEnabled $TestItemEnabled) {
+                        $numberBuffer = $candidate
+                        Apply-MenuNumberBuffer -Buffer $numberBuffer
+                    }
+                }
             }
             elseif ($key.KeyChar -match '^[qQ]$') {
-                if ($EscMeansBack -or ($RenderFooter -and $ToolkitShell)) {
+                if ($EscMeansBack) {
                     Set-MenuInputCursorPosition -Layout $layout -ToolkitShell $ToolkitShell
                     return [pscustomobject]@{ _kind = 'shellNav'; action = 'back' }
                 }
             }
             elseif ($key.KeyChar -match '^[a-zA-Z]$') {
                 $letter = $key.KeyChar.ToString().ToLowerInvariant()
-                if ($LetterKeys.ContainsKey($letter)) {
+                if ($LetterKeys -and $LetterKeys.ContainsKey($letter)) {
                     Set-MenuInputCursorPosition -Layout $layout -ToolkitShell $ToolkitShell
                     return $LetterKeys[$letter]
                 }
@@ -1926,7 +2447,7 @@ function Show-PaginatedMenu {
                         if ($selectedIndex -ge 0 -and $selectedIndex -lt $Items.Count) {
                             $item = $Items[$selectedIndex]
                             if (-not (& $TestItemEnabled $item $selectedIndex)) {
-                                $flashMessage = Get-I18n -Key 'flash.disabledItem'
+                                $flashMessage = Get-I18n -Key 'message.disabledItem'
                             }
                             else {
                                 Set-MenuInputCursorPosition -Layout $layout -ToolkitShell $ToolkitShell
@@ -1953,13 +2474,14 @@ function Show-PaginatedMenu {
             $scrollChanged = ($oldScroll -ne $listScrollOffset)
             $pageChanged = ($oldPage -ne $pageIndex)
             $selectionChanged = ($oldIndex -ne $selectedIndex)
+            $bufferChanged = ($oldNumberBuffer -ne $numberBuffer)
 
-            $footerChanged = $pageChanged -or $flashMessage
+            $footerChanged = $pageChanged -or $flashMessage -or $bufferChanged
             if ($FooterLayout -ne 'Split' -and -not $RenderFooter) {
                 $footerChanged = $footerChanged -or $selectionChanged -or $scrollChanged
             }
 
-            if ($ToolkitShell -and ($pageChanged -or $scrollChanged -or $footerChanged)) {
+            if ($useShellBatch -and ($pageChanged -or $scrollChanged -or $footerChanged)) {
                 if ($script:ConsoleDrawBatchDepth -le 0) {
                     Enter-ConsoleDrawBatch
                 }
@@ -1984,8 +2506,15 @@ function Show-PaginatedMenu {
                 }
             }
 
-            if ($ToolkitShell -and ($pageChanged -or $scrollChanged -or $footerChanged)) {
-                Complete-ConsoleDrawBatch -ToolkitShell $ToolkitShell
+            if ($ToolkitShell -and ($pageChanged -or $scrollChanged -or $footerChanged -or $selectionChanged)) {
+                Set-ToolkitShellInputCursor -Shell $ToolkitShell
+                if ((Get-ConsoleViewportTop) -gt 0) {
+                    $null = Sync-ConsoleViewportTop
+                }
+            }
+
+            if ($useShellBatch -and ($pageChanged -or $scrollChanged -or $footerChanged)) {
+                $null = Complete-ConsoleDrawBatch -ToolkitShell $ToolkitShell
             }
         }
     }
@@ -2011,7 +2540,7 @@ function Show-InteractiveMenu {
         $ViewHeight = Get-MenuPageSize
     }
     if (-not $CountLabel) {
-        $CountLabel = Get-I18n -Key 'common.unit.item'
+        $CountLabel = Get-I18n -Key 'common.item'
     }
 
     $header = @{
@@ -2019,7 +2548,7 @@ function Show-InteractiveMenu {
         Description  = $Subtitle
         Developer    = ''
         Version      = ''
-        SectionTitle = (Get-I18n -Key 'page.home.defaultSection')
+        SectionTitle = (Get-I18n -Key 'common.menu')
     }
 
     $getLabel = {
@@ -2050,9 +2579,9 @@ function Write-MessageBlock {
 }
 
 function Show-AfterToolPrompt {
-    Write-MessageBlock -Title (Get-I18n -Key 'page.afterTool.title') -Lines @(
-        (Get-I18n -Key 'page.afterTool.returnList'),
-        (Get-I18n -Key 'page.afterTool.exit')
+    Write-MessageBlock -Title (Get-I18n -Key 'common.nextStep') -Lines @(
+        (Get-AfterToolReturnListLine),
+        (Get-AfterToolExitLine)
     )
 
     if ($Host.Name -eq 'ConsoleHost') {
@@ -2067,7 +2596,7 @@ function Show-AfterToolPrompt {
         catch { }
     }
 
-    $line = Read-Host (Get-I18n -Key 'page.afterTool.promptFallback')
+    $line = Read-Host (Get-AfterToolPromptFallback)
     if ($line -match '^[qQ]$') { return 'exit' }
     return 'list'
 }

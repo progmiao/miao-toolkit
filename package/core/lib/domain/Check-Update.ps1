@@ -1,18 +1,5 @@
 ﻿# 版本可用性检查（会话内缓存，见 docs/UPDATE.md §六）
 
-function Format-ReleaseDate {
-    param([string]$Raw)
-
-    if ([string]::IsNullOrWhiteSpace($Raw)) { return '-' }
-    try {
-        return ([DateTime]::Parse($Raw)).ToString('yyyy-MM-dd')
-    }
-    catch {
-        if ($Raw -match '^(\d{4}-\d{2}-\d{2})') { return $Matches[1] }
-        return $Raw
-    }
-}
-
 function Normalize-Semver {
     param([string]$Version)
 

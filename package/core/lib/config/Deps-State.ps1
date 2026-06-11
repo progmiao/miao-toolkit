@@ -118,7 +118,7 @@ function Test-ToolDepInstalled {
     if (-not $doc.ContainsKey([string]$Tool.id)) { return $false }
 
     $entry = $doc[[string]$Tool.id]
-    foreach ($dep in @($Tool.dependencies)) {
+    foreach ($dep in @(Get-ToolDependencyPackages -Tool $Tool)) {
         $depId = Get-DependencyRecordId -Dependency $dep
         if (-not $entry.dependencies.ContainsKey($depId)) { return $false }
         if ([string]::IsNullOrWhiteSpace($entry.dependencies[$depId].version)) { return $false }
@@ -141,6 +141,42 @@ function Get-ToolDepRecordedVersion {
     return [string]$entry.dependencies[$DependencyId].version
 }
 
+function Set-ToolDepPackageVersion {
+    param(
+        [string]$ToolId,
+        [string]$DependencyId,
+        [string]$Version
+    )
+
+    if ([string]::IsNullOrWhiteSpace($ToolId)) { return }
+    if ([string]::IsNullOrWhiteSpace($DependencyId)) { return }
+    if ([string]::IsNullOrWhiteSpace($Version)) { return }
+
+    $doc = Get-DepsStateDocument
+    $now = (Get-Date).ToString('yyyy-MM-ddTHH:mm:ss')
+    $toolKey = [string]$ToolId
+
+    if (-not $doc.ContainsKey($toolKey)) {
+        $doc[$toolKey] = @{
+            installedAt  = $now
+            dependencies = @{}
+        }
+    }
+
+    $entry = $doc[$toolKey]
+    if (-not $entry.dependencies) {
+        $entry['dependencies'] = @{}
+    }
+
+    $entry.dependencies[[string]$DependencyId] = @{
+        version     = [string]$Version
+        installedAt = $now
+    }
+    $entry['installedAt'] = $now
+
+    Save-DepsStateDocument -Document $doc
+}
+
 function Set-ToolDepInstalled {
     param(
         [string]$ToolId,
@@ -149,27 +185,11 @@ function Set-ToolDepInstalled {
 
     if ($DependencyVersions.Count -eq 0) { return }
 
-    $doc = Get-DepsStateDocument
-    $now = (Get-Date).ToString('yyyy-MM-ddTHH:mm:ss')
-    $depsMap = @{}
-
     foreach ($depId in $DependencyVersions.Keys) {
         $version = [string]$DependencyVersions[$depId]
         if ([string]::IsNullOrWhiteSpace($version)) { continue }
-        $depsMap[[string]$depId] = @{
-            version     = $version
-            installedAt = $now
-        }
+        Set-ToolDepPackageVersion -ToolId $ToolId -DependencyId ([string]$depId) -Version $version
     }
-
-    if ($depsMap.Count -eq 0) { return }
-
-    $doc[[string]$ToolId] = @{
-        installedAt  = $now
-        dependencies = $depsMap
-    }
-
-    Save-DepsStateDocument -Document $doc
 }
 
 function Remove-ToolDepInstalled {
@@ -186,7 +206,7 @@ function Resolve-ToolDependencyVersionsAfterInstall {
     param($Tool)
 
     $result = @{}
-    foreach ($dep in @($Tool.dependencies)) {
+    foreach ($dep in @(Get-ToolDependencyPackages -Tool $Tool)) {
         $depId = Get-DependencyRecordId -Dependency $dep
         $version = $null
 

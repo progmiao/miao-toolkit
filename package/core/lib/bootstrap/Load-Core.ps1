@@ -1,4 +1,4 @@
-﻿# 按依赖顺序加载 core/lib 模块（dot-source 须在脚本作用域，不可包在 function 内）
+﻿# 启动层：dot-source 首页与会话所需的最小模块集；其余页面见 Import-MiaoModule.ps1
 
 param(
     [string]$LibDirectory = (Split-Path $PSScriptRoot -Parent)
@@ -7,18 +7,16 @@ param(
 if ($script:MiaoCoreLoaded) { return }
 
 $script:MiaoCoreLibDir = $LibDirectory
+$global:MiaoCoreLibDir = $LibDirectory
 $lib = $LibDirectory
 
 . (Join-Path $lib 'config\Paths.ps1')
 . (Join-Path $lib 'config\ListLayout.ps1')
 . (Join-Path $lib 'config\UserConfig.ps1')
-. (Join-Path $lib 'config\Deps-State.ps1')
 . (Join-Path $lib 'config\I18n.ps1')
+. (Join-Path $lib 'config\ToolkitInit.ps1')
 . (Join-Path $lib 'domain\Discover-Tools.ps1')
 . (Join-Path $lib 'domain\Mock-Tools.ps1')
-. (Join-Path $lib 'domain\Ensure-ToolDeps.ps1')
-. (Join-Path $lib 'domain\Invoke-Tool.ps1')
-. (Join-Path $lib 'domain\Check-Update.ps1')
 . (Join-Path $lib 'ui\console\Console-Menu.ps1')
 . (Join-Path $lib 'ui\legacy\Show-BrandedPage.ps1')
 
@@ -30,21 +28,101 @@ foreach ($name in @(
         'Draw.ps1'
         'Exit.ps1'
         'Footer.ps1'
+        'SystemToolbar.ps1'
+        'SingleSelectList.ps1'
+        'MultiSelectList.ps1'
         'Page-Host.ps1'
         'Session.ps1'
     )) {
     . (Join-Path $lib "ui\shell\$name")
 }
 
-. (Join-Path $lib 'domain\Invoke-ToolkitDeps.ps1')
-. (Join-Path $lib 'pages\help.ps1')
-. (Join-Path $lib 'pages\lang.ps1')
-. (Join-Path $lib 'pages\settings.ps1')
-. (Join-Path $lib 'pages\update.ps1')
-. (Join-Path $lib 'pages\install-deps.ps1')
 . (Join-Path $lib 'pages\home.ps1')
+. (Join-Path $lib 'bootstrap\Import-MiaoModule.ps1')
+
+foreach ($fnName in @(
+        'Get-I18n'
+        'Get-I18nRaw'
+        'Get-MiaoI18nKeys'
+        'Get-CurrentLocale'
+        'Set-MiaoLocale'
+        'Sync-MiaoLocaleFromShell'
+        'Format-I18nPressEnterBack'
+        'Format-I18nKeyDisplay'
+        'Write-ToolkitShellFooter'
+        'New-ShellSystemToolbarFooterRenderer'
+        'New-ShellSystemToolbarConfig'
+        'Register-ToolkitShellFooter'
+        'Initialize-ToolkitShellBodyView'
+        'Finalize-ToolkitShellBodyView'
+        'Prepare-ToolkitShellBodyDraw'
+        'Sync-ToolkitShellContentMetrics'
+        'Invoke-ShellSingleSelectList'
+        'Invoke-ShellMultiSelectList'
+        'Clear-ShellSingleSelectListCache'
+        'Clear-ShellMultiSelectListCache'
+        'New-ShellListColumnLayout'
+        'Normalize-ShellListRows'
+        'Build-ShellSingleSelectListRowCache'
+        'Build-ShellSingleSelectListRowSpec'
+        'Write-ShellSingleSelectListRow'
+        'Invoke-ShellSingleSelectListDrawRow'
+        'New-ShellSingleSelectListDrawHandlers'
+        'Format-MenuTableCell'
+        'New-ShellListRowBodySegments'
+        'Prepare-ConsoleRowWrite'
+        'Get-SafeWriteLineWidth'
+        'Set-ConsoleCursorAfterRowWrite'
+        'Get-DisplayWidth'
+        'Truncate-DisplayText'
+        'Resolve-ToolMenuActionName'
+        'Resolve-ToolMenuActionDescription'
+        'Get-ToolMenuItemCommand'
+        'Get-ShellListItemCommand'
+        'Show-PaginatedMenu'
+        'Redraw-PaginatedMenuPage'
+        'Update-PaginatedMenuSelection'
+        'Select-MenuPageSelectionIndex'
+        'Set-MenuListScrollOffset'
+        'Test-MenuNumberBufferPrefix'
+        'Get-MenuMaxDisplayNumber'
+        'Set-MenuInputCursorPosition'
+        'Get-MenuMaxDisplayNumber'
+        'Initialize-ShellMultiSelectListDependencies'
+        'Get-ShellMultiSelectMenuCommand'
+        'Format-ShellMultiSelectCheckMark'
+        'Build-ShellMultiSelectListRowSpec'
+        'Invoke-ShellMultiSelectListDrawRow'
+        'Build-ShellMultiSelectListRowCache'
+        'Get-ShellMultiSelectListRowCache'
+        'Clear-ShellMultiSelectListCache'
+        'New-ShellMultiSelectListDrawHandlers'
+        'Get-ShellMultiSelectCheckedSet'
+        'Test-ShellMultiSelectIndexChecked'
+        'Find-ShellMultiSelectFirstFocusIndex'
+        'Resolve-ShellMultiSelectListPick'
+        'Show-ShellMultiSelectListMenu'
+        'Get-ShellSingleSelectListRowCache'
+        'Format-ListDisplayNumber'
+        'Resolve-ListNumberIndexDefault'
+        'Initialize-PathsFromToolRoot'
+        'Import-MiaoToolDepsModule'
+        'ConvertTo-ToolMenuListRows'
+        'Get-ToolMenuItems'
+        'Get-ToolFromDirectory'
+        'Get-ToolSectionTitle'
+        'Update-ToolDependencyMenuProbe'
+        'Test-ToolDependencyMenuAction'
+        'Invoke-ToolDependencyMenuAction'
+    )) {
+    $cmd = Get-Command -Name $fnName -CommandType Function -ErrorAction SilentlyContinue
+    if ($cmd) {
+        Set-Item -Path "function:global:$fnName" -Value $cmd.ScriptBlock -Force | Out-Null
+    }
+}
 
 $script:MiaoCoreLoaded = $true
+$global:MiaoCoreLoaded = $true
 
 function Initialize-MiaoCore {
     param([string]$LibDirectory = '')

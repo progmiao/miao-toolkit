@@ -1,31 +1,27 @@
-﻿# Shell 滚动内容页（help / update 等 DefaultBar 视图）
+﻿# Shell 滚动内容页（help / update 等 SystemToolbarOnly 视图）
 
 function Invoke-ToolkitShellContentView {
     param(
         [hashtable]$Shell,
         [string]$SectionTitle,
         [array]$Lines,
-        [switch]$ShowSettings,
-        [switch]$ShowBack
+        [hashtable]$ToolbarConfig = $null
     )
 
     if ($null -eq $Lines) { $Lines = @() }
+    if (-not $ToolbarConfig) {
+        $ToolbarConfig = New-ShellSystemToolbarConfig
+    }
 
     Initialize-ToolkitShellBodyView -Shell $Shell -SectionTitle $SectionTitle `
-        -FooterTemplate DefaultBar
+        -FooterTemplate SystemToolbarOnly
 
     $scrollOffset = 0
     $viewport = $Shell.Layout.ListViewportHeight
     $scrollable = ($Lines.Count -gt $viewport)
     $maxScroll = [Math]::Max(0, $Lines.Count - $viewport)
 
-    $writeFooter = Get-Item -Path function:Write-ToolkitShellFooter
-    $footerRenderer = {
-        param([hashtable]$FooterState = @{})
-
-        & $writeFooter -Shell $Shell -Template DefaultBar `
-            -ShowSettings:$ShowSettings -ShowBack:$ShowBack
-    }.GetNewClosure()
+    $footerRenderer = New-ShellSystemToolbarFooterRenderer -Shell $Shell -ToolbarConfig $ToolbarConfig
     Register-ToolkitShellFooter -Shell $Shell -Renderer $footerRenderer
 
     Draw-BrandedContentLines -Layout $Shell.Layout -Lines $Lines -ScrollOffset $scrollOffset
@@ -33,7 +29,7 @@ function Invoke-ToolkitShellContentView {
     Finalize-ToolkitShellBodyView -Shell $Shell
 
     while ($true) {
-        $result = Read-ToolkitShellDefaultBarKey -Shell $Shell -ShowSettings:$ShowSettings -ShowBack:$ShowBack `
+        $result = Read-ShellSystemToolbarKey -Shell $Shell -ToolbarConfig $ToolbarConfig `
             -Scrollable:$scrollable -ScrollOffset ([ref]$scrollOffset) -MaxScroll $maxScroll
 
         if ($result -eq 'exitCancel' -or $result -eq 'exitConfirm') {
@@ -59,8 +55,8 @@ function Invoke-ShellPage {
     param(
         [hashtable]$Shell,
         [string]$SectionTitle,
-        [ValidateSet('MenuSplit', 'DefaultBar')]
-        [string]$FooterTemplate = 'DefaultBar',
+        [ValidateSet('ListWithToolbar', 'SystemToolbarOnly')]
+        [string]$FooterTemplate = 'SystemToolbarOnly',
         [scriptblock]$RenderBody,
         [scriptblock]$RunInputLoop
     )

@@ -1,0 +1,40 @@
+{
+  "node": {
+    "name": "Node.js version manager",
+    "description": "Browse and install Node.js versions with Volta",
+    "deps": {
+      "install": "Install Volta to manage Node.js versions",
+      "update": "Update Volta to the latest version",
+      "uninstall": "Uninstall Volta"
+    },
+    "action": {
+      "install": {
+        "name": "Browse and install",
+        "description": "Install Node from the version list"
+      },
+      "pin": {
+        "name": "Pin for project",
+        "description": "Lock Node version for the current project directory"
+      },
+      "default": {
+        "name": "Set global default",
+        "description": "Default Node version when not pinned"
+      },
+      "uninstall": {
+        "name": "Uninstall Node",
+        "description": "Remove an installed Node version from this machine"
+      }
+    },
+    "browse": {
+      "sectionTitle": "Browse and install",
+      "loading": "{spinner} Loading Node versions…",
+      "loadFailed": "Failed to load versions",
+      "noVersions": "No versions available",
+      "voltaMissing": "Volta not found — install it from the dependency menu first",
+      "cannotSelectInstalled": "Already installed — cannot select",
+      "countUnit": "versions",
+      "selectedTitle": "{count} version(s) selected",
+      "selectedHint": "Batch install coming soon — Enter to go back"
+    }
+  }
+}

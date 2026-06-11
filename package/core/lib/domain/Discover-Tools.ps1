@@ -3,7 +3,8 @@
 
     [ordered]@{
         id              = $ToolDirName
-        number          = 0
+        command         = $ToolDirName
+        no              = 0
         entry           = 'index.ps1'
         install         = 'install.ps1'
         help            = 'help.md'
@@ -28,7 +29,7 @@ function Get-ToolFromDirectory {
     foreach ($prop in $raw.PSObject.Properties) { $tool[$prop.Name] = $prop.Value }
 
     $tool['_root'] = $ToolRoot
-    return [pscustomobject]$tool
+    return Apply-ToolI18nFields -Tool ([pscustomobject]$tool)
 }
 
 function Resolve-ToolMenuNumberIndex {
@@ -38,7 +39,7 @@ function Resolve-ToolMenuNumberIndex {
     )
 
     for ($i = 0; $i -lt $Items.Count; $i++) {
-        if ([int]$Items[$i].number -eq $Number) { return $i }
+        if ([int]$Items[$i].no -eq $Number) { return $i }
     }
     return -1
 }
@@ -48,7 +49,7 @@ function Get-ToolMenuNumberDisplayWidth {
 
     $maxNumber = 0
     foreach ($t in $Tools) {
-        $n = [int]$t.number
+        $n = [int]$t.no
         if ($n -gt $maxNumber) { $maxNumber = $n }
     }
     return Get-MenuNumberDisplayWidth -MaxNumber $maxNumber
@@ -73,34 +74,56 @@ function Discover-Tools {
         foreach ($prop in $raw.PSObject.Properties) { $tool[$prop.Name] = $prop.Value }
 
         if ($tool.enabled -eq $false) { return }
-        if ([int]$tool.number -le 0) {
-            Write-Warning (Get-I18n -Key 'warn.toolNumberMissing' -Vars @{ toolId = $tool.id })
-            $tool.number = 9999
+        if ([string]::IsNullOrWhiteSpace([string]$tool.command)) {
+            $tool.command = $tool.id
+        }
+        if ([int]$tool.no -le 0) {
+            Write-Warning (Get-I18n -Key 'message.toolNoMissing' -Vars @{ command = $tool.command })
+            $tool.no = 9999
         }
         $tool['_root'] = $_.FullName
-        $result += [pscustomobject]$tool
+        $result += Apply-ToolI18nFields -Tool ([pscustomobject]$tool)
     }
 
     $seen = @{}
     foreach ($t in $result) {
-        $n = [int]$t.number
+        $n = [int]$t.no
         if ($seen.ContainsKey($n)) {
-            Write-Warning (Get-I18n -Key 'warn.toolNumberDuplicate' -Vars @{
-                number   = $n
-                firstId  = $seen[$n]
-                secondId = $t.id
+            Write-Warning (Get-I18n -Key 'message.toolNoDuplicate' -Vars @{
+                no           = $n
+                firstCommand = $seen[$n]
+                secondCommand = $t.command
             })
         }
         else {
-            $seen[$n] = $t.id
+            $seen[$n] = $t.command
         }
     }
 
-    $result | Sort-Object { [int]$_.number }
+    $result | Sort-Object { [int]$_.no }
 }
 
 function Get-Tool {
-    param([string]$Id)
+    param(
+        [string]$Id,
+        [array]$Tools = $null
+    )
 
-    Discover-Tools | Where-Object { $_.id -eq $Id } | Select-Object -First 1
+    if ([string]::IsNullOrWhiteSpace($Id)) { return $null }
+
+    if ($null -eq $Tools) {
+        if (Get-Command Get-ToolkitTools -ErrorAction SilentlyContinue) {
+            $tools = @(Get-ToolkitTools)
+        }
+        else {
+            $tools = @(Discover-Tools)
+        }
+    }
+    else {
+        $tools = @($Tools)
+    }
+    $byCommand = @($tools | Where-Object { [string]$_.command -eq $Id } | Select-Object -First 1)
+    if ($byCommand.Count -gt 0) { return $byCommand[0] }
+
+    return $tools | Where-Object { [string]$_.id -eq $Id } | Select-Object -First 1
 }

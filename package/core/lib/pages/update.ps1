@@ -1,4 +1,4 @@
-﻿# 更新页
+﻿# 工具箱自身更新页（miao sys update）
 
 function Get-ToolkitUpdateStatusLines {
     param($Info)
@@ -8,8 +8,8 @@ function Get-ToolkitUpdateStatusLines {
     }
 
     $lines = @(
-        (New-BrandedHelpLine -Text "$(Get-I18n -Key 'common.label.version'): v$($Info.CurrentVersion)")
-        (New-BrandedHelpLine -Text "$(Get-I18n -Key 'common.label.releaseDate'): $($Info.CurrentReleasedAt)")
+        (New-BrandedHelpLine -Text (Format-I18nLabelLine -LabelKey 'common.version' -Value "v$($Info.CurrentVersion)"))
+        (New-BrandedHelpLine -Text (Format-I18nLabelLine -LabelKey 'common.releaseDate' -Value $Info.CurrentReleasedAt))
     )
 
     if ($Info.IsLatest) {
@@ -36,7 +36,8 @@ function Invoke-UpdatePage {
     $lines = Get-ToolkitUpdateStatusLines -Info $info
     return Invoke-ToolkitShellContentView -Shell $Shell `
         -SectionTitle (Get-I18n -Key 'page.update.pageTitle') `
-        -Lines $lines -ShowBack
+        -Lines $lines `
+        -ToolbarConfig (New-ShellSystemToolbarConfig -HideSystem -HideHelp)
 }
 
 function Invoke-ShellUpdateView {
@@ -45,48 +46,8 @@ function Invoke-ShellUpdateView {
     return Invoke-UpdatePage -Shell $Shell
 }
 
-function Start-ToolkitUpdatePage {
-    param(
-        [switch]$FromSettings,
-        [switch]$Preview,
-        [hashtable]$Shell = $null
-    )
+function Invoke-ToolkitSysUpdate {
+    param([array]$Tools = @())
 
-    Reset-UpdateAvailabilityCache
-    $info = Get-UpdateAvailability
-    $lines = Get-ToolkitUpdateStatusLines -Info $info
-
-    if ($Shell) {
-        return Invoke-UpdatePage -Shell $Shell
-    }
-
-    $letterKeys = @{}
-    if ($FromSettings) {
-        $letterKeys['s'] = New-SettingsMenuEntry
-    }
-
-    $null = Show-BrandedContentPage -SectionTitle (Get-I18n -Key 'page.update.pageTitle') `
-        -Lines $lines -LetterKeys $letterKeys
-
-    return 0
-}
-
-function Invoke-ToolkitUpdate {
-    param(
-        [switch]$FromSettings,
-        [switch]$Preview
-    )
-
-    if ($FromSettings) {
-        return (Start-ToolkitUpdatePage -FromSettings -Preview:$Preview)
-    }
-
-    Invoke-StandalonePage {
-        param([hashtable]$Shell)
-
-        $nav = Invoke-UpdatePage -Shell $Shell
-        if (Test-ShellNavMarker $nav 'quit') { Invoke-MiaoShellQuit }
-    }
-
-    return 0
+    return (Start-ToolkitShellSession -Tools $Tools -InitialView Update)
 }

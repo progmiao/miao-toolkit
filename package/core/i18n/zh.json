@@ -1,179 +1,301 @@
-{
-  "brand": {
-    "title": "Miao 工具箱",
-    "author": "程序喵",
-    "description": "Windows 命令行工具集成与管理平台"
-  },
-  "header": {
-    "welcomeLine": "欢迎使用 Miao！",
-    "fallbackLogoMiddle": "   ( {shortName} )   "
-  },
-  "panel": {
-    "authorLine": "作者：{author}",
-    "versionLine": "版本号：{version}",
-    "releaseDateLine": "发布日期：{releaseDate}",
-    "versionReleaseLine": "v{version}  ·  {releaseDate}",
-    "emailLine": "邮箱：{email}"
-  },
-  "common": {
-    "hintSeparator": " |  ",
-    "action": {
-      "navSelect": "↑↓ 选择",
-      "navPage": "←→ 翻页",
-      "navScroll": "↑↓ 滚动",
-      "confirmEnter": "Enter 确认",
-      "quitEsc": "Esc 退出",
-      "backEsc": "Esc 返回",
-      "backQ": "Q 返回",
-      "confirmY": "Y 确认",
-      "cancelN": "N 取消",
-      "toggleSpace": "Space 勾选",
-      "inputBuffer": "输入: {buffer}",
-      "currentIndex": "当前 {index}"
+﻿{
+    "locale": {
+        "order": 1,
+        "code": "zh",
+        "name": "简体中文",
+        "isDefault": true
     },
-    "nav": {
-      "settings": "S 设置",
-      "help": "H 帮助"
-    },
-    "label": {
-      "version": "版本",
-      "releaseDate": "发布日期",
-      "locale": "界面语言"
-    },
-    "status": {
-      "installed": "已安装",
-      "notInstalled": "未安装",
-      "done": "完成",
-      "failed": "失败",
-      "installing": "安装中…",
-      "updating": "更新中…"
-    },
-    "unit": {
-      "item": "项",
-      "toolShort": "个"
-    },
-    "pagination": {
-      "page": "第 {current}/{total} 页",
-      "totalCount": " 共 {count} {unit}"
-    },
-    "cmd": {
-      "menu": "工具列表",
-      "list": "列出工具",
-      "version": "版本号",
-      "help": "帮助",
-      "install": "安装/更新全部工具依赖",
-      "installTool": "安装/更新指定工具依赖",
-      "uninstallTool": "卸载指定工具依赖",
-      "update": "打开工具箱更新页",
-      "lang": "切换界面语言",
-      "settings": "系统设置菜单",
-      "tool": "进入工具"
+    "content": {
+        "common": {
+            "author": "作者",
+            "versionNo": "版本号",
+            "email": "邮箱",
+            "confirm": "确认",
+            "cancel": "取消",
+            "back": "返回",
+            "quit": "退出",
+            "select": "选择",
+            "pageTurn": "翻页",
+            "scroll": "滚动",
+            "toggle": "勾选",
+            "nothingSelected": "请先勾选至少一项",
+            "settings": "设置",
+            "system": "系统",
+            "help": "帮助",
+            "menu": "菜单",
+            "option": "选项",
+            "nextStep": "下一步",
+            "backToList": "返回列表",
+            "command": "命令",
+            "unrecognized": "无法识别",
+            "tool": "工具",
+            "language": "语言",
+            "installed": "已安装",
+            "notInstalled": "未安装",
+            "done": "完成",
+            "failed": "失败",
+            "installing": "安装中…",
+            "updating": "更新中…",
+            "version": "版本",
+            "releaseDate": "发布日期",
+            "localeUi": "界面语言",
+            "press": "按",
+            "input": "输入",
+            "current": "当前",
+            "item": "项",
+            "piece": "个",
+            "nth": "第",
+            "page": "页",
+            "altogether": "共",
+            "totalSuffix": "",
+            "cmd": {
+                "menu": "工具列表",
+                "list": "列出工具",
+                "version": "版本号",
+                "help": "帮助",
+                "install": "工具箱依赖安装列表",
+                "installTool": "安装/更新指定工具的第三方依赖",
+                "uninstall": "工具箱依赖卸载列表",
+                "uninstallTool": "卸载指定工具的第三方依赖",
+                "update": "工具箱依赖更新列表",
+                "updateTool": "更新指定工具的第三方依赖",
+                "sys": "打开系统页",
+                "sysLang": "切换界面语言",
+                "sysInit": "初始化",
+                "sysUpdate": "更新工具箱",
+                "sysUninstall": "卸载工具箱",
+                "tool": "进入工具"
+            }
+        },
+        "brand": {
+            "title": "Miao 工具箱",
+            "author": "程序喵",
+            "description": "Windows 命令行工具集成与管理平台",
+            "welcomeLine": "欢迎使用 Miao！"
+        },
+        "message": {
+            "exitConfirmPrompt": "确认退出？",
+            "disabledNumber": "该选项尚未开放，请选择其他编号",
+            "invalidNumber": "编号不存在",
+            "disabledItem": "该选项尚未开放，请选择其他项",
+            "pathsNotInitialized": "{title} 路径未初始化，请通过 miao 命令启动",
+            "unknownTool": "未知工具: {toolId}",
+            "unknownCommand": "未知命令或工具: {command}",
+            "toolMissingEntry": "工具 {toolId} 缺少入口: {entry}",
+            "missingInstallScript": "缺少依赖安装脚本: {path}",
+            "missingManifest": "未找到 core/manifest.json",
+            "unsupportedLocale": "不支持的语言: {locale}",
+            "languageChangeFailed": "无法切换语言: {detail}",
+            "toolNoMissing": "工具 {command} 未配置 no，已在 index.json 中临时使用 9999",
+            "toolNoDuplicate": "工具编号重复: {no} ({firstCommand} / {secondCommand})",
+            "mockToolNoEntry": "该工具为菜单测试项，暂无入口",
+            "unknownSysCommand": "未知系统子命令: {command}"
+        },
+        "page": {
+            "home": {
+                "toolList": "工具列表",
+                "noToolsRegistered": "暂无已注册工具",
+                "toolMenuDefaultTitle": "功能菜单"
+            },
+            "afterTool": {
+                "backToToolList": "返回工具列表"
+            },
+            "help": {
+                "unknownCommand": "运行 miao -helper 查看帮助",
+                "toolHelpMissing": "工具 {toolId} 暂无使用说明"
+            },
+            "install": {
+                "pageTitle": "依赖安装/更新",
+                "pageStatusInstalled": "已安装 {version}",
+                "pageStatusUpdateAvailable": "可更新 {current} → {latest}",
+                "pageStatusUpdateAvailableShort": "可更新",
+                "pageNothingToDo": "所选工具无需安装或更新",
+                "noTargets": "没有需要安装依赖的工具",
+                "unknownTool": "未知工具: {toolId}",
+                "noExternalDeps": "工具 {toolId} 无外部依赖",
+                "missingUninstallScript": "工具 {toolId} 缺少 uninstall.ps1",
+                "uninstalling": "正在卸载 {name} 的依赖…",
+                "uninstallNeedsToolId": "请指定工具，例如: miao uninstall node",
+                "batchComplete": "全部处理完成",
+                "batchFailed": "以下工具失败: {tools}"
+            },
+            "update": {
+                "pageTitle": "更新工具箱",
+                "checkFailed": "无法检查远程版本，请稍后重试",
+                "statusLatest": "当前已是最新版本",
+                "statusAvailable": "发现新版本 v{latestVersion}",
+                "latestReleaseLabel": "最新发布",
+                "executeNotImplemented": "一键更新尚未开放，请使用 winget upgrade miao",
+                "sessionHint": "[!] Miao 有新版本 v{latestVersion}（当前 v{currentVersion}）。运行 miao sys update 或 winget upgrade miao 更新。"
+            },
+            "sys": {
+                "menuEntry": "系统",
+                "menuEntrySummary": "语言、初始化、更新与帮助",
+                "sectionTitle": "系统",
+                "action": {
+                    "langSummary": "切换界面显示语言",
+                    "init": "初始化",
+                    "initSummary": "重建工具箱与各工具初始化数据（不安装依赖）",
+                    "update": "更新工具箱",
+                    "updateSummary": "检查并更新 Miao 本体",
+                    "uninstall": "卸载工具箱",
+                    "uninstallSummary": "从本机卸载 Miao 程序",
+                    "helpSummary": "命令与工具概览"
+                }
+            },
+            "sysUninstall": {
+                "pageTitle": "卸载工具箱",
+                "notImplemented": "工具箱卸载流程尚未开放，请使用 winget uninstall miao。"
+            },
+            "init": {
+                "pageTitle": "初始化",
+                "statusReady": "准备初始化…",
+                "statusComplete": "初始化完成",
+                "statusFailed": "初始化失败",
+                "logScanFingerprint": "扫描配置指纹…",
+                "logPrepareDirectory": "准备初始化目录…",
+                "logBrandBuilt": "已构建 {locale} 品牌区快照",
+                "logCatalogBuilt": "已构建 {locale} 工具目录（{count} 个工具）",
+                "logHomeRowsBuilt": "已构建 {locale} 首页列表数据",
+                "logToolStateBuilt": "已探测工具 {toolId} 依赖状态",
+                "logComplete": "初始化完成",
+                "logFailed": "初始化失败：{detail}"
+            },
+            "toolboxDeps": {
+                "install": {
+                    "pageTitle": "工具箱 · 依赖安装"
+                },
+                "update": {
+                    "pageTitle": "工具箱 · 依赖更新",
+                    "notImplemented": "工具箱级依赖更新列表尚未开放，请使用 miao update <工具> 更新单个工具依赖。"
+                },
+                "uninstall": {
+                    "pageTitle": "工具箱 · 依赖卸载",
+                    "notImplemented": "工具箱级依赖卸载列表尚未开放，请使用 miao uninstall <工具> 卸载单个工具依赖。"
+                }
+            },
+            "lang": {
+                "inUse": "使用",
+                "changed": "已切换为 {locale}",
+                "alreadyCurrent": "当前已是 {locale}"
+            },
+            "toolDeps": {
+                "toolCommandNeedsToolId": "请指定工具，例如: miao install node",
+                "installLabel": "安装依赖",
+                "installSummary": "安装本工具所需的第三方依赖",
+                "updateLabel": "更新依赖",
+                "updateSummary": "更新本工具的第三方依赖",
+                "uninstallLabel": "卸载依赖",
+                "uninstallSummary": "卸载本工具的第三方依赖",
+                "backTarget": "功能菜单",
+                "installing": "正在安装 {name} 的依赖…"
+            },
+            "depOperation": {
+                "currentPrefix": "当前：",
+                "statusReady": "准备中…",
+                "statusDetect": "检测 {name}…",
+                "statusSkip": "跳过 {name}",
+                "statusReconcile": "补记 {name}",
+                "statusRun": "{command}",
+                "statusAction": "{name} — {action}",
+                "statusDone": "{name} 完成",
+                "statusFail": "{name} 失败",
+                "statusStallWarn": "仍在执行，请检查 UAC 或安装程序是否被阻断…（{seconds}s 无实质输出）",
+                "statusLoading": "{spinner} 正在执行…（{elapsed}s）",
+                "statusWingetStarting": "{spinner} 正在启动 winget…（{elapsed}s）",
+                "statusInstallerPrompt": "{spinner} 请在安装程序弹窗中确认…（{elapsed}s）",
+                "statusInstallerRunning": "{spinner} 正在安装，请稍候…（{elapsed}s）",
+                "statusDownload": "下载/安装中 {percent}%",
+                "statusAllDone": "全部完成",
+                "statusFailed": "处理失败",
+                "statusDownloadComplete": "下载完成",
+                "logSeparator": "────────────────────────────",
+                "logSectionPackage": "[{index}/{total}] {name}",
+                "logSectionTool": "工具 [{index}/{total}] {name}",
+                "logDetect": "检测 {name}",
+                "logVersionDrift": "记录 {recorded} 与实况 {actual} 不一致，将校正",
+                "logRecorded": "记录版本 {version}",
+                "logInstalled": "已安装版本 {version}",
+                "logDetected": "检测版本 {version}",
+                "logPolicyLine": "策略 {policy}",
+                "logSkip": "已满足 → 跳过 ({action})",
+                "logWillRun": "将执行：{action}",
+                "logInvokeWinget": "执行：{command}",
+                "logMayPrompt": "若弹出 UAC 或安装/卸载程序窗口，请确认以继续",
+                "logWingetStarting": "正在启动 winget…",
+                "logInstallerLaunched": "安装包已就绪，正在启动安装程序…",
+                "logStartInstall": "正在启动程序包安装…",
+                "logStartUninstall": "正在启动程序包卸载…",
+                "logWaitOther": "正在等待其他安装/卸载完成…",
+                "logDownloading": "正在下载…",
+                "logDownloadPercent": "下载进度 {percent}%",
+                "logDownloadComplete": "下载完成",
+                "logInstallPercent": "安装进度 {percent}%",
+                "logInstallComplete": "安装完成",
+                "logVerifying": "正在验证安装包…",
+                "logVerifyComplete": "已验证安装包哈希",
+                "logInstalling": "正在安装…",
+                "logUninstalling": "正在卸载…",
+                "logWorking": "winget 正在执行，请稍候…",
+                "wingetStreamPhrases": {
+                    "found": "已找到",
+                    "startInstall": "正在启动程序包安装",
+                    "startUninstall": "正在启动程序包卸载",
+                    "waitOther": "正在等待",
+                    "download": "正在下载",
+                    "verify": "正在验证",
+                    "verified": "已验证",
+                    "verifyOk": "已成功验证",
+                    "install": "正在安装",
+                    "uninstall": "正在卸载",
+                    "uacDeclined": "拒绝访问",
+                    "userCancelled": "已取消"
+                },
+                "logStallWarn": "长时间无输出：请检查是否被 UAC 或安装程序阻断（{seconds}s）",
+                "policy": {
+                    "latest": "始终最新"
+                },
+                "action": {
+                    "Install": "安装",
+                    "Upgrade": "升级",
+                    "Repair": "修复",
+                    "Reconcile": "补记状态",
+                    "Uninstall": "卸载",
+                    "Skip": "跳过"
+                },
+                "logAlreadyLatest": "{name} 已是最新版本",
+                "logAlreadyRemoved": "{name} 未安装或已卸载",
+                "logStallTimeout": "安装超时：未检测到安装程序确认或进度，已中止",
+                "logUserCancelled": "安装已取消或未确认",
+                "logUacDeclined": {
+                    "Install": "已拒绝 UAC 提升，安装未执行",
+                    "Upgrade": "已拒绝 UAC 提升，更新未执行",
+                    "Repair": "已拒绝 UAC 提升，修复未执行",
+                    "Uninstall": "已拒绝 UAC 提升，卸载未执行"
+                },
+                "logInstallerDeclined": {
+                    "Install": "安装已取消",
+                    "Upgrade": "更新已取消",
+                    "Repair": "修复已取消",
+                    "Uninstall": "卸载已取消"
+                },
+                "summaryBatchCounts": "成功 {success} 项，失败 {failed} 项",
+                "statusBatchDone": "全部项已处理（成功 {success}，失败 {failed}）",
+                "logNoApplicableInstaller": "{name} 无适用的安装包（该包可能不支持当前安装范围，请查看 winget 日志）",
+                "logReconciled": "{name} 已补记为 {version}",
+                "packageDone": "{name} 处理完成",
+                "packageFailed": "{name} 失败 (退出码 {code})",
+                "logUninstallVerified": "{name} 已卸载（实测包已不存在）",
+                "verifyFailed": "安装后仍无法运行: {command}",
+                "cancelled": "已取消",
+                "wingetMissing": "未找到 winget，请先安装「应用安装程序」或 App Installer。",
+                "summaryComplete": "全部处理完成",
+                "summaryAllLatest": "全部依赖已是最新",
+                "summaryNothingToDo": "无需安装或更新",
+                "summaryFailed": "处理失败，请查看上方日志",
+                "summaryUninstallComplete": "依赖卸载完成，已清除安装记录",
+                "summaryUninstallNothing": "未检测到已安装的依赖，已清除安装记录"
+            }
+        }
     }
-  },
-  "flash": {
-    "disabledNumber": "该选项尚未开放，请选择其他编号",
-    "invalidNumber": "编号不存在",
-    "disabledItem": "该选项尚未开放，请选择其他项"
-  },
-  "error": {
-    "pathsNotInitialized": "{title} 路径未初始化，请通过 miao 命令启动",
-    "unknownTool": "未知工具: {toolId}",
-    "unknownCommand": "未知命令或工具: {command}",
-    "toolMissingEntry": "工具 {toolId} 缺少入口: {entry}",
-    "missingInstallScript": "缺少依赖安装脚本: {path}",
-    "missingManifest": "未找到 core/manifest.json",
-    "unsupportedLocale": "不支持的语言: {locale}",
-    "languageChangeFailed": "无法切换语言: {detail}"
-  },
-  "warn": {
-    "toolNumberMissing": "工具 {toolId} 未配置 number，已在 index.json 中临时使用 9999",
-    "toolNumberDuplicate": "工具编号重复: {number} ({firstId} / {secondId})"
-  },
-  "shell": {
-    "exitConfirmPrompt": "确认退出？"
-  },
-  "page": {
-    "home": {
-      "toolList": "工具列表",
-      "defaultSection": "菜单",
-      "noToolsRegistered": "暂无已注册工具",
-      "colHeader": "     #  选项",
-      "toolMenuDefaultTitle": "功能菜单"
-    },
-    "afterTool": {
-      "title": "下一步",
-      "returnList": "[Enter]  返回工具列表",
-      "exit": "[Q]      退出 {shortName}",
-      "promptFallback": "Enter 返回列表 / Q 退出"
-    },
-    "help": {
-      "pageTitle": "帮助",
-      "commandsTitle": "命令:",
-      "toolsTitle": "工具:",
-      "unknownCommand": "运行 miao -helper 查看帮助",
-      "toolHelpMissing": "工具 {toolId} 暂无使用说明"
-    },
-    "install": {
-      "pageTitle": "依赖安装/更新",
-      "pageStatusInstalled": "已安装 {version}",
-      "pageStatusUpdateAvailable": "可更新 {current} → {latest}",
-      "pageStatusUpdateAvailableShort": "可更新",
-      "pageNothingToDo": "所选工具无需安装或更新",
-      "pagePressEnterToBack": "按 Enter 返回",
-      "noTargets": "没有需要安装依赖的工具",
-      "unknownTool": "未知工具: {toolId}",
-      "noExternalDeps": "工具 {toolId} 无外部依赖",
-      "missingUninstallScript": "工具 {toolId} 缺少 uninstall.ps1",
-      "uninstalling": "正在卸载 {name} 的依赖…",
-      "uninstallNeedsToolId": "请指定工具，例如: miao uninstall node",
-      "batchComplete": "全部处理完成",
-      "batchFailed": "以下工具失败: {tools}"
-    },
-    "update": {
-      "pageTitle": "更新工具箱",
-      "checkFailed": "无法检查远程版本，请稍后重试",
-      "statusLatest": "当前已是最新版本",
-      "statusAvailable": "发现新版本 v{latestVersion}",
-      "latestReleaseLabel": "最新发布",
-      "executeNotImplemented": "一键更新尚未开放，请使用 winget upgrade miao",
-      "sessionHint": "[!] Miao 有新版本 v{latestVersion}（当前 v{currentVersion}）。运行 miao update 或 winget upgrade miao 更新。"
-    },
-    "settings": {
-      "menuEntry": "系统设置",
-      "menuEntrySummary": "语言、版本、更新与帮助",
-      "sectionTitle": "系统设置",
-      "versionTitle": "版本信息",
-      "pressEnterToBack": "按 Enter 返回",
-      "action": {
-        "lang": "语言",
-        "langSummary": "切换界面显示语言",
-        "version": "查看版本",
-        "versionSummary": "工具箱版本与发布信息",
-        "update": "更新工具箱",
-        "updateSummary": "更新 Miao 本体",
-        "help": "帮助",
-        "helpSummary": "命令与工具概览",
-        "install": "依赖安装/更新",
-        "installSummary": "打开依赖管理页，勾选后批量安装或更新"
-      }
-    },
-    "lang": {
-      "sectionTitle": "选择语言",
-      "title": "语言",
-      "changed": "已切换为 {locale}",
-      "alreadyCurrent": "当前已是 {locale}",
-      "locale": {
-        "zh": "简体中文",
-        "en": "English"
-      }
-    },
-    "toolDeps": {
-      "installLabel": "安装/更新",
-      "installSummary": "安装或更新本工具第三方依赖",
-      "uninstallLabel": "卸载",
-      "uninstallSummary": "卸载本工具第三方依赖",
-      "pressEnterToBack": "按 Enter 返回功能菜单",
-      "installing": "正在安装 {name} 的依赖…"
-    }
-  }
 }

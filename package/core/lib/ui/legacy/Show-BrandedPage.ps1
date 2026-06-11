@@ -35,7 +35,9 @@ function Update-BrandedContentFooter {
     $footerColCount = 4
 
     $navSegments = @(
-        $(if ($Scrollable) { (Get-I18n -Key 'common.action.navScroll') } else { '' })
+        $(if ($Scrollable) {
+            Get-I18nArrowHint -Arrows $script:I18nKeys.ArrowsUpDown -LabelKey 'common.scroll'
+        } else { '' })
         ''
         ''
         ''
@@ -43,8 +45,8 @@ function Update-BrandedContentFooter {
 
     Write-MenuBarLine -Row $HintRow -InnerWidth $barWidth -Segments $navSegments -ColumnCount $footerColCount
     Write-MenuBarLine -Row $StatusRow -InnerWidth $barWidth -ColumnCount $footerColCount -Segments @(
-        (Get-I18n -Key 'common.action.backEsc')
-        (Get-I18n -Key 'common.nav.settings')
+        (Get-I18nKeyHint -Key $script:I18nKeys.Esc -LabelKey 'common.back')
+        (Get-I18nKeyHint -Key 'S' -LabelKey 'common.system')
         ''
         ''
     )

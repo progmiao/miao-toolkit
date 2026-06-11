@@ -1,4 +1,4 @@
-﻿# node — 一级功能菜单（读 index.json actions + 依赖管理）
+﻿# node — 一级功能菜单（单选列表 + 系统工具栏）
 
 param(
     [Parameter(Mandatory = $true)]
@@ -6,6 +6,8 @@ param(
 
     [Parameter(Mandatory = $true)]
     [string]$ToolRoot,
+
+    [hashtable]$ToolkitShell = $null,
 
     [int]$PageSize = 0,
     [int]$ViewHeight = 0,
@@ -15,39 +17,57 @@ param(
 $ErrorActionPreference = 'Stop'
 
 $coreLib = Join-Path $ToolRoot '..\..\core\lib'
-. (Join-Path $coreLib 'config\Paths.ps1')
-. (Join-Path $coreLib 'config\ListLayout.ps1')
-. (Join-Path $coreLib 'config\UserConfig.ps1')
-. (Join-Path $coreLib 'config\I18n.ps1')
-. (Join-Path $coreLib 'config\Deps-State.ps1')
-. (Join-Path $coreLib 'domain\Discover-Tools.ps1')
-. (Join-Path $coreLib 'domain\Ensure-ToolDeps.ps1')
-. (Join-Path $coreLib 'domain\Invoke-ToolkitDeps.ps1')
-. (Join-Path $coreLib 'ui\console\Console-Menu.ps1')
+
+# 嵌套脚本里 $script:MiaoCoreLoaded 不可见；用父作用域/全局已加载的 core 判断
+$coreReady = $false
+if ($global:MiaoCoreLoaded) { $coreReady = $true }
+elseif (Get-Command Import-MiaoModule -CommandType Function -ErrorAction SilentlyContinue) { $coreReady = $true }
+
+if (-not $coreReady) {
+    . (Join-Path $coreLib 'config\Paths.ps1')
+    . (Join-Path $coreLib 'config\ListLayout.ps1')
+    . (Join-Path $coreLib 'config\UserConfig.ps1')
+    . (Join-Path $coreLib 'config\I18n.ps1')
+    . (Join-Path $coreLib 'domain\Discover-Tools.ps1')
+    . (Join-Path $coreLib 'ui\console\Console-Menu.ps1')
+    . (Join-Path $coreLib 'ui\shell\Nav.ps1')
+    . (Join-Path $coreLib 'ui\shell\SystemToolbar.ps1')
+    . (Join-Path $coreLib 'ui\shell\SingleSelectList.ps1')
+    . (Join-Path $coreLib 'ui\shell\MultiSelectList.ps1')
+    . (Join-Path $coreLib 'ui\shell\Draw.ps1')
+    . (Join-Path $coreLib 'ui\shell\Header.ps1')
+    . (Join-Path $coreLib 'ui\shell\Title.ps1')
+    . (Join-Path $coreLib 'ui\shell\Exit.ps1')
+    . (Join-Path $coreLib 'ui\shell\Footer.ps1')
+    . (Join-Path $coreLib 'ui\shell\Layout.ps1')
+    foreach ($rel in @(
+            'domain\Check-Update.ps1'
+            'domain\Ensure-ToolDeps.ps1'
+            'config\Deps-State.ps1'
+            'domain\Invoke-ToolDepPackage.ps1'
+            'domain\Invoke-ToolkitDepOperation.ps1'
+            'ui\shell\DepOperationView.ps1'
+            'domain\Invoke-ToolkitDeps.ps1'
+        )) {
+        . (Join-Path $coreLib $rel)
+    }
+}
+
 Initialize-PathsFromToolRoot -ToolRoot $ToolRoot
 
 $paging = Resolve-MenuPagingDefaults -PageSize $PageSize -ViewHeight $ViewHeight
 $PageSize = $paging.PageSize
 $ViewHeight = $paging.ViewHeight
 
-$preview = Test-MiaoDevMode
-$tool = Get-ToolFromDirectory -ToolRoot $ToolRoot
-
-function Format-NodeActionLabel {
-    param($Action, [int]$Index)
-
-    $label = $Action.label
-    if (-not $Action.enabled) {
-        $label = "$label [即将推出]"
-    }
-    return "$label    $($Action.summary)"
+if (-not $ToolkitShell) {
+    $ToolkitShell = Initialize-ToolkitShell
 }
 
-function Test-NodeActionEnabled {
-    param($Action, [int]$Index)
+Sync-MiaoLocaleFromShell -Shell $ToolkitShell
+$tool = Get-ToolFromDirectory -ToolRoot $ToolRoot
 
-    if (Test-ToolDependencyMenuAction $Action) { return $true }
-    return [bool]$Action.enabled
+function Get-NodeToolSectionTitle {
+    return (Get-ToolSectionTitle -Tool $tool)
 }
 
 function Resolve-NodeActionScript {
@@ -64,28 +84,65 @@ function Invoke-NodeAction {
         return 1
     }
 
-    & $scriptPath -PageSize $PageSize -ViewHeight $ViewHeight -LtsOnly:$LtsOnly
-    return $LASTEXITCODE
+    $result = & $scriptPath -ToolkitShell $ToolkitShell -PageSize $PageSize -ViewHeight $ViewHeight -LtsOnly:$LtsOnly
+    if (Test-ShellNavMarker $result) {
+        return $result
+    }
+    if ($null -ne $result -and $result -is [int]) {
+        return $result
+    }
+    return 0
 }
 
-$header = New-ToolMenuHeader -ToolConfig $Config -SectionTitle '功能菜单'
+$toolbar = New-ShellSystemToolbarConfig
+$sectionTitle = Get-NodeToolSectionTitle
+$dependencyUpdateAvailable = $false
 
 while ($true) {
-    $menuItems = @(Get-ToolMenuItems -BusinessActions @($Config.actions) -Tool $tool)
+    Sync-MiaoLocaleFromShell -Shell $ToolkitShell
+    $tool = Get-ToolFromDirectory -ToolRoot $ToolRoot
 
-    $picked = Show-PaginatedMenu -Header $header -Items $menuItems -CountLabel '个功能' `
-        -HideColHeader `
-        -GetItemLabel ${function:Format-NodeActionLabel} `
-        -TestItemEnabled ${function:Test-NodeActionEnabled}
+    $probeChanged = Update-ToolDependencyMenuProbe -Tool $tool -Shell $ToolkitShell `
+        -UpdateMenuAvailable ([ref]$dependencyUpdateAvailable)
 
-    if (-not $picked) { exit 0 }
+    $menuItems = @(Get-ToolMenuItems -BusinessActions @($Config.actions) -Tool $tool `
+        -DependencyUpdateAvailable:$dependencyUpdateAvailable)
+
+    $currentLocale = Get-CurrentLocale
+    if ($probeChanged -or -not $ToolkitShell.HeaderLocale -or $ToolkitShell.HeaderLocale -ne $currentLocale) {
+        Clear-ShellSingleSelectListCache -Shell $ToolkitShell -CacheKey 'Node'
+        $sectionTitle = Get-NodeToolSectionTitle
+    }
+
+    $picked = Invoke-ShellSingleSelectList -Shell $ToolkitShell `
+        -SectionTitle $sectionTitle `
+        -Rows (ConvertTo-ToolMenuListRows -ToolRoot $ToolRoot -MenuItems $menuItems) `
+        -CacheKey 'Node' `
+        -ColumnLayout (New-ShellListColumnLayout -Preset MenuList) `
+        -ToolbarConfig $toolbar
+
+    if (-not $picked) {
+        return (Get-ShellNavMarker -Action 'back')
+    }
+    if (Test-ShellNavMarker $picked) {
+        return $picked
+    }
 
     if (Test-ToolDependencyMenuAction $picked) {
-        $null = Invoke-ToolDependencyMenuAction -Tool $tool -Action $picked -Preview:$preview
+        $depResult = Invoke-ToolDependencyMenuAction -Tool $tool -Action $picked -Shell $ToolkitShell `
+            -SectionTitle $sectionTitle
+        if (Test-ShellNavMarker $depResult) {
+            return $depResult
+        }
         Clear-DepsStateCache
-        Wait-ToolDependencyMenuContinue
+        Reset-ToolDependencyUpgradeProbe -Tool $tool -Shell $ToolkitShell
+        $dependencyUpdateAvailable = $false
+        Clear-ShellSingleSelectListCache -Shell $ToolkitShell -CacheKey 'Node'
         continue
     }
 
-    exit (Invoke-NodeAction $picked)
+    $code = Invoke-NodeAction $picked
+    if ($code -ne 0) {
+        Start-Sleep -Milliseconds 1200
+    }
 }

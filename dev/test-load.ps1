@@ -1,17 +1,20 @@
 ﻿$ErrorActionPreference = 'Stop'
-$lib = 'f:\note\miao-toolkit\package\core\lib'
+$lib = 'f:\code\miao\miao-toolkit\package\core\lib'
 . (Join-Path $lib 'bootstrap\Load-Core.ps1') -LibDirectory $lib
-Initialize-Paths -BinDirectory 'f:\note\miao-toolkit\package\bin'
+Initialize-Paths -BinDirectory 'f:\code\miao\miao-toolkit\package\bin'
+
+Import-MiaoModule -Name Help
+Import-MiaoModule -Name Sys
+Import-MiaoModule -Name Lang
 
 $names = @(
     'Show-ToolkitHelp'
-    'Start-SettingsSession'
+    'Start-SysSession'
     'Show-LanguagePicker'
-    'Wait-SettingsContinue'
     'Show-ToolkitHelpPage'
     'Initialize-ToolkitShell'
     'Invoke-HelpPage'
-    'Invoke-SettingsPage'
+    'Invoke-SysPage'
 )
 
 foreach ($n in $names) {

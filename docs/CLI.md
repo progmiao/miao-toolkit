@@ -49,7 +49,7 @@ winget install ProgMiao.Miao     # 同上（Package Id）
 
 | 命令 | 内容 |
 |------|------|
-| `miao -helper` | 命令列表 + 扫描 index.json 的 displayName / summary（**简略总览**） |
+| `miao -helper` | 命令列表 + 工具 name / description（**简略总览**） |
 | `miao help` | **与 `-helper` 相同**（无 `<tool>` 参数时） |
 | `miao help node` | 读取 `tools/node/help.md`（或 index.help 覆盖路径；**完整用户说明**） |
 

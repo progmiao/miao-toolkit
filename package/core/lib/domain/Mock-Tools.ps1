@@ -33,10 +33,11 @@ function Get-MockToolsForMenu {
     $result = @()
     foreach ($raw in @($cfg.tools)) {
         $tool = [ordered]@{
-            id              = [string]$raw.id
-            number          = [int]$raw.number
-            displayName     = [string]$raw.displayName
-            summary         = [string]$raw.summary
+            id              = [string]$raw.command
+            command         = [string]$raw.command
+            no              = [int]$raw.no
+            name            = [string]$raw.name
+            description     = [string]$raw.description
             entry           = 'index.ps1'
             install         = 'install.ps1'
             help            = 'help.md'
@@ -55,7 +56,7 @@ function Get-ToolkitMenuTools {
     param([array]$RealTools)
 
     if (-not (Test-MiaoDevMode)) {
-        return @($RealTools | Sort-Object { [int]$_.number })
+        return @($RealTools | Sort-Object { [int]$_.no })
     }
 
     $all = @($RealTools) + @(Get-MockToolsForMenu)
@@ -63,16 +64,16 @@ function Get-ToolkitMenuTools {
 
     $seen = @{}
     foreach ($t in $all) {
-        $n = [int]$t.number
+        $n = [int]$t.no
         if ($seen.ContainsKey($n)) {
-            Write-Warning "菜单工具编号重复: $n ($($seen[$n]) / $($t.id))"
+            Write-Warning "菜单工具编号重复: $n ($($seen[$n]) / $($t.command))"
         }
         else {
-            $seen[$n] = $t.id
+            $seen[$n] = $t.command
         }
     }
 
-    return @($all | Sort-Object { [int]$_.number })
+    return @($all | Sort-Object { [int]$_.no })
 }
 
 function Test-IsMockTool {

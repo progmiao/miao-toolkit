@@ -2,6 +2,132 @@
 
 $script:ManifestCache = $null
 
+function Test-ConsoleKeyAvailable {
+    if ($Host.Name -ne 'ConsoleHost') { return $false }
+
+    try {
+        return [Console]::KeyAvailable
+    }
+    catch {
+        return $false
+    }
+}
+
+function Initialize-ConsoleVirtualKeyPeek {
+    if ($script:ConsoleVirtualKeyPeekReady) { return }
+    $script:ConsoleVirtualKeyPeekReady = $true
+    if ($Host.Name -ne 'ConsoleHost') { return }
+
+    try {
+        Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+
+public static class MiaoConsoleVirtualKey {
+    private const int StdInputHandle = -10;
+    private const ushort KeyEventType = 1;
+
+    [StructLayout(LayoutKind.Explicit)]
+    public struct InputRecord {
+        [FieldOffset(0)] public ushort EventType;
+        [FieldOffset(4)] public KeyEventRecord KeyEvent;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct KeyEventRecord {
+        [MarshalAs(UnmanagedType.Bool)] public bool KeyDown;
+        public ushort RepeatCount;
+        public ushort VirtualKeyCode;
+        public ushort VirtualScanCode;
+        public char UnicodeChar;
+        public uint ControlKeyState;
+    }
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern IntPtr GetStdHandle(int nStdHandle);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool PeekConsoleInput(IntPtr hConsoleInput, out InputRecord lpBuffer, uint nLength, out uint lpNumberOfEventsRead);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool ReadConsoleInput(IntPtr hConsoleInput, out InputRecord lpBuffer, uint nLength, out uint lpNumberOfEventsRead);
+
+    private static string MapVirtualKey(ushort vk) {
+        if (vk == 27) { return "Escape"; }
+        if (vk == 13) { return "Enter"; }
+        if (vk == 38) { return "UpArrow"; }
+        if (vk == 40) { return "DownArrow"; }
+        return "Other";
+    }
+
+    private static string ReadNextKeyDown() {
+        IntPtr handle = GetStdHandle(StdInputHandle);
+        while (true) {
+            InputRecord record;
+            uint read;
+            if (!ReadConsoleInput(handle, out record, 1, out read) || read < 1) {
+                return null;
+            }
+            if (record.EventType != KeyEventType) { continue; }
+            if (!record.KeyEvent.KeyDown) { continue; }
+            return MapVirtualKey(record.KeyEvent.VirtualKeyCode);
+        }
+    }
+
+    public static string PeekNextKeyDown() {
+        IntPtr handle = GetStdHandle(StdInputHandle);
+        InputRecord record;
+        uint read;
+        if (!PeekConsoleInput(handle, out record, 1, out read) || read < 1) {
+            return null;
+        }
+        if (record.EventType != KeyEventType || !record.KeyEvent.KeyDown) {
+            return null;
+        }
+        return MapVirtualKey(record.KeyEvent.VirtualKeyCode);
+    }
+
+    public static string ConsumeNextKeyDown() {
+        return ReadNextKeyDown();
+    }
+}
+'@ -ErrorAction Stop
+        $script:ConsoleVirtualKeyPeekEnabled = $true
+    }
+    catch {
+        $script:ConsoleVirtualKeyPeekEnabled = $false
+    }
+}
+
+function Get-ConsoleVirtualKeyPeek {
+    Initialize-ConsoleVirtualKeyPeek
+    if (-not $script:ConsoleVirtualKeyPeekEnabled) { return $null }
+    if (-not (Test-ConsoleKeyAvailable)) { return $null }
+
+    try {
+        return [MiaoConsoleVirtualKey]::PeekNextKeyDown()
+    }
+    catch {
+        return $null
+    }
+}
+
+function Read-ConsoleVirtualKeyConsume {
+    Initialize-ConsoleVirtualKeyPeek
+    if (-not $script:ConsoleVirtualKeyPeekEnabled) {
+        if (-not (Test-ConsoleKeyAvailable)) { return $null }
+        $key = [Console]::ReadKey($true)
+        return [string]$key.Key
+    }
+
+    try {
+        return [MiaoConsoleVirtualKey]::ConsumeNextKeyDown()
+    }
+    catch {
+        return $null
+    }
+}
+
 function Initialize-Console {
     try {
         [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
@@ -28,7 +154,7 @@ function Initialize-Paths {
 
 function Get-Home {
     if (-not $script:HomeResolved) {
-        throw (Get-I18n -Key 'error.pathsNotInitialized')
+        throw (Get-I18n -Key 'message.pathsNotInitialized')
     }
     return $script:HomeResolved
 }
@@ -63,11 +189,28 @@ function Get-Manifest {
 
     $path = Get-ManifestRawPath
     if (-not (Test-Path $path)) {
-        throw (Get-I18n -Key 'error.missingManifest')
+        throw (Get-I18n -Key 'message.missingManifest')
     }
 
     $script:ManifestCache = Get-Content -Raw -Path $path -Encoding UTF8 | ConvertFrom-Json
     return $script:ManifestCache
+}
+
+function Write-ToolkitVersionLine {
+    Write-Host (Get-Manifest).version
+}
+
+function Format-ReleaseDate {
+    param([string]$Raw)
+
+    if ([string]::IsNullOrWhiteSpace($Raw)) { return '-' }
+    try {
+        return ([DateTime]::Parse($Raw)).ToString('yyyy-MM-dd')
+    }
+    catch {
+        if ($Raw -match '^(\d{4}-\d{2}-\d{2})') { return $Matches[1] }
+        return $Raw
+    }
 }
 
 function Get-ManifestTemplateVars {
@@ -129,7 +272,16 @@ function Get-MenuNumberWidth {
 
 function Get-ToolCommandName {
     param($Tool)
+    if ($Tool.command) { return [string]$Tool.command }
     if ($Tool.id) { return [string]$Tool.id }
+    return ''
+}
+
+function Get-ShellListItemCommand {
+    param($Item)
+
+    if ($Item.command) { return [string]$Item.command }
+    if ($Item.id) { return [string]$Item.id }
     return ''
 }
 
@@ -158,9 +310,8 @@ function Get-MenuColumnGap {
 function Get-ToolListColumnWidths {
     return @{
         command     = [int]$script:ToolkitToolListColumnWidths.command
-        displayName = [int]$script:ToolkitToolListColumnWidths.displayName
-        summary     = [int]$script:ToolkitToolListColumnWidths.summary
-        status      = [int]$script:ToolkitToolListColumnWidths.status
+        name        = [int]$script:ToolkitToolListColumnWidths.name
+        description = [int]$script:ToolkitToolListColumnWidths.description
     }
 }
 

@@ -10,6 +10,37 @@ function Register-ToolkitShellFooter {
     $Shell['FooterRenderer'] = $Renderer
 }
 
+function Register-ShellExitExtension {
+    param(
+        [hashtable]$Shell,
+        [scriptblock]$OnExitConfirmed
+    )
+
+    if (-not $Shell) { return }
+    if ($OnExitConfirmed) {
+        $Shell['ExitExtension'] = $OnExitConfirmed
+    }
+    else {
+        $Shell.Remove('ExitExtension')
+    }
+}
+
+function Clear-ShellExitExtension {
+    param([hashtable]$Shell)
+
+    if (-not $Shell) { return }
+    $Shell.Remove('ExitExtension')
+}
+
+function Invoke-ShellExitExtension {
+    param([hashtable]$Shell)
+
+    if (-not $Shell) { return }
+    if ($Shell.ExitExtension) {
+        & $Shell.ExitExtension
+    }
+}
+
 function Request-ShellExit {
     param([hashtable]$Shell)
 
@@ -59,9 +90,9 @@ function Write-ShellExitFooter {
     }
 
     $segments = @(
-        (Get-I18n -Key 'shell.exitConfirmPrompt')
-        (Get-I18n -Key 'common.action.confirmY')
-        (Get-I18n -Key 'common.action.cancelN')
+        (Get-I18n -Key 'message.exitConfirmPrompt')
+        (Get-I18nKeyHint -Key (Get-MiaoI18nKeys).Y -LabelKey 'common.confirm')
+        (Get-I18nKeyHint -Key (Get-MiaoI18nKeys).N -LabelKey 'common.cancel')
     )
     Write-MenuBarLine -Row $bottomRow -InnerWidth $lineWidth -Segments $segments `
         -ColumnCount $footerColCount -Color ([System.ConsoleColor]::Yellow)
@@ -102,6 +133,7 @@ function Read-ShellExitKey {
 
     if ($key.Key -eq 'Escape' -or ($key.KeyChar -match '^[yY]$')) {
         Clear-ShellExit -Shell $Shell
+        Invoke-ShellExitExtension -Shell $Shell
         return 'exitConfirmed'
     }
 
@@ -112,4 +144,64 @@ function Read-ShellExitKey {
 
     Restore-ShellExitFooter -Shell $Shell
     return 'exitCancel'
+}
+
+function Clear-ConsoleInputBuffer {
+    while (Test-ConsoleKeyAvailable) {
+        [void][Console]::ReadKey($true)
+    }
+}
+
+function Drain-ConsoleStaleToolbarInput {
+    param([int]$MaxEvents = 48)
+
+    $drained = 0
+    while ($drained -lt $MaxEvents -and (Test-ConsoleKeyAvailable)) {
+        $peek = Get-ConsoleVirtualKeyPeek
+        if (-not $peek) { break }
+        if ($peek -in @('Enter', 'Escape', 'UpArrow', 'DownArrow')) { break }
+        $null = Read-ConsoleVirtualKeyConsume
+        $drained++
+    }
+}
+
+function Drain-ConsoleEscInputIfAvailable {
+    param(
+        [hashtable]$Shell,
+        [scriptblock]$ProcessEsc = $null
+    )
+
+    if (-not $Shell) { return }
+
+    $handler = if ($ProcessEsc) { $ProcessEsc } else {
+        { Process-ShellEscInputIfAvailable -Shell $Shell }.GetNewClosure()
+    }
+
+    while (Test-ConsoleKeyAvailable) {
+        $peek = Get-ConsoleVirtualKeyPeek
+        if ($peek -ne 'Escape') { break }
+        $null = & $handler
+    }
+}
+
+function Process-ShellEscInputIfAvailable {
+    param([hashtable]$Shell)
+
+    if (-not $Shell) { return $null }
+    if (-not (Test-ConsoleKeyAvailable)) { return $null }
+
+    if ($Shell.ExitMode) {
+        return (Read-ShellExitKey -Shell $Shell)
+    }
+
+    $peek = Get-ConsoleVirtualKeyPeek
+    if ($peek -ne 'Escape') { return $null }
+
+    $vk = Read-ConsoleVirtualKeyConsume
+    if ($vk -eq 'Escape') {
+        Request-ShellExit -Shell $Shell
+        return 'exitConfirm'
+    }
+
+    return $null
 }

@@ -10,6 +10,11 @@ param(
     [Alias('d')]
     [switch]$SetDefault,
 
+    [Alias('u')]
+    [switch]$Uninstall,
+
+    [hashtable]$ToolkitShell = $null,
+
     [int]$PageSize = 0,
     [int]$ViewHeight = 0,
     [switch]$LtsOnly
@@ -58,6 +63,7 @@ $mode = $null
 if ($Install.IsPresent) { $mode = 'Install' }
 elseif ($PinProject.IsPresent) { $mode = 'Pin' }
 elseif ($SetDefault.IsPresent) { $mode = 'Default' }
+elseif ($Uninstall.IsPresent) { $mode = 'Uninstall' }
 
 if ($mode) {
     $action = $actions | Where-Object { $_.param.switch -eq $mode } | Select-Object -First 1
@@ -66,7 +72,11 @@ if ($mode) {
         exit 1
     }
     if (-not $action.enabled) {
-        Write-Host "功能「$($action.label)」尚未开放。" -ForegroundColor Yellow
+        $label = [string]$action.command
+        if (Get-Command Resolve-ToolI18nLabel -ErrorAction SilentlyContinue) {
+            $label = Resolve-ToolI18nLabel -ToolRoot $ToolRoot -Key ([string]$action.name) -Fallback $label
+        }
+        Write-Host "功能「$label」尚未开放。" -ForegroundColor Yellow
         exit 1
     }
     $scriptPath = Resolve-ActionScript $action.script
@@ -75,4 +85,17 @@ if ($mode) {
 }
 
 $mainScript = Join-Path $ToolRoot 'lib/main.ps1'
-& $mainScript -Config $config -ToolRoot $ToolRoot @PSBoundParameters
+$mainParams = @{
+    Config     = $config
+    ToolRoot   = $ToolRoot
+    PageSize   = $PageSize
+    ViewHeight = $ViewHeight
+    LtsOnly    = $LtsOnly
+}
+$mainParams['ToolkitShell'] = $ToolkitShell
+if ($ToolkitShell) {
+    return (. $mainScript @mainParams)
+}
+
+$result = & $mainScript @mainParams
+exit $(if ($null -eq $result) { 0 } else { [int]$result })

@@ -1,6 +1,8 @@
-﻿# node — 浏览并安装（nodejs.org 版本列表）
+﻿# node — 浏览并安装（Shell 多选版本列表）
 
 param(
+    [hashtable]$ToolkitShell = $null,
+
     [int]$PageSize = 0,
     [int]$ViewHeight = 0,
     [switch]$LtsOnly
@@ -10,175 +12,398 @@ $ErrorActionPreference = 'Stop'
 
 $toolRoot = Split-Path $PSScriptRoot -Parent
 $coreLib = Join-Path $toolRoot '..\..\core\lib'
-. (Join-Path $coreLib 'config\Paths.ps1')
-. (Join-Path $coreLib 'config\ListLayout.ps1')
-. (Join-Path $coreLib 'config\UserConfig.ps1')
-. (Join-Path $coreLib 'config\I18n.ps1')
-. (Join-Path $coreLib 'ui\console\Console-Menu.ps1')
+
+function Import-NodeBrowseInstallCore {
+    if (-not (Get-Command Initialize-PathsFromToolRoot -ErrorAction SilentlyContinue)) {
+        . (Join-Path $coreLib 'config\Paths.ps1')
+        . (Join-Path $coreLib 'config\ListLayout.ps1')
+        . (Join-Path $coreLib 'config\UserConfig.ps1')
+        . (Join-Path $coreLib 'config\I18n.ps1')
+    }
+
+    # 子脚本 (&) 内须本地 dot-source：global 只有 Invoke 等副本，缺 Show/Handlers 等配套函数
+    . (Join-Path $coreLib 'ui\console\Console-Menu.ps1')
+    . (Join-Path $coreLib 'ui\shell\Nav.ps1')
+    . (Join-Path $coreLib 'ui\shell\SystemToolbar.ps1')
+    . (Join-Path $coreLib 'ui\shell\SingleSelectList.ps1')
+    . (Join-Path $coreLib 'ui\shell\MultiSelectList.ps1')
+    . (Join-Path $coreLib 'ui\shell\Draw.ps1')
+    . (Join-Path $coreLib 'ui\shell\Header.ps1')
+    . (Join-Path $coreLib 'ui\shell\Title.ps1')
+    . (Join-Path $coreLib 'ui\shell\Exit.ps1')
+    . (Join-Path $coreLib 'ui\shell\Footer.ps1')
+    . (Join-Path $coreLib 'ui\shell\Layout.ps1')
+}
+
+Import-NodeBrowseInstallCore
+. (Join-Path $PSScriptRoot 'volta-node.ps1')
 Initialize-PathsFromToolRoot -ToolRoot $toolRoot
 
 $paging = Resolve-MenuPagingDefaults -PageSize $PageSize -ViewHeight $ViewHeight
 $PageSize = $paging.PageSize
 $ViewHeight = $paging.ViewHeight
 
-$configPath = Join-Path $toolRoot 'index.json'
-$toolConfig = Get-Content -Raw -Path $configPath -Encoding UTF8 | ConvertFrom-Json
-
-function Get-InstalledNodeVersions {
-    if (-not (Get-Command volta -ErrorAction SilentlyContinue)) {
-        return @{ Map = @{}; Default = $null }
-    }
-
-    $installed = @{}
-    $defaultVer = $null
-    $raw = & volta list 2>$null | Out-String
-
-    foreach ($line in ($raw -split "`n")) {
-        if ($line -match 'node@([0-9.]+)(?:\s+\(default\))?') {
-            $ver = $Matches[1]
-            $installed[$ver] = $true
-            if ($line -match '\(default\)') { $defaultVer = $ver }
-        }
-    }
-
-    return @{ Map = $installed; Default = $defaultVer }
+$standaloneShell = $false
+if (-not $ToolkitShell) {
+    $ToolkitShell = Initialize-ToolkitShell
+    $standaloneShell = $true
 }
 
-function Get-ActiveNodeVersion {
-    if (-not (Get-Command node -ErrorAction SilentlyContinue)) { return $null }
+Sync-MiaoLocaleFromShell -Shell $ToolkitShell
+
+function Get-NodeBrowseI18n {
+    param(
+        [string]$Key,
+        [hashtable]$Vars = @{}
+    )
+
+    return Get-ToolI18n -ToolRoot $toolRoot -Key $Key -Vars $Vars
+}
+
+function Get-NodeBrowseInstallSectionTitle {
+    return (Resolve-ToolI18nLabel -ToolRoot $toolRoot -Key 'node.browse.sectionTitle' `
+        -Fallback '浏览并安装')
+}
+
+function Get-NodeBrowseInstallVersionLabel {
+    param(
+        $Item,
+        [hashtable]$InstalledMap,
+        [string]$DefaultVersion,
+        [string]$ActiveVersion
+    )
+
+    return (Format-NodeVersionMenuLabel -Item $Item -InstalledMap $InstalledMap `
+        -DefaultVersion $DefaultVersion -ActiveVersion $ActiveVersion)
+}
+
+function Build-NodeBrowseInstallRows {
+    param(
+        [array]$Items,
+        [hashtable]$InstalledMap,
+        [string]$DefaultVersion,
+        [string]$ActiveVersion
+    )
+
+    return ConvertTo-ShellListRows -Items $Items -KeepSource -MapCells {
+        param($Item, [int]$Index)
+        @(
+            (Get-NodeBrowseInstallVersionLabel -Item $Item -InstalledMap $InstalledMap `
+                -DefaultVersion $DefaultVersion -ActiveVersion $ActiveVersion)
+        )
+    } -GetEnabled {
+        param($Item, [int]$Index)
+        -not $InstalledMap.ContainsKey([string]$Item.Version)
+    }
+}
+
+function Resolve-NodeBrowseInstallNameColumnWidth {
+    param([hashtable]$Shell)
+
+    $metrics = Get-ToolkitShellContentMetrics -Shell $Shell
+    $numWidth = Get-ListNumberDisplayWidth -TotalCount 999
+    $gap = Get-MenuColumnGap
+    $prefixReserve = 2 + 3 + 1 + $numWidth + $gap
+    return [Math]::Max(12, [int]$metrics.EndColumn - $prefixReserve)
+}
+
+function Get-NodeBrowseListLineIndent {
+    # 与多选列表行前缀左缘一致（" $mark $check …"）
+    return ' '
+}
+
+function Format-NodeBrowseListLine {
+    param([string]$Text)
+
+    return (Get-NodeBrowseListLineIndent) + $Text
+}
+
+function Write-NodeBrowseInstallLoadingLine {
+    param(
+        [hashtable]$Shell,
+        [string]$Spinner
+    )
+
+    $layout = $Shell.Layout
+    $text = Format-NodeBrowseListLine -Text (Get-NodeBrowseI18n -Key 'node.browse.loading' -Vars @{
+            spinner = $Spinner
+        })
+    $row = [int]$layout.ListStartRow
+    $useBatch = Test-ShellConsoleBatchDraw
+    if ($useBatch -and $script:ConsoleDrawBatchDepth -le 0) {
+        Enter-ConsoleDrawBatch
+    }
+    Prepare-ConsoleRowWrite -Row $row
+    Write-FixedLine $row $text -Color Yellow
+    Set-ConsoleCursorAfterRowWrite -Row $row
+    if ($useBatch) {
+        $null = Complete-ConsoleDrawBatch -ToolkitShell $Shell
+    }
+    if ((Get-ConsoleViewportTop) -gt 0) {
+        $null = Sync-ConsoleViewportTop
+    }
+}
+
+function Show-NodeBrowseInstallLoadingFrame {
+    param(
+        [hashtable]$Shell,
+        [string]$SectionTitle,
+        [string]$Spinner = '|'
+    )
+
+    Initialize-ToolkitShellBodyView -Shell $Shell -SectionTitle $SectionTitle -FooterTemplate SystemToolbarOnly
+    Write-NodeBrowseInstallLoadingLine -Shell $Shell -Spinner $Spinner
+    $layout = $Shell.Layout
+    for ($row = 1; $row -lt $layout.ListViewportHeight; $row++) {
+        Write-FixedLine ($layout.ListStartRow + $row) '' -Color DarkGray
+    }
+    $toolbar = New-ShellSystemToolbarConfig
+    Write-ToolkitShellFooter -Shell $Shell -Template SystemToolbarOnly -ToolbarConfig $toolbar
+    Finalize-ToolkitShellBodyView -Shell $Shell
+}
+
+function Start-NodeBrowseRemoteVersionsFetch {
+    param([switch]$LtsOnly)
+
+    $job = Start-Job -ArgumentList @([bool]$LtsOnly) -ScriptBlock {
+        param([bool]$LtsOnlyFlag)
+
+        $ErrorActionPreference = 'Stop'
+        $releases = Invoke-RestMethod 'https://nodejs.org/dist/index.json'
+        if ($LtsOnlyFlag) {
+            $releases = @($releases | Where-Object { $_.lts -ne $false })
+        }
+
+        return @($releases | ForEach-Object {
+                [PSCustomObject]@{
+                    Version = ($_.version -replace '^v', '')
+                    Lts     = $_.lts
+                    Date    = $_.date
+                }
+            })
+    }
+
+    return @{ Job = $job }
+}
+
+function Complete-NodeBrowseRemoteVersionsFetch {
+    param($Fetch)
+
+    if (-not $Fetch -or -not $Fetch.Job) { return $null }
+
     try {
-        $v = (& node -v 2>$null).ToString().Trim()
-        if ($v) { return ($v -replace '^v', '') }
+        $result = Receive-Job -Job $Fetch.Job -ErrorAction Stop
+        return @($result)
+    }
+    finally {
+        Remove-Job -Job $Fetch.Job -Force -ErrorAction SilentlyContinue
+    }
+}
+
+function Stop-NodeBrowseRemoteVersionsFetch {
+    param($Fetch)
+
+    if (-not $Fetch -or -not $Fetch.Job) { return }
+
+    try {
+        if ($Fetch.Job.State -eq 'Running') {
+            Stop-Job -Job $Fetch.Job -ErrorAction SilentlyContinue
+        }
     }
     catch {}
-    return $null
+    finally {
+        Remove-Job -Job $Fetch.Job -Force -ErrorAction SilentlyContinue
+    }
 }
 
-function Get-AllRemoteVersions {
-    param([bool]$LtsOnly)
+function Test-NodeBrowseRemoteVersionsFetchRunning {
+    param($Fetch)
 
-    $releases = Invoke-RestMethod 'https://nodejs.org/dist/index.json'
-    if ($LtsOnly) {
-        $releases = $releases | Where-Object { $_.lts -ne $false }
+    return ($Fetch -and $Fetch.Job -and $Fetch.Job.State -eq 'Running')
+}
+
+function Wait-NodeBrowseRemoteVersionsLoad {
+    param(
+        [hashtable]$Shell,
+        [string]$SectionTitle,
+        $Fetch
+    )
+
+    $toolbar = New-ShellSystemToolbarConfig
+    $spinnerFrames = @('|', '/', '-', '\')
+    $spinnerIndex = 0
+
+    Show-NodeBrowseInstallLoadingFrame -Shell $Shell -SectionTitle $SectionTitle `
+        -Spinner $spinnerFrames[0]
+
+    while ($true) {
+        $spinner = $spinnerFrames[$spinnerIndex % $spinnerFrames.Count]
+        Write-NodeBrowseInstallLoadingLine -Shell $Shell -Spinner $spinner
+        $spinnerIndex++
+
+        if (-not (Test-NodeBrowseRemoteVersionsFetchRunning -Fetch $Fetch)) {
+            break
+        }
+
+        if (Test-ConsoleKeyAvailable) {
+            $key = Read-ShellSystemToolbarKey -Shell $Shell -ToolbarConfig $toolbar
+            if ($key -eq 'exitCancel') { continue }
+            if ($key -eq 'exitConfirmed') {
+                Stop-NodeBrowseRemoteVersionsFetch -Fetch $Fetch
+                return @{ Nav = (Get-ShellNavMarker -Action 'quit'); Remote = $null; Error = $null }
+            }
+            if (Test-ShellNavMarker $key) {
+                Stop-NodeBrowseRemoteVersionsFetch -Fetch $Fetch
+                return @{ Nav = $key; Remote = $null; Error = $null }
+            }
+        }
+
+        Start-Sleep -Milliseconds 120
     }
 
-    return $releases | ForEach-Object {
-        [PSCustomObject]@{
-            Version = ($_.version -replace '^v', '')
-            Lts     = $_.lts
-            Date    = $_.date
+    try {
+        $remote = Complete-NodeBrowseRemoteVersionsFetch -Fetch $Fetch
+        return @{ Nav = $null; Remote = $remote; Error = $null }
+    }
+    catch {
+        return @{ Nav = $null; Remote = $null; Error = $_ }
+    }
+}
+
+function Show-NodeBrowseInstallSelectionPreview {
+    param(
+        [hashtable]$Shell,
+        [array]$Items
+    )
+
+    $sectionTitle = Get-NodeBrowseI18n -Key 'node.browse.selectedTitle' -Vars @{
+        count = [string]$Items.Count
+    }
+    Initialize-ToolkitShellBodyView -Shell $Shell -SectionTitle $sectionTitle -FooterTemplate SystemToolbarOnly
+    $layout = $Shell.Layout
+    $viewport = [Math]::Max(1, [int]$layout.ListViewportHeight)
+
+    Write-FixedLine $layout.ListStartRow (Get-NodeBrowseI18n -Key 'node.browse.selectedHint') -Color DarkGray
+    $row = 1
+    foreach ($item in @($Items)) {
+        if ($row -ge ($viewport - 1)) { break }
+        Write-FixedLine ($layout.ListStartRow + $row) "  $($item.Version)" -Color Gray
+        $row++
+    }
+    for (; $row -lt $viewport; $row++) {
+        Write-FixedLine ($layout.ListStartRow + $row) '' -Color DarkGray
+    }
+
+    $toolbar = New-ShellSystemToolbarConfig -HideSystem -HideHelp
+    $barWidth = if ($Shell.BrandInnerWidth -gt 0) { $Shell.BrandInnerWidth } else { $layout.BrandInnerWidth }
+    $lineWidth = Get-BrandSeparatorLineWidth -BrandInnerWidth $barWidth
+    $enterHint = Format-I18nPressEnterBack
+    Write-MenuBarLine -Row $layout.ToolbarRow -InnerWidth $lineWidth `
+        -Segments @($enterHint, '', '', '', '') -ColumnCount 5
+
+    while ($true) {
+        $confirm = Read-ShellExitIfActive -Shell $Shell
+        if ($confirm -eq 'exitCancel') { continue }
+        if ($confirm -eq 'exitConfirmed') {
+            return (Get-ShellNavMarker -Action 'quit')
+        }
+
+        $key = Read-ShellSystemToolbarKey -Shell $Shell -ToolbarConfig $toolbar -AllowEnter
+        if ($key -eq 'enter') {
+            return (Get-ShellNavMarker -Action 'back')
+        }
+        if (Test-ShellNavMarker $key) {
+            return $key
         }
     }
 }
 
-function Format-NodeVersionLabel {
-    param($Item, [int]$Index)
+function Invoke-NodeBrowseInstallPage {
+    param([hashtable]$Shell)
 
-    $script:NodeVersionInstalledMap = if ($script:NodeVersionInstalledMap) { $script:NodeVersionInstalledMap } else { @{} }
-    $script:NodeVersionDefault = if ($null -ne $script:NodeVersionDefault) { $script:NodeVersionDefault } else { '' }
-    $script:NodeVersionActive = if ($null -ne $script:NodeVersionActive) { $script:NodeVersionActive } else { '' }
-
-    $tag = ''
-    if ($Item.Version -eq $script:NodeVersionActive) { $tag += ' [当前]' }
-    if ($script:NodeVersionInstalledMap.ContainsKey($Item.Version)) { $tag += ' [已安装]' }
-    if ($Item.Version -eq $script:NodeVersionDefault) { $tag += ' [默认]' }
-    if ($Item.Lts -and $Item.Lts -ne $false) { $tag += " [LTS:$($Item.Lts)]" }
-
-    return "$($Item.Version)$tag"
-}
-
-# --- main ---
-
-if (-not (Get-Command volta -ErrorAction SilentlyContinue)) {
-    Write-MessageBlock -Title '未找到 Volta' -Lines @(
-        '无法安装 Node 版本。',
-        '请运行: winget install Volta.Volta'
-    ) -TitleColor Red
-    exit 1
-}
-
-Clear-Host
-Write-Host ''
-Write-Host ' 正在加载 Node 版本列表...' -ForegroundColor Yellow
-
-$voltaInfo = Get-InstalledNodeVersions
-$script:NodeVersionInstalledMap = $voltaInfo.Map
-$script:NodeVersionDefault = $voltaInfo.Default
-$script:NodeVersionActive = Get-ActiveNodeVersion
-
-try {
-    $remote = @(Get-AllRemoteVersions -LtsOnly:$LtsOnly)
-}
-catch {
-    Write-MessageBlock -Title '加载失败' -Lines @($_.Exception.Message) -TitleColor Red
-    exit 1
-}
-
-$items = [System.Collections.Generic.List[object]]::new()
-$seen = @{}
-
-foreach ($r in $remote) {
-    if (-not $seen[$r.Version]) {
-        $items.Add($r)
-        $seen[$r.Version] = $true
+    if (-not (Get-Command volta -ErrorAction SilentlyContinue)) {
+        Initialize-ToolkitShellBodyView -Shell $Shell -SectionTitle (Get-NodeBrowseInstallSectionTitle) `
+            -FooterTemplate SystemToolbarOnly
+        $layout = $Shell.Layout
+        Write-FixedLine $layout.ListStartRow (Get-NodeBrowseI18n -Key 'node.browse.voltaMissing') -Color Red
+        Start-Sleep -Milliseconds 1200
+        return (Get-ShellNavMarker -Action 'back')
     }
-}
 
-foreach ($ver in $script:NodeVersionInstalledMap.Keys) {
-    if (-not $seen[$ver]) {
-        $items.Add([PSCustomObject]@{
-                Version = $ver
-                Lts     = $false
-                Date    = ''
-            })
-        $seen[$ver] = $true
+    $sectionTitle = Get-NodeBrowseInstallSectionTitle
+    $fetch = Start-NodeBrowseRemoteVersionsFetch -LtsOnly:$LtsOnly
+    $loadResult = Wait-NodeBrowseRemoteVersionsLoad -Shell $Shell -SectionTitle $sectionTitle -Fetch $fetch
+    if ($loadResult.Nav) {
+        return $loadResult.Nav
     }
+
+    try {
+        if ($loadResult.Error) {
+            throw $loadResult.Error
+        }
+        $remote = @($loadResult.Remote)
+    }
+    catch {
+        Initialize-ToolkitShellBodyView -Shell $Shell -SectionTitle $sectionTitle -FooterTemplate SystemToolbarOnly
+        $layout = $Shell.Layout
+        Write-FixedLine $layout.ListStartRow (Get-NodeBrowseI18n -Key 'node.browse.loadFailed') -Color Red
+        Write-FixedLine ($layout.ListStartRow + 1) $_.Exception.Message -Color DarkGray
+        Start-Sleep -Milliseconds 1500
+        return (Get-ShellNavMarker -Action 'back')
+    }
+
+    $voltaInfo = Get-VoltaNodeVersionInfo
+    $activeVersion = Get-ActiveNodeVersion
+
+    $items = [System.Collections.Generic.List[object]]::new()
+    $seen = @{}
+    foreach ($r in $remote) {
+        if (-not $seen[$r.Version]) {
+            $items.Add($r)
+            $seen[$r.Version] = $true
+        }
+    }
+    foreach ($ver in $voltaInfo.Map.Keys) {
+        if (-not $seen[$ver]) {
+            $items.Add((New-NodeVersionMenuItem -Version $ver))
+            $seen[$ver] = $true
+        }
+    }
+
+    $sorted = Sort-NodeVersionItems -Items @($items.ToArray())
+    if ($sorted.Count -eq 0) {
+        Initialize-ToolkitShellBodyView -Shell $Shell -SectionTitle $sectionTitle -FooterTemplate SystemToolbarOnly
+        $layout = $Shell.Layout
+        Write-FixedLine $layout.ListStartRow (Get-NodeBrowseI18n -Key 'node.browse.noVersions') -Color Yellow
+        Start-Sleep -Milliseconds 900
+        return (Get-ShellNavMarker -Action 'back')
+    }
+
+    $nameWidth = Resolve-NodeBrowseInstallNameColumnWidth -Shell $Shell
+    $rows = Build-NodeBrowseInstallRows -Items $sorted -InstalledMap $voltaInfo.Map `
+        -DefaultVersion $voltaInfo.Default -ActiveVersion $activeVersion
+
+    Clear-ShellMultiSelectListCache -Shell $Shell -CacheKey 'NodeBrowse'
+
+    $toolbar = New-ShellSystemToolbarConfig
+    $invokeMultiSelect = Get-Command Invoke-ShellMultiSelectList -CommandType Function -ErrorAction Stop
+    $picked = & $invokeMultiSelect -Shell $Shell -SectionTitle $sectionTitle `
+        -Rows $rows -CacheKey 'NodeBrowse' `
+        -ColumnLayout (New-ShellListColumnLayout -Widths @($nameWidth)) `
+        -ToolbarConfig $toolbar -CountLabel (Get-NodeBrowseI18n -Key 'node.browse.countUnit')
+
+    if (Test-ShellNavMarker $picked) {
+        return $picked
+    }
+    if ($null -eq $picked -or @($picked).Count -eq 0) {
+        return (Get-ShellNavMarker -Action 'back')
+    }
+
+    return Show-NodeBrowseInstallSelectionPreview -Shell $Shell -Items $picked
 }
 
-$items = @($items | Sort-Object { [version]($_.Version.Split('-')[0]) } -Descending)
-
-if ($items.Count -eq 0) {
-    Write-MessageBlock -Title '无可用版本' -TitleColor Yellow
+$result = Invoke-NodeBrowseInstallPage -Shell $ToolkitShell
+if ($standaloneShell) {
     exit 0
 }
-
-$header = New-ToolMenuHeader -ToolConfig $toolConfig -SectionTitle '浏览并安装 · 选择版本'
-$header.Description = 'Enter 确认后执行: volta install node@版本'
-
-$selected = Show-PaginatedMenu -Header $header -Items $items -CountLabel '个版本' `
-    -HideColHeader `
-    -GetItemLabel ${function:Format-NodeVersionLabel}
-
-if (-not $selected) {
-    Write-MessageBlock -Title '已取消' -TitleColor Yellow
-    exit 0
-}
-
-$ver = $selected.Version
-$resultLines = @("已选择: $ver")
-
-if ($script:NodeVersionInstalledMap.ContainsKey($ver)) {
-    $resultLines += '该版本已安装，仍可通过 Volta 切换使用。'
-}
-
-$resultLines += "执行: volta install node@$ver"
-Write-MessageBlock -Title '安装 Node' -Lines $resultLines -TitleColor Green
-
-& volta install "node@$ver"
-$code = $LASTEXITCODE
-
-$after = @()
-if ($code -eq 0) {
-    $after += '安装完成。'
-    if (Get-Command node -ErrorAction SilentlyContinue) {
-        $after += "当前 node: $(node -v)"
-    }
-}
-else {
-    $after += '安装未成功，请查看上方 Volta 输出。'
-}
-
-Write-MessageBlock -Title $(if ($code -eq 0) { '完成' } else { '提示' }) -Lines $after `
-    -TitleColor $(if ($code -eq 0) { 'Green' } else { 'Yellow' })
-
-exit $code
+return $result

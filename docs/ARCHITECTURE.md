@@ -42,7 +42,7 @@ miao-toolkit/
 │   │       └── pages/             # 路由页（小写文件名）
 │   │           ├── home.ps1
 │   │           ├── help.ps1
-│   │           ├── settings.ps1
+│   │           ├── set.ps1
 │   │           ├── lang.ps1
 │   │           └── update.ps1
 │   ├── scripts/
@@ -72,7 +72,7 @@ miao-toolkit/
 | 目录 | 小写（`config`、`domain`、`ui/shell`、`pages`） |
 | Shell 模块 | PascalCase 文件名（`Layout.ps1`、`Exit.ps1`） |
 | 页面路由 | 小写（`home.ps1`、`lang.ps1`） |
-| 加载 | **仅** `bootstrap/Load-Core.ps1`；`lib/` 根无散落 `.ps1` |
+| 加载 | **启动** `bootstrap/Load-Core.ps1`；**按需** `Import-MiaoModule -Name Help|Lang|Set|Update|Install|Tool`（注册到 global 作用域） |
 
 ## 二、Shell 四区布局
 
@@ -88,6 +88,28 @@ miao-toolkit/
 |------|-------------|--------|
 | Expanded | `pageSize`（home）或 `pageSize+1`（sub） | D 紧贴 Content |
 | Compressed | 仅 C 收缩 | D 贴窗底 |
+
+**Shell 公共组件（`ui/shell/`）：**
+
+| 组件 | API | 职责 |
+|------|-----|------|
+| 系统工具栏 | `New-ShellSystemToolbarConfig` | 退出/返回/设置/帮助；`-HideBack` / `-HideSettings` / `-HideHelp` |
+| 单选列表 | `Invoke-ShellSingleSelectList` | `ShellListRow`（Number + Cells + Source）+ 行号/选中/翻页 + 列表导航底栏行 |
+
+底栏布局：`ListWithToolbar`（列表页双行）/ `SystemToolbarOnly`（内容页单行）。
+
+**工具箱内容区宽度（全局）**：`Sync-ToolkitShellContentMetrics` 写入 `$Shell.ContentMetrics` / `$Shell.Layout.ContentMetrics`，各页统一使用：
+
+| 字段 | 含义 |
+|------|------|
+| `StartColumn` | 内容区左缘显示列（当前为 `1`，即行首一个前导空格） |
+| `InnerWidth` | 与 `BrandInnerWidth` 相同，品牌内容内宽 |
+| `LineWidth` | 含分隔线字符数的行内宽（`Get-BrandSeparatorLineWidth`） |
+| `EndColumn` | 内容区右缘显示列（`StartColumn + LineWidth`） |
+
+日志换行、分隔线、`按 Enter 返回` 等正文均应在 `StartColumn`～`EndColumn` 内对齐；勿贴控制台最左列。
+
+**底部通用工具栏（冻结）**：除非任务明确要求修改该组件，否则不要改动 `SystemToolbar.ps1`、`Exit.ps1` 中与 Esc/退出相关的语义与流程。既定行为为：**Esc 一次 → 底部退出确认栏**；在确认栏上 **Y/Esc 确认退出工具箱**、**N 取消**。各业务页（如依赖安装日志）只能在等待输入时追加参数（如 `-AllowEnter` 识别回车返回），**不得**把 Esc 改成直接返回或绕过退出确认。若确需改工具栏本身，须先与用户确认。
 
 切换视图时用当前 `Get-ConsoleLineHeight()` 重算 layout。
 
@@ -113,23 +135,23 @@ miao-toolkit/
 |------|------|-------------|----------|
 | 首页 | `pages/home.ps1` | `Invoke-HomePage` | `miao` |
 | 帮助 | `pages/help.ps1` | `Invoke-HelpPage` | `miao help` |
-| 设置 | `pages/settings.ps1` | `Invoke-SettingsPage` | `miao settings` |
+| 设置 | `pages/set.ps1` | `Invoke-SetPage` | `miao set` |
 | 语言 | `pages/lang.ps1` | `Invoke-LangPage` | `miao lang` |
 | 更新 | `pages/update.ps1` | `Invoke-UpdatePage` | `miao update` |
 
-Session `viewStack`：`ToolList` → `Help` / `Settings` / `Lang` / `Update`。
+Session `viewStack`：`ToolList` → `Help` / `Set` / `Lang` / `Update` / `Install`。
 
 ## 五、模块职责（业务）
 
 | 模块 | 路径 | 职责 |
 |------|------|------|
 | CLI 入口 | `bin/miao.ps1` | 解析参数，路由 |
-| 加载 | `bootstrap/Load-Core.ps1` | 按序 dot-source |
+| 加载 | `bootstrap/Load-Core.ps1`（启动层）+ `Import-MiaoModule.ps1`（页面按需） | 按序 dot-source |
 | 路径/配置 | `config/Paths.ps1`、`ListLayout.ps1`、`Deps-State.ps1` 等 | 安装根、`manifest.json`（[MANIFEST.md](MANIFEST.md)）、i18n、列表布局常量、deps-state |
 | 发现 | `domain/Discover-Tools.ps1` | 扫描 index.json |
 | 工具启动 | `domain/Invoke-Tool.ps1` | 执行 `index.ps1` |
 | 依赖状态 | `config/Deps-State.ps1`、`domain/Ensure-ToolDeps.ps1` | deps-state 读写；install/uninstall 后写版本 |
-| 依赖管理 | `domain/Invoke-ToolkitDeps.ps1`、`pages/install-deps.ps1` | 专页多选、工具内菜单 |
+| 依赖管理 | `domain/Invoke-ToolkitDeps.ps1`、`pages/install.ps1` | 专页多选、工具内菜单 |
 | 控制台菜单 | `ui/console/Console-Menu.ps1` | 分页引擎、`Write-FixedLine` |
 
 子工具若需复用 core 模块，应引用 `config/`、`domain/`、`ui/console/` 下的完整路径（见 `tools/node/`）。
@@ -138,7 +160,7 @@ Session `viewStack`：`ToolList` → `Help` / `Settings` / `Lang` / `Update`。
 
 | 场景 | 行为 |
 |------|------|
-| **首页** | 只读 `deps-state.json`：已安装 / 未安装 |
+| **首页** | 不展示依赖状态；进入工具或 `miao install` 时再读 `deps-state` |
 | **`miao install`** | 依赖管理专页：Space 多选，Enter 跑 `install.ps1` |
 | **进入工具** | 不检查、不自动装 |
 | **工具内菜单** | 未装仅「安装/更新」；已装有业务项 + 装/卸 |
@@ -146,9 +168,10 @@ Session `viewStack`：`ToolList` → `Help` / `Settings` / `Lang` / `Update`。
 ## 七、调用链
 
 ```
-miao → Load-Core → Start-ToolkitSession → Start-ToolkitShellSession
-     → viewStack[home|help|settings|lang|update|install]
-     → Invoke-Tool（无 Ensure-ToolDeps 自动装）
+miao → Load-Core（启动层）→ Start-ToolkitSession → Start-ToolkitShellSession
+     → Ensure-MiaoShellViewModule（进入视图时按需加载）
+     → viewStack[home|help|set|lang|update|install]
+     → Import-MiaoModule Tool → Invoke-Tool（无 Ensure-ToolDeps 自动装）
 ```
 
 ## 八、编码与兼容

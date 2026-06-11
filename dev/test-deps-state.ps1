@@ -3,11 +3,13 @@ $lib = Join-Path (Split-Path $PSScriptRoot -Parent) 'package\core\lib'
 . (Join-Path $lib 'bootstrap\Load-Core.ps1') -LibDirectory $lib
 Initialize-Paths -BinDirectory (Join-Path (Split-Path $PSScriptRoot -Parent) 'package\bin')
 
+Import-MiaoModule -Name Install
+
 foreach ($n in @(
         'Test-ToolDepInstalled'
         'Get-ToolDependencyStatus'
-        'Start-InstallDepsSession'
-        'Invoke-InstallDepsPage'
+        'Start-ToolboxDepInstallSession'
+        'Invoke-InstallPage'
         'Set-ToolDepInstalled'
         'Remove-ToolDepInstalled'
     )) {
