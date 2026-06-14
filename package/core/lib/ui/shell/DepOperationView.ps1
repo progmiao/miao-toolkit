@@ -30,6 +30,9 @@ function Register-DepOperationFnCache {
             'Update-ToolkitDepLoadingStatus'
             'Invoke-ToolkitDepLogInputIfAvailable'
             'Draw-ToolkitDepOperationView'
+            'Draw-ToolkitDepOperationLogViewport'
+            'Write-ToolkitDepFixedLineSegments'
+            'Get-ToolkitDepBatchSummarySegments'
             'Get-ToolkitDepStatusText'
             'Add-ToolkitDepLogLine'
             'Add-ToolkitDepLogSeparator'
@@ -63,7 +66,6 @@ function Register-DepOperationFnCache {
             'Get-ToolDepWingetCommandLine'
             'Get-ToolkitDepWingetOutputDecision'
             'Read-ShellSystemToolbarKey'
-            'Format-I18nPressEnterBack'
             'Clear-ShellExit'
             'Clear-ShellExitExtension'
             'Register-ShellExitExtension'
@@ -108,6 +110,23 @@ function New-ToolkitDepOperationLog {
     }
 }
 
+function Get-ToolkitDepOperationLogLines {
+    param($Log)
+
+    if ($null -eq $Log) { return $null }
+
+    if ($Log -is [System.Collections.IDictionary]) {
+        if ($Log.Contains('Lines')) {
+            return $Log['Lines']
+        }
+        if ($Log.ContainsKey('Lines')) {
+            return $Log['Lines']
+        }
+    }
+
+    return $Log.Lines
+}
+
 function Get-ToolkitDepLogWrapWidth {
     param(
         [string]$Kind,
@@ -118,7 +137,12 @@ function Get-ToolkitDepLogWrapWidth {
     if ($BrandInnerWidth -le 0) { return 0 }
 
     $fnLineWidth = Resolve-DepOperationFn 'Get-BrandSeparatorLineWidth'
-    $inner = & $fnLineWidth -BrandInnerWidth $BrandInnerWidth
+    $inner = if (Get-Command Get-BrandSeparatorLineWidth -CommandType Function -ErrorAction SilentlyContinue) {
+        Get-BrandSeparatorLineWidth -BrandInnerWidth $BrandInnerWidth
+    }
+    else {
+        & $fnLineWidth -BrandInnerWidth $BrandInnerWidth
+    }
     if ($Kind -eq 'separator') {
         return $inner
     }
@@ -150,6 +174,9 @@ function Add-ToolkitDepLogLine {
 
     if ($null -eq $Log) { return }
 
+    $lineList = Get-ToolkitDepOperationLogLines -Log $Log
+    if ($null -eq $lineList) { return }
+
     $lineColor = $Color
     if ($Kind -eq 'section') { $lineColor = [System.ConsoleColor]::Cyan }
     elseif ($Kind -in @('separator', 'hint')) { $lineColor = [System.ConsoleColor]::DarkGray }
@@ -162,7 +189,12 @@ function Add-ToolkitDepLogLine {
 
     $fnSplit = Resolve-DepOperationFn 'Split-DisplayTextToLines'
     $textLines = if ($wrapWidth -gt 0 -and -not [string]::IsNullOrEmpty($Text)) {
-        @(& $fnSplit -Text $Text -MaxWidth $wrapWidth)
+        if (Get-Command Split-DisplayTextToLines -CommandType Function -ErrorAction SilentlyContinue) {
+            @(Split-DisplayTextToLines -Text $Text -MaxWidth $wrapWidth)
+        }
+        else {
+            @(& $fnSplit -Text $Text -MaxWidth $wrapWidth)
+        }
     }
     else {
         @([string]$Text)
@@ -171,7 +203,7 @@ function Add-ToolkitDepLogLine {
     $isFirst = $true
     foreach ($textLine in $textLines) {
         $timestamp = if ($WithTimestamp -and $isFirst) { (Get-Date).ToString('HH:mm:ss') } else { '' }
-        $Log.Lines.Add([pscustomobject]@{
+        $lineList.Add([pscustomobject]@{
             Timestamp = $timestamp
             Text      = [string]$textLine
             Kind      = $Kind
@@ -180,8 +212,9 @@ function Add-ToolkitDepLogLine {
         $isFirst = $false
     }
 
-    while ($Log.Lines.Count -gt $script:ToolkitDepLogMaxLines) {
-        $Log.Lines.RemoveAt(0) | Out-Null
+    while ($lineList.Count -gt $script:ToolkitDepLogMaxLines) {
+        if ($lineList.Count -le 0) { break }
+        $lineList.RemoveAt(0) | Out-Null
         if ($Log.ScrollOffset -gt 0) { $Log.ScrollOffset-- }
     }
 
@@ -192,7 +225,10 @@ function Add-ToolkitDepLogLine {
 
 function Get-ToolkitDepLogMaxScroll {
     param($Log, [int]$ViewportRows)
-    return [Math]::Max(0, $Log.Lines.Count - $ViewportRows)
+
+    $lineList = Get-ToolkitDepOperationLogLines -Log $Log
+    $lineCount = if ($lineList) { [int]$lineList.Count } else { 0 }
+    return [Math]::Max(0, $lineCount - $ViewportRows)
 }
 
 function Complete-ToolkitDepInstallerPromptPhase {
@@ -250,8 +286,7 @@ function Invoke-ToolkitDepLogInputIfAvailable {
         $Log,
         [int]$ViewportRows,
         [scriptblock]$OnExitKey = $null,
-        [hashtable]$ScrollState = $null,
-        [switch]$AllowDismiss
+        [hashtable]$ScrollState = $null
     )
 
     $fnTestKey = Resolve-DepOperationFn 'Test-ConsoleKeyAvailable'
@@ -268,15 +303,6 @@ function Invoke-ToolkitDepLogInputIfAvailable {
             & $OnExitKey
             return 'exit'
         }
-        return 'none'
-    }
-    if ($AllowDismiss -and $peek -eq 'Enter') {
-        $vk = & $fnReadKey
-        if ($vk -eq 'Enter') { return 'dismiss' }
-        return 'none'
-    }
-    if ($AllowDismiss -and $peek -eq 'Other') {
-        $null = & $fnReadKey
         return 'none'
     }
     if ($peek -eq 'Other' -or $peek -eq 'Enter') { return 'none' }
@@ -346,14 +372,6 @@ function Add-ToolkitDepLogSection {
     Add-ToolkitDepLogLine -Log $Log -Text (Get-I18n -Key $key -Vars $vars) -Kind 'section' -WithTimestamp
 }
 
-function Add-ToolkitDepLogEpilogue {
-    param($Log)
-
-    if ($null -eq $Log) { return }
-    $fnFormatBack = Resolve-DepOperationFn 'Format-I18nPressEnterBack'
-    Add-ToolkitDepLogLine -Log $Log -Text (& $fnFormatBack) -Kind 'hint'
-}
-
 function Register-ToolkitDepRunnerItemResult {
     param(
         [hashtable]$RunnerState,
@@ -371,16 +389,97 @@ function Register-ToolkitDepRunnerItemResult {
 
 function Format-ToolkitDepBatchCountsText {
     param(
+        [ValidateSet('install', 'update', 'uninstall', 'init')]
+        [string]$Intent = 'install',
+        [int]$TotalCount = 0,
         [int]$SuccessCount,
         [int]$FailedCount
     )
 
-    if (($SuccessCount + $FailedCount) -le 0) { return '' }
+    if ($TotalCount -le 0) { $TotalCount = $SuccessCount + $FailedCount }
+    if ($TotalCount -le 0) { return '' }
 
     return (Get-I18n -Key 'page.depOperation.summaryBatchCounts' -Vars @{
+        total   = [string]$TotalCount
         success = [string]$SuccessCount
         failed  = [string]$FailedCount
     })
+}
+
+function Get-ToolkitDepBatchSummarySegments {
+    param(
+        [ValidateSet('install', 'update', 'uninstall', 'init')]
+        [string]$Intent,
+        [int]$TotalCount,
+        [int]$SuccessCount,
+        [int]$FailedCount
+    )
+
+    if ($TotalCount -le 0) { $TotalCount = $SuccessCount + $FailedCount }
+    if ($TotalCount -le 0) { return @() }
+
+    $doneKey = switch ($Intent) {
+        'install' { 'page.depOperation.summaryDoneInstall' }
+        'update' { 'page.depOperation.summaryDoneUpdate' }
+        'uninstall' { 'page.depOperation.summaryDoneUninstall' }
+        'init' { 'page.depOperation.summaryDoneInit' }
+        default { 'page.depOperation.summaryDoneInstall' }
+    }
+    $sep = Get-I18n -Key 'page.depOperation.summaryBatchSep'
+
+    return @(
+        @{ Text = (Get-I18n -Key $doneKey); Color = [System.ConsoleColor]::White }
+        @{
+            Text  = (Get-I18n -Key 'page.depOperation.summaryBatchTotal' -Vars @{ total = [string]$TotalCount })
+            Color = [System.ConsoleColor]::Cyan
+        }
+        @{ Text = $sep; Color = [System.ConsoleColor]::White }
+        @{
+            Text  = (Get-I18n -Key 'page.depOperation.summaryBatchSuccess' -Vars @{ success = [string]$SuccessCount })
+            Color = [System.ConsoleColor]::Green
+        }
+        @{ Text = $sep; Color = [System.ConsoleColor]::White }
+        @{
+            Text  = (Get-I18n -Key 'page.depOperation.summaryBatchFailed' -Vars @{ failed = [string]$FailedCount })
+            Color = [System.ConsoleColor]::Red
+        }
+    )
+}
+
+function Write-ToolkitDepFixedLineSegments {
+    param(
+        [int]$Row,
+        [array]$Segments,
+        [switch]$LeadingSpace
+    )
+
+    if ($null -eq $Segments -or $Segments.Count -eq 0) { return }
+
+    Prepare-ConsoleRowWrite -Row $Row
+    try { [Console]::SetCursorPosition(0, $Row) } catch { return }
+
+    $width = Get-SafeWriteLineWidth -Row $Row
+    $used = 0
+    if ($LeadingSpace -and $used -lt $width) {
+        Write-Host ' ' -NoNewline
+        $used++
+    }
+
+    foreach ($seg in $Segments) {
+        if (-not $seg) { continue }
+        if ($used -ge $width) { break }
+        $partWidth = Get-DisplayWidth $seg.Text
+        $remaining = $width - $used
+        $text = if ($partWidth -gt $remaining) { Truncate-DisplayText $seg.Text $remaining } else { $seg.Text }
+        if ([string]::IsNullOrEmpty($text)) { break }
+        Write-Host $text -NoNewline -ForegroundColor $seg.Color
+        $used += Get-DisplayWidth $text
+    }
+
+    if ($used -lt $width) {
+        Write-Host (' ' * ($width - $used)) -NoNewline
+    }
+    Set-ConsoleCursorAfterRowWrite -Row $Row
 }
 
 function Format-ToolkitDepLogLineText {
@@ -1043,6 +1142,51 @@ function Test-ToolkitDepRunnerSuccess {
     return (-not $Runner.State.Failed)
 }
 
+function Draw-ToolkitDepOperationLogViewport {
+    param(
+        [hashtable]$Shell,
+        $Log,
+        [int]$LogSeparatorRow,
+        [int]$LogContentViewportRows
+    )
+
+    if ($null -eq $Log) { return }
+
+    $fnWriteFixed = Resolve-DepOperationFn 'Write-FixedLine'
+    $fnFormatSep = Resolve-DepOperationFn 'Format-ToolkitShellContentSeparator'
+    $fnFormatLogLine = Resolve-DepOperationFn 'Format-ToolkitDepLogLineText'
+
+    $layout = $Shell.Layout
+    $barWidth = if ([int]$Log.BrandInnerWidth -gt 0) { [int]$Log.BrandInnerWidth } else {
+        if ($Shell.BrandInnerWidth -gt 0) { [int]$Shell.BrandInnerWidth } else { [int]$layout.BrandInnerWidth }
+    }
+
+    $separatorText = & $fnFormatSep -BrandInnerWidth $barWidth
+    & $fnWriteFixed $LogSeparatorRow $separatorText -Color DarkGray
+
+    if ($LogContentViewportRows -le 0) { return }
+
+    $logLines = Get-ToolkitDepOperationLogLines -Log $Log
+    $lineCount = if ($logLines) { [int]$logLines.Count } else { 0 }
+
+    $maxScroll = [Math]::Max(0, $lineCount - $LogContentViewportRows)
+    if ($Log.ScrollOffset -gt $maxScroll) { $Log.ScrollOffset = $maxScroll }
+
+    $contentStartRow = $LogSeparatorRow + 1
+    for ($row = 0; $row -lt $LogContentViewportRows; $row++) {
+        $idx = $Log.ScrollOffset + $row
+        $screenRow = $contentStartRow + $row
+        if ($idx -ge 0 -and $idx -lt $lineCount) {
+            $line = $logLines[$idx]
+            $prefix = if ($line.Kind -eq 'separator') { '' } else { ' ' }
+            & $fnWriteFixed $screenRow "$prefix$(& $fnFormatLogLine -Line $line -BrandInnerWidth $barWidth)" -Color $line.Color
+        }
+        else {
+            & $fnWriteFixed $screenRow '' -Color DarkGray
+        }
+    }
+}
+
 function Draw-ToolkitDepOperationView {
     param(
         [hashtable]$Shell,
@@ -1054,7 +1198,8 @@ function Draw-ToolkitDepOperationView {
         [int]$LogViewportRows,
         [int]$LogStartRow,
         [int]$ProgressItemSubPercent = -1,
-        [switch]$StatusPlain
+        [switch]$StatusPlain,
+        [array]$StatusSegments = $null
     )
 
     $fnWriteFixed = Resolve-DepOperationFn 'Write-FixedLine'
@@ -1068,14 +1213,28 @@ function Draw-ToolkitDepOperationView {
     & $fnWriteFixed $layout.ListStartRow (& $fnFormatBar -Current $ProgressCurrent `
         -Total $ProgressTotal -Name $ProgressName -BrandInnerWidth $barWidth `
         -ItemSubPercent $ProgressItemSubPercent) -Color Cyan
-    $statusLine = if ($StatusPlain) {
-        " $StatusText"
+
+    if ($StatusSegments -and $StatusSegments.Count -gt 0) {
+        Write-ToolkitDepFixedLineSegments -Row ($layout.ListStartRow + 1) -Segments $StatusSegments -LeadingSpace
+    }
+    elseif ($StatusPlain) {
+        & $fnWriteFixed ($layout.ListStartRow + 1) " $StatusText" -Color White
     }
     else {
-        " $(& $fnGetI18n -Key 'page.depOperation.currentPrefix')$StatusText"
+        $statusLine = " $(& $fnGetI18n -Key 'page.depOperation.currentPrefix')$StatusText"
+        & $fnWriteFixed ($layout.ListStartRow + 1) $statusLine -Color White
     }
-    & $fnWriteFixed ($layout.ListStartRow + 1) $statusLine -Color White
     & $fnWriteFixed ($layout.ListStartRow + 2) '' -Color DarkGray
+
+    if ($LogViewportRows -le 0) {
+        if ($layout.GapRow -ge 0) {
+            & $fnWriteFixed $layout.GapRow '' -Color DarkGray
+        }
+        return
+    }
+
+    $logLines = Get-ToolkitDepOperationLogLines -Log $Log
+    $lineCount = if ($logLines) { [int]$logLines.Count } else { 0 }
 
     $maxScroll = & $fnMaxScroll -Log $Log -ViewportRows $LogViewportRows
     if ($Log.ScrollOffset -gt $maxScroll) { $Log.ScrollOffset = $maxScroll }
@@ -1083,8 +1242,8 @@ function Draw-ToolkitDepOperationView {
     for ($row = 0; $row -lt $LogViewportRows; $row++) {
         $idx = $Log.ScrollOffset + $row
         $screenRow = $LogStartRow + $row
-        if ($idx -ge 0 -and $idx -lt $Log.Lines.Count) {
-            $line = $Log.Lines[$idx]
+        if ($idx -ge 0 -and $idx -lt $lineCount) {
+            $line = $logLines[$idx]
             $prefix = if ($line.Kind -eq 'separator') { '' } else { ' ' }
             & $fnWriteFixed $screenRow "$prefix$(& $fnFormatLogLine -Line $line -BrandInnerWidth $barWidth)" -Color $line.Color
         }
@@ -1110,7 +1269,7 @@ function Invoke-ToolkitDepOperationView {
         $SharedLog = $null
     )
 
-    $toolbar = New-ShellSystemToolbarConfig -HideBack -HideSystem -HideHelp
+    $toolbar = New-ShellSystemToolbarConfig -HideSystem -HideHelp
     $renderFooter = New-ShellSystemToolbarFooterRenderer -Shell $Shell -ToolbarConfig $toolbar
     Register-ToolkitShellFooter -Shell $Shell -Renderer $renderFooter
 
@@ -1118,8 +1277,16 @@ function Invoke-ToolkitDepOperationView {
         -FooterTemplate SystemToolbarOnly
 
     $layout = $Shell.Layout
-    $logViewportRows = [Math]::Max(1, $layout.ListViewportHeight - 3)
-    $logStartRow = $layout.ListStartRow + 3
+    $logSeparatorRow = $layout.ListStartRow + 3
+    $logAreaRows = [Math]::Max(1, $layout.ListViewportHeight - 3)
+    if ($logSeparatorRow -gt $layout.ListEndRow) {
+        $logSeparatorRow = $layout.ListEndRow
+    }
+    $availableLogRows = $layout.ListEndRow - $logSeparatorRow + 1
+    if ($availableLogRows -lt $logAreaRows) {
+        $logAreaRows = [Math]::Max(1, $availableLogRows)
+    }
+    $logContentViewportRows = [Math]::Max(1, $logAreaRows - 1)
 
     $log = if ($SharedLog) { $SharedLog } else { New-ToolkitDepOperationLog }
     $contentMetrics = if ($Shell.Layout.ContentMetrics) { $Shell.Layout.ContentMetrics } else {
@@ -1127,7 +1294,9 @@ function Invoke-ToolkitDepOperationView {
     }
     $barWidth = [int]$contentMetrics.InnerWidth
     $log.BrandInnerWidth = $barWidth
-    $log.ViewportRows = $logViewportRows
+    $log.ViewportRows = $logContentViewportRows
+
+    $fnGetI18n = Resolve-DepOperationFn 'Get-I18n'
 
     $plan = if ([string]::IsNullOrWhiteSpace($PreflightErrorKey)) {
         Build-ToolDepSyncPlan -Tool $Tool -Intent $Intent
@@ -1135,7 +1304,7 @@ function Invoke-ToolkitDepOperationView {
     else { $null }
 
     $total = if ($plan) { @($plan.Items).Count } else { 1 }
-    $fnGetI18n = Resolve-DepOperationFn 'Get-I18n'
+
     $ui = @{
         ProgressCurrent  = 0
         ItemInFlight     = $false
@@ -1143,10 +1312,10 @@ function Invoke-ToolkitDepOperationView {
         ProgressName     = ''
         StatusText       = (& $fnGetI18n -Key 'page.depOperation.statusReady')
         StatusPlain      = $false
+        StatusSegments   = $null
         ExecuteStartTick = 0
     }
     $complete = $false
-    $awaitingDismiss = $false
     $exitConfirmArmed = $false
     $runner = $null
 
@@ -1165,6 +1334,7 @@ function Invoke-ToolkitDepOperationView {
     $fnEnterBatch = Resolve-DepOperationFn 'Enter-ConsoleDrawBatch'
     $fnCompleteBatch = Resolve-DepOperationFn 'Complete-ConsoleDrawBatch'
     $fnDrawView = Resolve-DepOperationFn 'Draw-ToolkitDepOperationView'
+    $fnDrawLogViewport = Resolve-DepOperationFn 'Draw-ToolkitDepOperationLogViewport'
 
     $onExitConfirmed = { $exitConfirmArmed = $true }.GetNewClosure()
     & $fnRegisterExitExtension -Shell $Shell -OnExitConfirmed $onExitConfirmed
@@ -1175,11 +1345,15 @@ function Invoke-ToolkitDepOperationView {
 
     $RedrawDepOperationView = {
         $itemSubPercent = if ($ui.ItemInFlight) { [int]$ui.ItemSubPercent } else { -1 }
+        $statusSegments = if ($ui.StatusSegments) { @($ui.StatusSegments) } else { $null }
         & $fnEnterBatch
         & $fnDrawView -Shell $Shell -Log $log -ProgressCurrent $ui.ProgressCurrent `
             -ProgressTotal $total -ProgressName $ui.ProgressName -StatusText $ui.StatusText `
-            -LogViewportRows $logViewportRows -LogStartRow $logStartRow `
-            -ProgressItemSubPercent $itemSubPercent -StatusPlain:([bool]$ui.StatusPlain)
+            -LogViewportRows 0 -LogStartRow $logSeparatorRow `
+            -ProgressItemSubPercent $itemSubPercent -StatusPlain:([bool]$ui.StatusPlain) `
+            -StatusSegments $statusSegments
+        & $fnDrawLogViewport -Shell $Shell -Log $log `
+            -LogSeparatorRow $logSeparatorRow -LogContentViewportRows $logContentViewportRows
         & $renderFooter
         & $fnCompleteBatch -ToolkitShell $Shell
     }.GetNewClosure()
@@ -1320,7 +1494,7 @@ function Invoke-ToolkitDepOperationView {
         }.GetNewClosure()
 
         $onUiPoll = {
-            $inputResult = & $fnLogInput -Shell $Shell -Log $log -ViewportRows $logViewportRows `
+            $inputResult = & $fnLogInput -Shell $Shell -Log $log -ViewportRows $logContentViewportRows `
                 -OnExitKey $onExitKey -ScrollState $uiPollState
             if ($inputResult -eq 'scroll') {
                 & $invokeDepOperationRedrawNow
@@ -1418,7 +1592,6 @@ function Invoke-ToolkitDepOperationView {
         $runner.State.Failed = ([int]$runner.State.FailedCount -gt 0)
 
         $fnCompleteUninstall = Resolve-DepOperationFn 'Complete-ToolkitDepUninstallRecord'
-        $fnSummaryKey = Resolve-DepOperationFn 'Get-ToolkitDepOperationSummaryKey'
 
         if ($Intent -eq 'uninstall') {
             if (Test-ToolkitDepRunnerSuccess -Runner $runner) {
@@ -1433,30 +1606,22 @@ function Invoke-ToolkitDepOperationView {
         if (-not $runner.State.Cancelled) {
             $ui.ProgressCurrent = $total
             $ui.StatusPlain = $true
-            $ui.StatusText = Format-ToolkitDepBatchCountsText -SuccessCount ([int]$runner.State.SuccessCount) `
+            $ui.StatusText = ''
+            $ui.StatusSegments = Get-ToolkitDepBatchSummarySegments -Intent $Intent `
+                -TotalCount $total -SuccessCount ([int]$runner.State.SuccessCount) `
                 -FailedCount ([int]$runner.State.FailedCount)
-            $summaryKey = & $fnSummaryKey -Plan $plan -Intent $Intent -Runner $runner
-            $summaryKind = if ($runner.State.Failed) { 'error' } else { 'success' }
-            Add-ToolkitDepLogLine -Log $log -Text (& $fnGetI18n -Key $summaryKey) -Kind $summaryKind -WithTimestamp
         }
         $complete = $true
         $log.AutoScroll = $false
-        $maxScroll = Get-ToolkitDepLogMaxScroll -Log $log -ViewportRows $logViewportRows
         & $invokeDepOperationRedrawNow
     }
     else {
-        $maxScroll = Get-ToolkitDepLogMaxScroll -Log $log -ViewportRows $logViewportRows
         & $RedrawDepOperationView
     }
 
     if ($complete -and -not $AutoContinue) {
-        Add-ToolkitDepLogSeparator -Log $log
-        Add-ToolkitDepLogEpilogue -Log $log
-        Sync-ToolkitDepLogScrollToEnd -Log $log
-        $maxScroll = Get-ToolkitDepLogMaxScroll -Log $log -ViewportRows $logViewportRows
-        & $invokeDepOperationRedrawNow
+        $log.AutoScroll = $false
         & $fnDrainStaleInput
-        $awaitingDismiss = $true
     }
 
     try {
@@ -1467,32 +1632,45 @@ function Invoke-ToolkitDepOperationView {
 
         & $invokeDepOperationRedrawNow
         while ($true) {
-            if ($awaitingDismiss) {
-                $exitResult = & $fnReadExitIfActive -Shell $Shell
-                if ($null -ne $exitResult) {
-                    if ($exitResult -eq 'exitConfirmed') {
-                        return (Get-ShellNavMarker -Action 'quit')
-                    }
-                    & $invokeDepOperationRedrawNow
-                    continue
+            $exitResult = & $fnReadExitIfActive -Shell $Shell
+            if ($null -ne $exitResult) {
+                if ($exitResult -eq 'exitConfirmed') {
+                    return (Get-ShellNavMarker -Action 'quit')
                 }
+                & $invokeDepOperationRedrawNow
+                continue
             }
 
-            $scrollInput = & $fnLogInput -Shell $Shell -Log $log -ViewportRows $logViewportRows `
-                -OnExitKey $onExitKey -ScrollState $uiPollState -AllowDismiss:$awaitingDismiss
-            if ($scrollInput -eq 'dismiss') {
-                $Shell.Layout['BodyDirty'] = $true
-                return (Test-ToolkitDepRunnerSuccess -Runner $runner)
-            }
-            if ($scrollInput -eq 'scroll') {
-                $maxScroll = Get-ToolkitDepLogMaxScroll -Log $log -ViewportRows $logViewportRows
-                $log.AutoScroll = ([int]$log.ScrollOffset -ge $maxScroll)
-                & $invokeDepOperationRedrawNow
-                continue
-            }
-            if ($scrollInput -eq 'exit') {
-                & $invokeDepOperationRedrawNow
-                continue
+            if (Test-ConsoleKeyAvailable) {
+                $fnPeekKey = Resolve-DepOperationFn 'Get-ConsoleVirtualKeyPeek'
+                $peek = & $fnPeekKey
+                if ($peek -in @('UpArrow', 'DownArrow', 'Escape')) {
+                    $scrollInput = & $fnLogInput -Shell $Shell -Log $log `
+                        -ViewportRows $logContentViewportRows -OnExitKey $onExitKey -ScrollState $uiPollState
+                    if ($scrollInput -eq 'scroll') {
+                        $maxScroll = Get-ToolkitDepLogMaxScroll -Log $log -ViewportRows $logContentViewportRows
+                        $log.AutoScroll = ([int]$log.ScrollOffset -ge $maxScroll)
+                        & $invokeDepOperationRedrawNow
+                    }
+                    elseif ($scrollInput -eq 'exit') {
+                        & $invokeDepOperationRedrawNow
+                    }
+                    continue
+                }
+
+                if ($complete) {
+                    Prepare-ToolkitShellBodyDraw -Shell $Shell
+                    $key = [Console]::ReadKey($true)
+                    if ($key.KeyChar -match '^[qQ]$') {
+                        $Shell.Layout['BodyDirty'] = $true
+                        return (Test-ToolkitDepRunnerSuccess -Runner $runner)
+                    }
+                    if ($key.Key -eq 'Escape') {
+                        $null = & $onExitKey
+                        & $invokeDepOperationRedrawNow
+                    }
+                    continue
+                }
             }
 
             Start-Sleep -Milliseconds 20

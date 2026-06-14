@@ -33,10 +33,15 @@ function Import-NodeBrowseInstallCore {
     . (Join-Path $coreLib 'ui\shell\Title.ps1')
     . (Join-Path $coreLib 'ui\shell\Exit.ps1')
     . (Join-Path $coreLib 'ui\shell\Footer.ps1')
+
+    if (-not (Get-Command Draw-ToolkitDepOperationView -ErrorAction SilentlyContinue)) {
+        . (Join-Path $coreLib 'ui\shell\DepOperationView.ps1')
+    }
 }
 
 Import-NodeBrowseInstallCore
 . (Join-Path $PSScriptRoot 'volta-node.ps1')
+. (Join-Path $PSScriptRoot 'browse-install-run.ps1')
 Initialize-PathsFromToolRoot -ToolRoot $toolRoot
 
 $paging = Resolve-MenuPagingDefaults -PageSize $PageSize -ViewHeight $ViewHeight
@@ -65,6 +70,11 @@ function Get-NodeBrowseInstallSectionTitle {
         -Fallback '浏览并安装')
 }
 
+function Get-NodeBrowseInstallProgressSectionTitle {
+    return (Resolve-ToolI18nLabel -ToolRoot $toolRoot -Key 'node.browse.installPageTitle' `
+        -Fallback 'Node.js 安装')
+}
+
 function Get-NodeBrowseInstallVersionLabel {
     param(
         $Item,
@@ -85,12 +95,8 @@ function Get-NodeBrowseInstallTagsLabel {
         [string]$ActiveVersion
     )
 
-    $tag = ''
-    if ($Item.Version -eq $ActiveVersion) { $tag += ' [当前]' }
-    if ($InstalledMap.ContainsKey($Item.Version)) { $tag += ' [已安装]' }
-    if ($Item.Version -eq $DefaultVersion) { $tag += ' [默认]' }
-    if ($Item.Lts -and $Item.Lts -ne $false) { $tag += " [LTS:$($Item.Lts)]" }
-    return $tag
+    return (Get-NodeVersionStatusTags -Item $Item -InstalledMap $InstalledMap `
+        -DefaultVersion $DefaultVersion -ActiveVersion $ActiveVersion)
 }
 
 function Build-NodeBrowseInstallRows {
@@ -112,7 +118,8 @@ function Build-NodeBrowseInstallRows {
         )
     } -GetEnabled {
         param($Item, [int]$Index)
-        -not $InstalledMap.ContainsKey([string]$Item.Version)
+        $version = Normalize-NodeVersionLabel -Version ([string]$Item.Version)
+        -not $InstalledMap.ContainsKey($version)
     }
 }
 
@@ -123,7 +130,9 @@ function Resolve-NodeBrowseInstallTagsColumnWidth {
     $versionKeyWidth = Get-ShellMultiSelectSearchKeyWidth
     $gap = Get-MenuColumnGap
     $prefixReserve = 2 + 3 + 1 + $versionKeyWidth + $gap
-    return [Math]::Max(12, [int]$metrics.EndColumn - $prefixReserve)
+    $remaining = [int]$metrics.EndColumn - $prefixReserve
+    $maxTags = 26
+    return [Math]::Max(10, [Math]::Min($maxTags, $remaining))
 }
 
 function Get-NodeBrowseListLineIndent {
@@ -291,54 +300,6 @@ function Wait-NodeBrowseRemoteVersionsLoad {
     }
 }
 
-function Show-NodeBrowseInstallSelectionPreview {
-    param(
-        [hashtable]$Shell,
-        [array]$Items
-    )
-
-    $sectionTitle = Get-NodeBrowseI18n -Key 'node.browse.selectedTitle' -Vars @{
-        count = [string]$Items.Count
-    }
-    Initialize-ToolkitShellBodyView -Shell $Shell -SectionTitle $sectionTitle -FooterTemplate SystemToolbarOnly
-    $layout = $Shell.Layout
-    $viewport = [Math]::Max(1, [int]$layout.ListViewportHeight)
-
-    Write-FixedLine $layout.ListStartRow (Get-NodeBrowseI18n -Key 'node.browse.selectedHint') -Color DarkGray
-    $row = 1
-    foreach ($item in @($Items)) {
-        if ($row -ge ($viewport - 1)) { break }
-        Write-FixedLine ($layout.ListStartRow + $row) "  $($item.Version)" -Color Gray
-        $row++
-    }
-    for (; $row -lt $viewport; $row++) {
-        Write-FixedLine ($layout.ListStartRow + $row) '' -Color DarkGray
-    }
-
-    $toolbar = New-ShellSystemToolbarConfig -HideSystem -HideHelp
-    $barWidth = Get-ToolkitShellLayoutBarInnerWidth -Shell $Shell
-    $lineWidth = Get-BrandSeparatorLineWidth -BrandInnerWidth $barWidth
-    $enterHint = Format-I18nPressEnterBack
-    Write-MenuBarLine -Row $layout.ToolbarRow -InnerWidth $lineWidth `
-        -Segments @($enterHint, '', '', '', '') -ColumnCount 5
-
-    while ($true) {
-        $confirm = Read-ShellExitIfActive -Shell $Shell
-        if ($confirm -eq 'exitCancel') { continue }
-        if ($confirm -eq 'exitConfirmed') {
-            return (Get-ShellNavMarker -Action 'quit')
-        }
-
-        $key = Read-ShellSystemToolbarKey -Shell $Shell -ToolbarConfig $toolbar -AllowEnter
-        if ($key -eq 'enter') {
-            return (Get-ShellNavMarker -Action 'back')
-        }
-        if (Test-ShellNavMarker $key) {
-            return $key
-        }
-    }
-}
-
 function Invoke-NodeBrowseInstallPage {
     param([hashtable]$Shell)
 
@@ -375,55 +336,71 @@ function Invoke-NodeBrowseInstallPage {
         return (Get-ShellNavMarker -Action 'back')
     }
 
-    $voltaInfo = Get-VoltaNodeVersionInfo
-    $activeVersion = Get-ActiveNodeVersion
-
-    $items = [System.Collections.Generic.List[object]]::new()
     $seen = @{}
+    $baseVersions = @()
     foreach ($r in $remote) {
-        if (-not $seen[$r.Version]) {
-            $items.Add($r)
-            $seen[$r.Version] = $true
-        }
-    }
-    foreach ($ver in $voltaInfo.Map.Keys) {
+        $ver = Normalize-NodeVersionLabel -Version ([string]$r.Version)
         if (-not $seen[$ver]) {
-            $items.Add((New-NodeVersionMenuItem -Version $ver))
+            $baseVersions += $r
             $seen[$ver] = $true
         }
     }
 
-    $sorted = Sort-NodeVersionItems -Items @($items.ToArray())
-    if ($sorted.Count -eq 0) {
-        Initialize-ToolkitShellBodyView -Shell $Shell -SectionTitle $sectionTitle -FooterTemplate SystemToolbarOnly
-        $layout = $Shell.Layout
-        Write-FixedLine $layout.ListStartRow (Get-NodeBrowseI18n -Key 'node.browse.noVersions') -Color Yellow
-        Start-Sleep -Milliseconds 900
-        return (Get-ShellNavMarker -Action 'back')
+    while ($true) {
+        $voltaInfo = Get-VoltaNodeVersionInfo
+        $activeVersion = Get-ActiveNodeVersion
+
+        $items = [System.Collections.Generic.List[object]]::new()
+        $seen = @{}
+        foreach ($r in $baseVersions) {
+            $ver = Normalize-NodeVersionLabel -Version ([string]$r.Version)
+            if (-not $seen[$ver]) {
+                $items.Add($r)
+                $seen[$ver] = $true
+            }
+        }
+        foreach ($ver in $voltaInfo.Map.Keys) {
+            if (-not $seen[$ver]) {
+                $items.Add((New-NodeVersionMenuItem -Version $ver))
+                $seen[$ver] = $true
+            }
+        }
+
+        $sorted = Sort-NodeVersionItems -Items @($items.ToArray())
+        if ($sorted.Count -eq 0) {
+            Initialize-ToolkitShellBodyView -Shell $Shell -SectionTitle $sectionTitle -FooterTemplate SystemToolbarOnly
+            $layout = $Shell.Layout
+            Write-FixedLine $layout.ListStartRow (Get-NodeBrowseI18n -Key 'node.browse.noVersions') -Color Yellow
+            Start-Sleep -Milliseconds 900
+            return (Get-ShellNavMarker -Action 'back')
+        }
+
+        $tagsWidth = Resolve-NodeBrowseInstallTagsColumnWidth -Shell $Shell
+        $rows = Build-NodeBrowseInstallRows -Items $sorted -InstalledMap $voltaInfo.Map `
+            -DefaultVersion $voltaInfo.Default -ActiveVersion $activeVersion
+
+        Clear-ShellMultiSelectListCache -Shell $Shell -CacheKey 'NodeBrowse'
+
+        $toolbar = New-ShellSystemToolbarConfig
+        $invokeMultiSelect = Get-Command Invoke-ShellMultiSelectList -CommandType Function -ErrorAction Stop
+        $picked = & $invokeMultiSelect -Shell $Shell -SectionTitle $sectionTitle `
+            -Rows $rows -CacheKey 'NodeBrowse' `
+            -ColumnLayout (New-ShellListColumnLayout -Widths @($tagsWidth)) `
+            -ToolbarConfig $toolbar -CountLabel (Get-NodeBrowseI18n -Key 'node.browse.countUnit') `
+            -SearchKeyMode
+
+        if (Test-ShellNavMarker $picked) {
+            return $picked
+        }
+        if ($null -eq $picked -or @($picked).Count -eq 0) {
+            return (Get-ShellNavMarker -Action 'back')
+        }
+
+        $installResult = Run-NodeBrowseInstallOperation -Shell $Shell -Items $picked
+        if (Test-ShellNavMarker $installResult) {
+            return $installResult
+        }
     }
-
-    $tagsWidth = Resolve-NodeBrowseInstallTagsColumnWidth -Shell $Shell
-    $rows = Build-NodeBrowseInstallRows -Items $sorted -InstalledMap $voltaInfo.Map `
-        -DefaultVersion $voltaInfo.Default -ActiveVersion $activeVersion
-
-    Clear-ShellMultiSelectListCache -Shell $Shell -CacheKey 'NodeBrowse'
-
-    $toolbar = New-ShellSystemToolbarConfig
-    $invokeMultiSelect = Get-Command Invoke-ShellMultiSelectList -CommandType Function -ErrorAction Stop
-    $picked = & $invokeMultiSelect -Shell $Shell -SectionTitle $sectionTitle `
-        -Rows $rows -CacheKey 'NodeBrowse' `
-        -ColumnLayout (New-ShellListColumnLayout -Widths @($tagsWidth)) `
-        -ToolbarConfig $toolbar -CountLabel (Get-NodeBrowseI18n -Key 'node.browse.countUnit') `
-        -SearchKeyMode
-
-    if (Test-ShellNavMarker $picked) {
-        return $picked
-    }
-    if ($null -eq $picked -or @($picked).Count -eq 0) {
-        return (Get-ShellNavMarker -Action 'back')
-    }
-
-    return Show-NodeBrowseInstallSelectionPreview -Shell $Shell -Items $picked
 }
 
 $result = Invoke-NodeBrowseInstallPage -Shell $ToolkitShell

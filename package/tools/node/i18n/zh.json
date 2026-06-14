@@ -27,14 +27,22 @@
     },
     "browse": {
       "sectionTitle": "浏览并安装",
+      "installPageTitle": "Node.js 安装",
       "loading": "{spinner} 正在加载 Node 版本列表…",
       "loadFailed": "加载失败",
       "noVersions": "无可用版本",
       "voltaMissing": "未找到 Volta，请先在依赖菜单中安装",
       "cannotSelectInstalled": "该版本已安装，无法勾选",
       "countUnit": "个版本",
-      "selectedTitle": "已选择 {count} 个版本",
-      "selectedHint": "批量安装流程后续接入；Enter 返回"
+      "installStatusReady": "准备安装",
+      "installStatusStarting": "{spinner} 正在启动 Volta 安装 node@{version}…（{elapsed}s）",
+      "installStatusWorking": "{spinner} 正在安装 node@{version}…（{elapsed}s）",
+      "installLogStart": "开始安装 node@{version}",
+      "installLogWorking": "{spinner} 仍在执行…（{elapsed}s）",
+      "installLogSuccess": "node@{version} 安装成功",
+      "installLogFailed": "node@{version} 安装失败（退出码 {code}）",
+      "installSummary": "安装完成：成功 {success}，失败 {failed}（共 {total}）",
+      "installCancelled": "安装已取消"
     }
   }
 }

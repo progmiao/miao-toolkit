@@ -9,6 +9,34 @@ function Assert-VoltaAvailable {
     exit 1
 }
 
+function Normalize-NodeVersionLabel {
+    param([string]$Version)
+
+    $v = [string]$Version.Trim()
+    if ($v -match '^v(.+)$') { return $Matches[1] }
+    return $v
+}
+
+function Resolve-NodeVersionFromVoltaListLine {
+    param([string]$Line)
+
+    $trimmed = [string]$Line.Trim()
+    if ([string]::IsNullOrWhiteSpace($trimmed)) { return $null }
+
+    $nodeAtPattern = 'node@([0-9]+(?:\.[0-9]+)*)'
+    $voltaVPrefixPattern = 'v([0-9]+(?:\.[0-9]+)*)'
+
+    if ($trimmed -match $nodeAtPattern) {
+        $ver = Normalize-NodeVersionLabel -Version $Matches[1]
+        if (-not [string]::IsNullOrWhiteSpace($ver)) { return $ver }
+    }
+    if ($trimmed -match $voltaVPrefixPattern) {
+        $ver = Normalize-NodeVersionLabel -Version $Matches[1]
+        if (-not [string]::IsNullOrWhiteSpace($ver)) { return $ver }
+    }
+    return $null
+}
+
 function Get-VoltaNodeVersionInfo {
     if (-not (Get-Command volta -ErrorAction SilentlyContinue)) {
         return @{ Map = @{}; Default = $null }
@@ -16,15 +44,16 @@ function Get-VoltaNodeVersionInfo {
 
     $installed = @{}
     $defaultVer = $null
-    $raw = & volta list 2>$null | Out-String
-    $nodeLinePattern = 'node@([0-9.]+)'
+    $raw = (& volta list node 2>&1 | Out-String)
 
-    foreach ($line in ($raw -split "`n")) {
-        if ($line -match $nodeLinePattern) {
-            $ver = $Matches[1]
-            $installed[$ver] = $true
-            if ($line -match '\(default\)') { $defaultVer = $ver }
-        }
+    foreach ($line in ($raw -split "\r?\n")) {
+        $trimmed = [string]$line.Trim()
+        if ([string]::IsNullOrWhiteSpace($trimmed)) { continue }
+
+        $ver = Resolve-NodeVersionFromVoltaListLine -Line $trimmed
+        if ([string]::IsNullOrWhiteSpace($ver)) { continue }
+        $installed[$ver] = $true
+        if ($trimmed -match '\(default\)') { $defaultVer = $ver }
     }
 
     return @{ Map = $installed; Default = $defaultVer }
@@ -57,20 +86,38 @@ function Get-RemoteNodeVersions {
     })
 }
 
+function Get-NodeVersionStatusTags {
+    param(
+        $Item,
+        [hashtable]$InstalledMap,
+        [string]$DefaultVersion,
+        [string]$ActiveVersion = ''
+    )
+
+    if ($null -eq $InstalledMap) { $InstalledMap = @{} }
+
+    $version = Normalize-NodeVersionLabel -Version ([string]$Item.Version)
+    $active = Normalize-NodeVersionLabel -Version $ActiveVersion
+    $default = Normalize-NodeVersionLabel -Version $DefaultVersion
+
+    $tag = ''
+    if ($version -and $InstalledMap.ContainsKey($version)) { $tag += ' [已安装]' }
+    if ($version -and $default -and $version -eq $default) { $tag += ' [默认]' }
+    if ($version -and $active -and $version -eq $active) { $tag += ' [当前]' }
+    if ($Item.Lts -and $Item.Lts -ne $false) { $tag += " [LTS:$($Item.Lts)]" }
+    return $tag
+}
+
 function Format-NodeVersionMenuLabel {
     param(
         $Item,
         [hashtable]$InstalledMap,
         [string]$DefaultVersion,
-        [string]$ActiveVersion
+        [string]$ActiveVersion = ''
     )
 
-    $tag = ''
-    if ($Item.Version -eq $ActiveVersion) { $tag += ' [当前]' }
-    if ($InstalledMap.ContainsKey($Item.Version)) { $tag += ' [已安装]' }
-    if ($Item.Version -eq $DefaultVersion) { $tag += ' [默认]' }
-    if ($Item.Lts -and $Item.Lts -ne $false) { $tag += " [LTS:$($Item.Lts)]" }
-
+    $tag = Get-NodeVersionStatusTags -Item $Item -InstalledMap $InstalledMap `
+        -DefaultVersion $DefaultVersion -ActiveVersion $ActiveVersion
     return "$($Item.Version)$tag"
 }
 

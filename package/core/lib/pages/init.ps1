@@ -3,7 +3,7 @@
 function Invoke-ToolkitInitView {
     param([hashtable]$Shell)
 
-    $toolbar = New-ShellSystemToolbarConfig -HideBack -HideSystem -HideHelp
+    $toolbar = New-ShellSystemToolbarConfig -HideSystem -HideHelp
     $renderFooter = New-ShellSystemToolbarFooterRenderer -Shell $Shell -ToolbarConfig $toolbar
     Register-ToolkitShellFooter -Shell $Shell -Renderer $renderFooter
 
@@ -12,8 +12,16 @@ function Invoke-ToolkitInitView {
         -FooterTemplate SystemToolbarOnly
 
     $layout = $Shell.Layout
-    $logViewportRows = [Math]::Max(1, $layout.ListViewportHeight - 3)
-    $logStartRow = $layout.ListStartRow + 3
+    $logSeparatorRow = $layout.ListStartRow + 3
+    $logAreaRows = [Math]::Max(1, $layout.ListViewportHeight - 3)
+    if ($logSeparatorRow -gt $layout.ListEndRow) {
+        $logSeparatorRow = $layout.ListEndRow
+    }
+    $availableLogRows = $layout.ListEndRow - $logSeparatorRow + 1
+    if ($availableLogRows -lt $logAreaRows) {
+        $logAreaRows = [Math]::Max(1, $availableLogRows)
+    }
+    $logContentViewportRows = [Math]::Max(1, $logAreaRows - 1)
 
     $log = New-ToolkitDepOperationLog
     $contentMetrics = if ($Shell.Layout.ContentMetrics) { $Shell.Layout.ContentMetrics } else {
@@ -21,7 +29,7 @@ function Invoke-ToolkitInitView {
     }
     $barWidth = [int]$contentMetrics.InnerWidth
     $log.BrandInnerWidth = $barWidth
-    $log.ViewportRows = $logViewportRows
+    $log.ViewportRows = $logContentViewportRows
 
     $buildProgress = @{ Total = 8 }
     $ui = @{
@@ -31,18 +39,22 @@ function Invoke-ToolkitInitView {
         ProgressName     = ''
         StatusText       = (Get-I18n -Key 'page.init.statusReady')
         StatusPlain      = $false
+        StatusSegments   = $null
         ExecuteStartTick = 0
     }
 
     $fnEnterBatch = Resolve-DepOperationFn 'Enter-ConsoleDrawBatch'
     $fnCompleteBatch = Resolve-DepOperationFn 'Complete-ConsoleDrawBatch'
     $fnDrawView = Resolve-DepOperationFn 'Draw-ToolkitDepOperationView'
+    $fnDrawLogViewport = Resolve-DepOperationFn 'Draw-ToolkitDepOperationLogViewport'
     $fnAddLog = Resolve-DepOperationFn 'Add-ToolkitDepLogLine'
     $fnDrainStaleInput = Resolve-DepOperationFn 'Drain-ConsoleStaleToolbarInput'
     $fnReadExitIfActive = Resolve-DepOperationFn 'Read-ShellExitIfActive'
     $fnLogInput = Resolve-DepOperationFn 'Invoke-ToolkitDepLogInputIfAvailable'
     $fnRegisterExitExtension = Resolve-DepOperationFn 'Register-ShellExitExtension'
     $fnClearExitExtension = Resolve-DepOperationFn 'Clear-ShellExitExtension'
+    $fnProcessEscInput = Resolve-DepOperationFn 'Process-ShellEscInputIfAvailable'
+    $fnPeekKey = Resolve-DepOperationFn 'Get-ConsoleVirtualKeyPeek'
 
     $useBufferDraw = $false
     if ($env:MIAO_BUFFER_DRAW -eq '1') {
@@ -51,11 +63,15 @@ function Invoke-ToolkitInitView {
 
     $RedrawView = {
         $itemSubPercent = if ($ui.ItemInFlight) { [int]$ui.ItemSubPercent } else { -1 }
+        $statusSegments = if ($ui.StatusSegments) { @($ui.StatusSegments) } else { $null }
         if ($useBufferDraw) { & $fnEnterBatch }
         & $fnDrawView -Shell $Shell -Log $log -ProgressCurrent $ui.ProgressCurrent `
             -ProgressTotal $buildProgress.Total -ProgressName $ui.ProgressName -StatusText $ui.StatusText `
-            -LogViewportRows $logViewportRows -LogStartRow $logStartRow `
-            -ProgressItemSubPercent $itemSubPercent -StatusPlain:([bool]$ui.StatusPlain)
+            -LogViewportRows 0 -LogStartRow $logSeparatorRow `
+            -ProgressItemSubPercent $itemSubPercent -StatusPlain:([bool]$ui.StatusPlain) `
+            -StatusSegments $statusSegments
+        & $fnDrawLogViewport -Shell $Shell -Log $log `
+            -LogSeparatorRow $logSeparatorRow -LogContentViewportRows $logContentViewportRows
         & $renderFooter
         if ($useBufferDraw) {
             $null = & $fnCompleteBatch -ToolkitShell $Shell
@@ -63,9 +79,19 @@ function Invoke-ToolkitInitView {
     }.GetNewClosure()
 
     $buildFailed = $false
+    $complete = $false
     $exitConfirmArmed = $false
     $onExitConfirmed = { $exitConfirmArmed = $true }.GetNewClosure()
     & $fnRegisterExitExtension -Shell $Shell -OnExitConfirmed $onExitConfirmed
+
+    $onExitKey = {
+        $null = & $fnProcessEscInput -Shell $Shell
+    }.GetNewClosure()
+
+    $uiPollState = @{
+        LastScrollTick      = 0
+        MinScrollIntervalMs = 55
+    }
 
     try {
         & $fnDrainStaleInput
@@ -89,14 +115,16 @@ function Invoke-ToolkitInitView {
             }
             $ui.ProgressCurrent = $buildProgress.Total
             $ui.StatusPlain = $true
-            $ui.StatusText = (Get-I18n -Key 'page.init.statusComplete')
-            & $fnAddLog -Log $log -Text (Get-I18n -Key 'page.init.logComplete') -Kind 'success' -WithTimestamp
+            $ui.StatusText = ''
+            $ui.StatusSegments = Get-ToolkitDepBatchSummarySegments -Intent init `
+                -TotalCount $buildProgress.Total -SuccessCount $buildProgress.Total -FailedCount 0
             Update-ToolkitShellBrandHeader -Shell $Shell
         }
         catch {
             $buildFailed = $true
             $ui.StatusPlain = $true
             $ui.StatusText = (Get-I18n -Key 'page.init.statusFailed')
+            $ui.StatusSegments = $null
             $detail = $_.Exception.Message
             if ([string]::IsNullOrWhiteSpace($detail)) {
                 $detail = $_.Exception.GetType().FullName
@@ -105,9 +133,7 @@ function Invoke-ToolkitInitView {
                 -Kind 'error' -WithTimestamp
         }
 
-        Add-ToolkitDepLogSeparator -Log $log
-        Add-ToolkitDepLogEpilogue -Log $log
-        Sync-ToolkitDepLogScrollToEnd -Log $log
+        $complete = $true
         $log.AutoScroll = $false
         & $RedrawView
         & $fnDrainStaleInput
@@ -122,15 +148,30 @@ function Invoke-ToolkitInitView {
                 continue
             }
 
-            $scrollInput = & $fnLogInput -Shell $Shell -Log $log -ViewportRows $logViewportRows `
-                -AllowDismiss
-            if ($scrollInput -eq 'dismiss') {
-                $Shell.Layout['BodyDirty'] = $true
-                return (Get-ShellNavMarker -Action 'back')
-            }
-            if ($scrollInput -in @('scroll', 'exit')) {
-                & $RedrawView
-                continue
+            if (Test-ConsoleKeyAvailable) {
+                $peek = & $fnPeekKey
+                if ($peek -in @('UpArrow', 'DownArrow', 'Escape')) {
+                    $scrollInput = & $fnLogInput -Shell $Shell -Log $log `
+                        -ViewportRows $logContentViewportRows -OnExitKey $onExitKey -ScrollState $uiPollState
+                    if ($scrollInput -in @('scroll', 'exit')) {
+                        & $RedrawView
+                    }
+                    continue
+                }
+
+                if ($complete) {
+                    Prepare-ToolkitShellBodyDraw -Shell $Shell
+                    $key = [Console]::ReadKey($true)
+                    if ($key.KeyChar -match '^[qQ]$') {
+                        $Shell.Layout['BodyDirty'] = $true
+                        return (Get-ShellNavMarker -Action 'back')
+                    }
+                    if ($key.Key -eq 'Escape') {
+                        $null = & $onExitKey
+                        & $RedrawView
+                    }
+                    continue
+                }
             }
 
             Start-Sleep -Milliseconds 20

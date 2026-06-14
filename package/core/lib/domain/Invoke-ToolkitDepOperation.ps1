@@ -451,14 +451,12 @@ function Invoke-ToolkitDepOperationConsole {
     }
 
     if (-not $runner.State.Cancelled) {
-        $batchCounts = Format-ToolkitDepBatchCountsText -SuccessCount ([int]$runner.State.SuccessCount) `
+        $batchCounts = Format-ToolkitDepBatchCountsText -Intent $Intent `
+            -TotalCount $itemTotal -SuccessCount ([int]$runner.State.SuccessCount) `
             -FailedCount ([int]$runner.State.FailedCount)
         if (-not [string]::IsNullOrWhiteSpace($batchCounts)) {
             Write-Host $batchCounts
         }
-        $summaryKey = Get-ToolkitDepOperationSummaryKey -Plan $plan -Intent $Intent -Runner $runner
-        $summaryKind = if ($runner.State.Failed) { 'error' } else { 'success' }
-        Add-ToolkitDepLogLine -Log $log -Text (Get-I18n -Key $summaryKey) -Kind $summaryKind -WithTimestamp
     }
 
     foreach ($line in @($log.Lines)) {

@@ -18,6 +18,14 @@ if ($compact -ne '01/05-20') {
     throw "compact pagination should be 01/05-20, got $compact"
 }
 
+$script:CurrentLocale = 'zh'
+$keys = Get-MiaoI18nKeys
+$multiSpace = Get-I18nKeyHint -Key $keys.Space -LabelKey 'common.toggle'
+$singleSpace = Get-I18nKeyHint -Key $keys.Space -LabelKey 'common.confirm'
+if ($multiSpace -eq $singleSpace) {
+    throw 'multi-select space hint should differ from single-select confirm'
+}
+
 $layout = Resolve-ShellToolListColumnLayout -NumWidth 2 -BrandInnerWidth $inner
 $metrics = Get-ToolkitShellContentMetrics -BrandInnerWidth $inner
 $colGap = Get-MenuColumnGap

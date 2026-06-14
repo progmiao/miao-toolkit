@@ -84,8 +84,14 @@ function Invoke-NodeAction {
         return 1
     }
 
-    $result = & $scriptPath -ToolkitShell $ToolkitShell -PageSize $PageSize -ViewHeight $ViewHeight -LtsOnly:$LtsOnly
-    if (Test-ShellNavMarker $result) {
+    $result = . $scriptPath -ToolkitShell $ToolkitShell -PageSize $PageSize -ViewHeight $ViewHeight -LtsOnly:$LtsOnly
+    if (Test-ShellNavMarker $result 'quit') {
+        return $result
+    }
+    if (Test-ShellNavMarker $result 'sys') {
+        return $result
+    }
+    if (Test-ShellNavMarker $result 'help') {
         return $result
     }
     if ($null -ne $result -and $result -is [int]) {

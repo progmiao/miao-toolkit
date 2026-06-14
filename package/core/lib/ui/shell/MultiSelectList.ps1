@@ -1,7 +1,7 @@
 ﻿# 多选列表：ShellListRow + 勾选列 + 列布局 + 翻页 + 双行底栏（导航 6 列）
 
 $script:ShellMultiSelectCheckWidth = 3
-$script:ShellMultiSelectSearchKeyWidth = 12
+$script:ShellMultiSelectSearchKeyWidth = 8
 
 function Get-ShellMultiSelectSearchKeyWidth {
     return [int]$script:ShellMultiSelectSearchKeyWidth
@@ -544,7 +544,8 @@ function Show-ShellMultiSelectListMenu {
 
         $idx = -1
         if ($SearchKeyMode) {
-            $idx = Resolve-ShellListRowSearchKeyPrefixIndex -Rows $Items -Prefix $Buffer
+            $idx = Resolve-ShellListRowSearchKeyPrefixIndex -Rows $Items -Prefix $Buffer `
+                -SearchKeyDigitsOnly
         }
         else {
             $num = [int]$Buffer
@@ -580,6 +581,7 @@ function Show-ShellMultiSelectListMenu {
             FlashMessage            = $FlashMessage
             MenuSplitActionSegments = $MenuSplitActionSegments
             MultiSelectNav          = $true
+            CompactNavStatus        = $true
         }
     }
 
@@ -624,10 +626,10 @@ function Show-ShellMultiSelectListMenu {
                     }
                 }
             }
-            elseif ($SearchKeyMode -and $key.KeyChar -match '^[0-9.]$') {
+            elseif ($SearchKeyMode -and $key.KeyChar -match '^[0-9]$') {
                 $candidate = $numberBuffer + [string]$key.KeyChar
                 if (& $fnTestSearchPrefix -Items $Items -Buffer $candidate `
-                        -GetItemSearchKey $GetItemSearchKey) {
+                        -GetItemSearchKey $GetItemSearchKey -SearchKeyDigitsOnly) {
                     $numberBuffer = $candidate
                     Apply-MultiSelectInputBuffer -Buffer $numberBuffer
                 }

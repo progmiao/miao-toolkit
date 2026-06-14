@@ -398,18 +398,44 @@ function Get-ShellListRowSearchKey {
     return [string](Get-ShellListRowDisplayNumber -Row $Row -Index $Index)
 }
 
+function Normalize-ShellListSearchKeyDigits {
+    param([string]$Text)
+
+    if ([string]::IsNullOrEmpty($Text)) { return '' }
+    return ($Text -replace '\D', '')
+}
+
+function Test-ShellListSearchKeyPrefixMatch {
+    param(
+        [string]$SearchKey,
+        [string]$Buffer,
+        [switch]$DigitsOnly
+    )
+
+    if ([string]::IsNullOrEmpty($Buffer)) { return $true }
+
+    if ($DigitsOnly) {
+        if ($Buffer -notmatch '^[0-9]+$') { return $false }
+        return (Normalize-ShellListSearchKeyDigits $SearchKey).StartsWith($Buffer)
+    }
+
+    if ($Buffer -notmatch '^[0-9.]+$') { return $false }
+    return $SearchKey.StartsWith($Buffer)
+}
+
 function Resolve-ShellListRowSearchKeyPrefixIndex {
     param(
         [array]$Rows,
         [string]$Prefix,
-        [scriptblock]$TestItemEnabled = $null
+        [scriptblock]$TestItemEnabled = $null,
+        [switch]$SearchKeyDigitsOnly
     )
 
     if ([string]::IsNullOrEmpty($Prefix)) { return -1 }
     for ($i = 0; $i -lt $Rows.Count; $i++) {
         if ($TestItemEnabled -and -not (& $TestItemEnabled $Rows[$i] $i)) { continue }
         $key = Get-ShellListRowSearchKey -Row $Rows[$i] -Index $i
-        if ($key.StartsWith($Prefix)) {
+        if (Test-ShellListSearchKeyPrefixMatch -SearchKey $key -Buffer $Prefix -DigitsOnly:$SearchKeyDigitsOnly) {
             return $i
         }
     }

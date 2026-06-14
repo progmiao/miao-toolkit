@@ -27,14 +27,22 @@
     },
     "browse": {
       "sectionTitle": "Browse and install",
+      "installPageTitle": "Node.js install",
       "loading": "{spinner} Loading Node versions…",
       "loadFailed": "Failed to load versions",
       "noVersions": "No versions available",
       "voltaMissing": "Volta not found — install it from the dependency menu first",
       "cannotSelectInstalled": "Already installed — cannot select",
       "countUnit": "versions",
-      "selectedTitle": "{count} version(s) selected",
-      "selectedHint": "Batch install coming soon — Enter to go back"
+      "installStatusReady": "Ready to install",
+      "installStatusStarting": "{spinner} Starting Volta install node@{version}… ({elapsed}s)",
+      "installStatusWorking": "{spinner} Installing node@{version}… ({elapsed}s)",
+      "installLogStart": "Starting install node@{version}",
+      "installLogWorking": "{spinner} Still running… ({elapsed}s)",
+      "installLogSuccess": "node@{version} installed",
+      "installLogFailed": "node@{version} failed (exit code {code})",
+      "installSummary": "Done: {success} succeeded, {failed} failed (of {total})",
+      "installCancelled": "Install cancelled"
     }
   }
 }

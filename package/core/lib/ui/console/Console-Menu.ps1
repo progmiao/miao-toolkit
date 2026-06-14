@@ -1637,7 +1637,7 @@ function Update-PaginatedMenuFooter {
         else {
             [Math]::Max(40, [Math]::Min((Get-ConsoleLineWidth - 2), 64))
         }
-        $navColCount = if ($MultiSelectNav) { 6 } else { 5 }
+        $navColCount = if ($CompactNavStatus) { 5 } elseif ($MultiSelectNav) { 6 } else { 5 }
         $actionColCount = 5
 
         $actionSegments = if ($MenuSplitActionSegments -and $MenuSplitActionSegments.Count -gt 0) {
@@ -1687,11 +1687,12 @@ function Update-PaginatedMenuFooter {
 
         if ($CompactNavStatus) {
             $keys = Get-MiaoI18nKeys
+            $spaceLabelKey = if ($MultiSelectNav) { 'common.toggle' } else { 'common.confirm' }
             $navSegments = @(
                 (Format-I18nPaginationCompactStatus -PageIndex $PageIndex -PageCount $PageCount -ItemCount $ItemCount)
                 (Get-I18nArrowHint -Arrows $keys.ArrowsUpDown -LabelKey 'common.select')
                 (Get-I18nArrowHint -Arrows $keys.ArrowsLeftRight -LabelKey 'common.pageTurn')
-                (Get-I18nKeyHint -Key $keys.Space -LabelKey 'common.confirm')
+                (Get-I18nKeyHint -Key $keys.Space -LabelKey $spaceLabelKey)
                 (Get-I18nKeyHint -Key $keys.Enter -LabelKey 'common.confirm')
             )
         }
@@ -2154,11 +2155,11 @@ function Test-MenuSearchBufferPrefix {
         [array]$Items,
         [string]$Buffer,
         [scriptblock]$GetItemSearchKey = $null,
-        [scriptblock]$TestItemEnabled = $null
+        [scriptblock]$TestItemEnabled = $null,
+        [switch]$SearchKeyDigitsOnly
     )
 
     if ([string]::IsNullOrEmpty($Buffer)) { return $true }
-    if ($Buffer -notmatch '^[0-9.]+$') { return $false }
     if ($Items.Count -eq 0) { return $false }
 
     for ($i = 0; $i -lt $Items.Count; $i++) {
@@ -2170,7 +2171,8 @@ function Test-MenuSearchBufferPrefix {
         else {
             [string]($i + 1)
         }
-        if ($searchKey.StartsWith($Buffer)) {
+        if (Test-ShellListSearchKeyPrefixMatch -SearchKey $searchKey -Buffer $Buffer `
+                -DigitsOnly:$SearchKeyDigitsOnly) {
             return $true
         }
     }
