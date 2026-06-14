@@ -79,6 +79,19 @@ function Format-I18nPaginationTotalCount {
     return " $prefix$countText $Unit$suffix"
 }
 
+function Format-I18nPaginationCompactStatus {
+    param(
+        [int]$PageIndex,
+        [int]$PageCount,
+        [int]$ItemCount
+    )
+
+    $pageCurrent = Format-MenuPageNumber -Value ($PageIndex + 1) -PageCount $PageCount
+    $pageTotal = Format-MenuPageNumber -Value $PageCount -PageCount $PageCount
+    $countText = Format-ListTotalCountDisplay -Count $ItemCount
+    return "$pageCurrent/$pageTotal-$countText"
+}
+
 function Format-I18nCurrentIndexHint {
     param([int]$Index)
 

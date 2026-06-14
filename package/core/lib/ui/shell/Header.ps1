@@ -3,33 +3,29 @@
 function Write-ToolkitShellBrandArea {
     param([hashtable]$Shell)
 
+    $layoutWidth = Get-ToolkitShellStandardBrandInnerWidth
+
     if (Test-ToolkitInitValid) {
         $brand = Get-ToolkitBrandSnapshot -Locale (Get-CurrentLocale)
         if ($brand) {
-            Write-MenuHeaderFromSnapshot -Snapshot $brand -StartRow 0
+            Write-MenuHeaderFromSnapshot -Snapshot $brand -StartRow 0 -LayoutBrandInnerWidth $layoutWidth
             $contentStart = [int]$brand.contentStartRow
-            $barWidth = [int]$brand.brandInnerWidth
             $Shell.Layout['ContentStartRow'] = $contentStart
             $Shell.Layout['TopRows'] = $contentStart
-            $Shell.Layout['BrandInnerWidth'] = $barWidth
-            $Shell['BrandInnerWidth'] = $barWidth
             $Shell['HeaderLocale'] = (Get-CurrentLocale)
-            $null = Sync-ToolkitShellContentMetrics -Shell $Shell
+            $null = Apply-ToolkitShellLayoutBrandInnerWidth -Shell $Shell -Width $layoutWidth
             return
         }
     }
 
     $header = New-ToolkitMenuHeader -HideSectionTitle
-    Write-MenuHeader -Header $header -StartRow 0
+    Write-MenuHeader -Header $header -StartRow 0 -LayoutBrandInnerWidth $layoutWidth
 
     $contentStart = Get-MenuHeaderRowCount -Header $header
     $Shell.Layout['ContentStartRow'] = $contentStart
     $Shell.Layout['TopRows'] = $contentStart
-    $barWidth = Get-BrandInnerWidth -Header $header
-    $Shell.Layout['BrandInnerWidth'] = $barWidth
-    $Shell['BrandInnerWidth'] = $barWidth
     $Shell['HeaderLocale'] = (Get-CurrentLocale)
-    $null = Sync-ToolkitShellContentMetrics -Shell $Shell
+    $null = Apply-ToolkitShellLayoutBrandInnerWidth -Shell $Shell -Width $layoutWidth
 }
 
 function Initialize-ToolkitShell {
@@ -54,17 +50,18 @@ function Initialize-ToolkitShell {
             TopRows         = 0
             BrandInnerWidth = 0
         }
+        LayoutBrandInnerWidth = 0
         BrandInnerWidth = 0
     }
 
-    Write-ToolkitShellBrandArea -Shell $script:ToolkitShell
+    $null = Write-ToolkitShellBrandArea -Shell $script:ToolkitShell
     return $script:ToolkitShell
 }
 
 function Update-ToolkitShellBrandHeader {
     param([hashtable]$Shell)
 
-    Write-ToolkitShellBrandArea -Shell $Shell
+    $null = Write-ToolkitShellBrandArea -Shell $Shell
 }
 
 function Ensure-ShellHeader {

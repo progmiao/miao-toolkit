@@ -1,6 +1,11 @@
 ﻿# 多选列表：ShellListRow + 勾选列 + 列布局 + 翻页 + 双行底栏（导航 6 列）
 
 $script:ShellMultiSelectCheckWidth = 3
+$script:ShellMultiSelectSearchKeyWidth = 12
+
+function Get-ShellMultiSelectSearchKeyWidth {
+    return [int]$script:ShellMultiSelectSearchKeyWidth
+}
 
 function Initialize-ShellMultiSelectListDependencies {
     if (Get-Command Redraw-PaginatedMenuPage -ErrorAction SilentlyContinue) {
@@ -46,7 +51,29 @@ function Build-ShellMultiSelectListRowCache {
         [hashtable]$ColumnLayout
     )
 
-    return Build-ShellSingleSelectListRowCache -Rows $Rows -ColumnLayout $ColumnLayout
+    $built = Build-ShellSingleSelectListRowCache -Rows $Rows -ColumnLayout $ColumnLayout
+    if ($Rows.Count -gt 0) {
+        for ($i = 0; $i -lt $Rows.Count; $i++) {
+            $searchKey = ''
+            if ($null -ne $Rows[$i].PSObject.Properties['SearchKey']) {
+                $searchKey = [string]$Rows[$i].SearchKey
+            }
+            if ([string]::IsNullOrEmpty($searchKey)) { continue }
+
+            $entry = $built.RowCache[$i]
+            $built.RowCache[$i] = [pscustomobject]@{
+                BodyPlain    = $entry.BodyPlain
+                BodySegments = $entry.BodySegments
+                LineColor    = $entry.LineColor
+                Enabled      = $entry.Enabled
+                Source       = $entry.Source
+                Number       = $entry.Number
+                SearchKey    = $searchKey
+            }
+        }
+    }
+
+    return $built
 }
 
 function Build-ShellMultiSelectListRowSpec {
@@ -56,16 +83,25 @@ function Build-ShellMultiSelectListRowSpec {
         [bool]$Checked,
         [int]$NumWidth,
         [int]$DisplayNumber,
-        [string]$Gap
+        [string]$Gap,
+        [switch]$UseSearchKeyColumn,
+        [int]$KeyWidth = 0,
+        [string]$DisplayKey = ''
     )
 
     if (-not $RowCacheEntry) { return $null }
 
     $enabled = [bool]$RowCacheEntry.Enabled
     $check = Format-ShellMultiSelectCheckMark -Checked $Checked -Enabled $enabled
-    $num = Format-ListDisplayNumber -Number $DisplayNumber -NumWidth $NumWidth
     $mark = if ($Selected) { '>' } else { ' ' }
-    $prefix = " $mark $check $num$Gap"
+    if ($UseSearchKeyColumn) {
+        $keyText = Pad-DisplayText -Text $DisplayKey -TargetWidth $KeyWidth
+        $prefix = " $mark $check $keyText$Gap"
+    }
+    else {
+        $num = Format-ListDisplayNumber -Number $DisplayNumber -NumWidth $NumWidth
+        $prefix = " $mark $check $num$Gap"
+    }
     $lineColor = if ($enabled) { $RowCacheEntry.LineColor } else { [System.ConsoleColor]::DarkGray }
 
     if ($Selected) {
@@ -77,14 +113,22 @@ function Build-ShellMultiSelectListRowSpec {
         }
     }
 
+    if ($UseSearchKeyColumn) {
+        $keyText = Pad-DisplayText -Text $DisplayKey -TargetWidth $KeyWidth
+        $keySeg = @{ Text = "$keyText$Gap"; Color = $lineColor }
+    }
+    else {
+        $num = Format-ListDisplayNumber -Number $DisplayNumber -NumWidth $NumWidth
+        $keySeg = @{ Text = "$num$Gap"; Color = $lineColor }
+    }
+
     $checkSeg = @{ Text = "$mark $check "; Color = $lineColor }
-    $numSeg = @{ Text = "$num$Gap"; Color = $lineColor }
     $bodySegs = @()
     if ($null -ne $RowCacheEntry.BodySegments) {
         $bodySegs = @($RowCacheEntry.BodySegments)
     }
     return @{
-        Segments          = @($checkSeg, $numSeg) + $bodySegs
+        Segments          = @($checkSeg, $keySeg) + $bodySegs
         DefaultForeground = $lineColor
     }
 }
@@ -157,7 +201,10 @@ function Invoke-ShellMultiSelectListDrawRow {
         [int]$DisplayNumber,
         [bool]$Enabled,
         [int]$ContentLineWidth = 0,
-        [int]$ContentStartColumn = 0
+        [int]$ContentStartColumn = 0,
+        [switch]$UseSearchKeyColumn,
+        [int]$KeyWidth = 0,
+        [string]$DisplayKey = ''
     )
 
     if ($Index -lt 0 -or $Index -ge $RowCache.Count) { return }
@@ -165,7 +212,8 @@ function Invoke-ShellMultiSelectListDrawRow {
     if (-not $part) { return }
 
     $spec = Build-ShellMultiSelectListRowSpec -RowCacheEntry $part -Selected $Selected -Checked $Checked `
-        -NumWidth $NumWidth -DisplayNumber $DisplayNumber -Gap $ColGap
+        -NumWidth $NumWidth -DisplayNumber $DisplayNumber -Gap $ColGap `
+        -UseSearchKeyColumn:$UseSearchKeyColumn -KeyWidth $KeyWidth -DisplayKey $DisplayKey
     Write-ShellMultiSelectListRow -ScreenRow $ScreenRow -DisplayNumber $DisplayNumber `
         -NumWidth $NumWidth -Gap $ColGap -Selected $Selected -Checked $Checked -Enabled $Enabled `
         -RowSpec $spec -ContentLineWidth $ContentLineWidth -ContentStartColumn $ContentStartColumn
@@ -175,29 +223,22 @@ function New-ShellMultiSelectListDrawHandlers {
     param(
         [array]$RowCache,
         [string]$ColGap,
-        [hashtable]$ToolkitShell = $null,
-        [string]$CheckedCacheKey = '',
+        [System.Collections.Generic.HashSet[int]]$CheckedIndexSet = $null,
         [int]$ContentLineWidth = 0,
-        [int]$ContentStartColumn = 0
+        [int]$ContentStartColumn = 0,
+        [switch]$SearchKeyMode,
+        [int]$SearchKeyWidth = 0
     )
 
     $cacheSnapshot = @($RowCache)
     $gapSnapshot = [string]$ColGap
     $contentWidthSnapshot = [int]$ContentLineWidth
     $contentStartSnapshot = [int]$ContentStartColumn
-    $shellSnapshot = $ToolkitShell
-    $checkedKeySnapshot = [string]$CheckedCacheKey
-
-    $resolveChecked = {
-        param([int]$Index)
-        if (-not $shellSnapshot -or [string]::IsNullOrWhiteSpace($checkedKeySnapshot)) { return $false }
-        return (Test-ShellMultiSelectIndexChecked -Shell $shellSnapshot -CacheKey $checkedKeySnapshot -Index $Index)
-    }.GetNewClosure()
+    $checkedSetSnapshot = $CheckedIndexSet
+    $searchKeyModeSnapshot = [bool]$SearchKeyMode
+    $searchKeyWidthSnapshot = if ($SearchKeyWidth -gt 0) { [int]$SearchKeyWidth } else { (Get-ShellMultiSelectSearchKeyWidth) }
 
     Initialize-ShellMultiSelectListDependencies
-    $fnDrawRow = Get-Command Invoke-ShellMultiSelectListDrawRow -CommandType Function -ErrorAction Stop
-    $fnFormatCheck = Get-Command Format-ShellMultiSelectCheckMark -CommandType Function -ErrorAction Stop
-    $fnBuildSpec = Get-Command Build-ShellMultiSelectListRowSpec -CommandType Function -ErrorAction Stop
 
     $getLabel = {
         param($Item, [int]$Index)
@@ -205,7 +246,13 @@ function New-ShellMultiSelectListDrawHandlers {
         $part = $cacheSnapshot[$Index]
         if (-not $part) { return '' }
         $rowEnabled = [bool]$part.Enabled
-        $check = & $fnFormatCheck -Checked (& $resolveChecked $Index) -Enabled $rowEnabled
+        $checked = $false
+        if ($checkedSetSnapshot) { $checked = $checkedSetSnapshot.Contains($Index) }
+        $check = Format-ShellMultiSelectCheckMark -Checked $checked -Enabled $rowEnabled
+        if ($searchKeyModeSnapshot) {
+            $key = if ($null -ne $part.PSObject.Properties['SearchKey']) { [string]$part.SearchKey } else { '' }
+            return "$check  $key  $([string]$part.BodyPlain)"
+        }
         return "$check  $([string]$part.BodyPlain)"
     }.GetNewClosure()
 
@@ -221,8 +268,16 @@ function New-ShellMultiSelectListDrawHandlers {
         if ($Index -lt 0 -or $Index -ge $cacheSnapshot.Count -or -not $cacheSnapshot[$Index]) {
             return $null
         }
-        return (& $fnBuildSpec -RowCacheEntry $cacheSnapshot[$Index] -Selected $Selected `
-            -Checked (& $resolveChecked $Index) -NumWidth $NumWidth -DisplayNumber $DisplayNumber -Gap $gapSnapshot)
+        $checked = $false
+        if ($checkedSetSnapshot) { $checked = $checkedSetSnapshot.Contains($Index) }
+        $part = $cacheSnapshot[$Index]
+        $displayKey = ''
+        if ($searchKeyModeSnapshot -and $null -ne $part.PSObject.Properties['SearchKey']) {
+            $displayKey = [string]$part.SearchKey
+        }
+        return (Build-ShellMultiSelectListRowSpec -RowCacheEntry $part -Selected $Selected `
+            -Checked $checked -NumWidth $NumWidth -DisplayNumber $DisplayNumber -Gap $gapSnapshot `
+            -UseSearchKeyColumn:$searchKeyModeSnapshot -KeyWidth $searchKeyWidthSnapshot -DisplayKey $displayKey)
     }.GetNewClosure()
 
     $drawListRow = {
@@ -236,10 +291,18 @@ function New-ShellMultiSelectListDrawHandlers {
             [bool]$Enabled
         )
 
-        & $fnDrawRow -ScreenRow $ScreenRow -Index $Index `
+        $checked = $false
+        if ($checkedSetSnapshot) { $checked = $checkedSetSnapshot.Contains($Index) }
+        $part = $cacheSnapshot[$Index]
+        $displayKey = ''
+        if ($searchKeyModeSnapshot -and $part -and $null -ne $part.PSObject.Properties['SearchKey']) {
+            $displayKey = [string]$part.SearchKey
+        }
+        Invoke-ShellMultiSelectListDrawRow -ScreenRow $ScreenRow -Index $Index `
             -RowCache $cacheSnapshot -ColGap $gapSnapshot -Selected $Selected `
-            -Checked (& $resolveChecked $Index) -NumWidth $NumWidth -DisplayNumber $DisplayNumber `
-            -Enabled $Enabled -ContentLineWidth $contentWidthSnapshot -ContentStartColumn $contentStartSnapshot
+            -Checked $checked -NumWidth $NumWidth -DisplayNumber $DisplayNumber `
+            -Enabled $Enabled -ContentLineWidth $contentWidthSnapshot -ContentStartColumn $contentStartSnapshot `
+            -UseSearchKeyColumn:$searchKeyModeSnapshot -KeyWidth $searchKeyWidthSnapshot -DisplayKey $displayKey
     }.GetNewClosure()
 
     return @{
@@ -339,15 +402,9 @@ function Test-ShellMultiSelectIndexChecked {
 }
 
 function Find-ShellMultiSelectFirstFocusIndex {
-    param(
-        [array]$Rows,
-        [scriptblock]$TestRowEnabled
-    )
+    param([array]$Rows)
 
     if ($Rows.Count -eq 0) { return -1 }
-    for ($i = 0; $i -lt $Rows.Count; $i++) {
-        if (& $TestRowEnabled $Rows[$i] $i) { return $i }
-    }
     return 0
 }
 
@@ -375,8 +432,11 @@ function Show-ShellMultiSelectListMenu {
         [hashtable]$LetterKeys = @{},
         [string[]]$MenuSplitActionSegments = $null,
         [scriptblock]$GetItemDisplayNumber = $null,
+        [scriptblock]$GetItemSearchKey = $null,
         [scriptblock]$ResolveMenuNumber = $null,
         [int]$NumberDisplayWidth = 0,
+        [switch]$SearchKeyMode,
+        [int]$SearchKeyWidth = 0,
         [hashtable]$ToolkitShell = $null,
         [switch]$EscMeansBack,
         [array]$RowCache = @(),
@@ -402,9 +462,11 @@ function Show-ShellMultiSelectListMenu {
 
     Initialize-ShellMultiSelectListDependencies
     $fnRedrawPage = Get-ShellMultiSelectMenuCommand 'Redraw-PaginatedMenuPage'
+    $fnUpdateSelection = Get-ShellMultiSelectMenuCommand 'Update-PaginatedMenuSelection'
     $fnSelectPageIndex = Get-ShellMultiSelectMenuCommand 'Select-MenuPageSelectionIndex'
     $fnSetListScroll = Get-ShellMultiSelectMenuCommand 'Set-MenuListScrollOffset'
     $fnTestNumPrefix = Get-ShellMultiSelectMenuCommand 'Test-MenuNumberBufferPrefix'
+    $fnTestSearchPrefix = Get-ShellMultiSelectMenuCommand 'Test-MenuSearchBufferPrefix'
     $fnSetMenuCursor = Get-ShellMultiSelectMenuCommand 'Set-MenuInputCursorPosition'
 
     $layout = $ToolkitShell.Layout
@@ -427,14 +489,28 @@ function Show-ShellMultiSelectListMenu {
         $resolveNumberFn = ${function:Resolve-ListNumberIndexDefault}
     }
 
-    $maxDisplayNumber = Get-MenuMaxDisplayNumber -Items $Items -GetItemDisplayNumber $GetItemDisplayNumber
-    if ($NumberDisplayWidth -gt 0) {
-        $numWidth = $NumberDisplayWidth
+    if ($SearchKeyMode -and -not $GetItemSearchKey) {
+        $GetItemSearchKey = {
+            param($Item, [int]$Index)
+            Get-ShellListRowSearchKey -Row $Item -Index $Index
+        }
+    }
+
+    if ($SearchKeyMode) {
+        $keyWidth = if ($SearchKeyWidth -gt 0) { $SearchKeyWidth } else { (Get-ShellMultiSelectSearchKeyWidth) }
+        $numWidth = $keyWidth
+        $singleDigitSelect = $false
     }
     else {
-        $numWidth = Get-ListNumberDisplayWidth -MaxNumber $maxDisplayNumber
+        $maxDisplayNumber = Get-MenuMaxDisplayNumber -Items $Items -GetItemDisplayNumber $GetItemDisplayNumber
+        if ($NumberDisplayWidth -gt 0) {
+            $numWidth = $NumberDisplayWidth
+        }
+        else {
+            $numWidth = Get-ListNumberDisplayWidth -MaxNumber $maxDisplayNumber
+        }
+        $singleDigitSelect = ($maxDisplayNumber -le 9)
     }
-    $singleDigitSelect = ($maxDisplayNumber -le 9)
     $pageCount = [Math]::Max(1, [Math]::Ceiling($Items.Count / [double]$PageSize))
 
     $checkedIndexSet = Get-ShellMultiSelectCheckedSet -Shell $ToolkitShell -CacheKey $CheckedCacheKey
@@ -445,7 +521,7 @@ function Show-ShellMultiSelectListMenu {
         Get-I18n -Key $FlashNothingSelectedKey
     }
     $pageIndex = 0
-    $selectedIndex = Find-ShellMultiSelectFirstFocusIndex -Rows $Items -TestRowEnabled $TestItemEnabled
+    $selectedIndex = Find-ShellMultiSelectFirstFocusIndex -Rows $Items
     $numberBuffer = ''
     $flashMessage = ''
     $listScrollOffset = 0
@@ -457,20 +533,24 @@ function Show-ShellMultiSelectListMenu {
     $contentLineWidth = [int]$layout.ContentLineWidth
     $contentStartColumn = [int]$layout.ContentStartColumn
     $handlers = New-ShellMultiSelectListDrawHandlers -RowCache $RowCache -ColGap $ColGap `
-        -ToolkitShell $ToolkitShell -CheckedCacheKey $CheckedCacheKey `
-        -ContentLineWidth $contentLineWidth -ContentStartColumn $contentStartColumn
+        -CheckedIndexSet $checkedIndexSet -ContentLineWidth $contentLineWidth `
+        -ContentStartColumn $contentStartColumn -SearchKeyMode:$SearchKeyMode `
+        -SearchKeyWidth $(if ($SearchKeyMode) { $numWidth } else { 0 })
 
-    function Apply-MultiSelectNumberBuffer {
+    function Apply-MultiSelectInputBuffer {
         param([string]$Buffer)
         if ([string]::IsNullOrEmpty($Buffer)) { return }
         if ($Items.Count -eq 0) { return }
 
-        $num = [int]$Buffer
-        $idx = & $resolveNumberFn $Items $num
+        $idx = -1
+        if ($SearchKeyMode) {
+            $idx = Resolve-ShellListRowSearchKeyPrefixIndex -Rows $Items -Prefix $Buffer
+        }
+        else {
+            $num = [int]$Buffer
+            $idx = & $resolveNumberFn $Items $num
+        }
         if ($idx -ge 0 -and $idx -lt $Items.Count) {
-            if (-not (& $TestItemEnabled $Items[$idx] $idx)) {
-                return
-            }
             Set-Variable -Name selectedIndex -Value $idx -Scope 1
             Set-Variable -Name pageIndex -Value ([Math]::Floor($idx / [double]$PageSize)) -Scope 1
             & $fnSetListScroll -ScrollOffset ([ref]$listScrollOffset) `
@@ -485,7 +565,7 @@ function Show-ShellMultiSelectListMenu {
             -GetItemLabel $handlers['GetLabel'] -TestItemEnabled $TestItemEnabled -PageSize $PageSize `
             -GetItemDisplayNumber $GetItemDisplayNumber -ListScrollOffset $listScrollOffset `
             -DrawListRow $handlers['DrawListRow'] -GetListRowSpec $handlers['GetListRowSpec']
-    }.GetNewClosure()
+    }
 
     $invokeFooter = {
         param([string]$FlashMessage = '')
@@ -501,7 +581,7 @@ function Show-ShellMultiSelectListMenu {
             MenuSplitActionSegments = $MenuSplitActionSegments
             MultiSelectNav          = $true
         }
-    }.GetNewClosure()
+    }
 
     & $fnSetListScroll -ScrollOffset ([ref]$listScrollOffset) `
         -SelectedIndex $selectedIndex -PageIndex $pageIndex -PageSize $PageSize `
@@ -514,7 +594,7 @@ function Show-ShellMultiSelectListMenu {
         param([hashtable]$FooterState = @{})
         $flash = if ($FooterState.FlashMessage) { [string]$FooterState.FlashMessage } else { '' }
         & $invokeFooter -FlashMessage $flash
-    }.GetNewClosure()
+    }
     if ($useShellBatch) { $null = Complete-ConsoleDrawBatch -ToolkitShell $ToolkitShell }
 
     try {
@@ -535,28 +615,38 @@ function Show-ShellMultiSelectListMenu {
             $key = [Console]::ReadKey($true)
 
             if ($key.Key -eq 'Backspace') {
-                if (-not $singleDigitSelect -and -not [string]::IsNullOrEmpty($numberBuffer)) {
-                    $numberBuffer = $numberBuffer.Substring(0, $numberBuffer.Length - 1)
-                    if (-not [string]::IsNullOrEmpty($numberBuffer)) {
-                        Apply-MultiSelectNumberBuffer -Buffer $numberBuffer
+                if (-not [string]::IsNullOrEmpty($numberBuffer)) {
+                    if ($SearchKeyMode -or -not $singleDigitSelect) {
+                        $numberBuffer = $numberBuffer.Substring(0, $numberBuffer.Length - 1)
+                        if (-not [string]::IsNullOrEmpty($numberBuffer)) {
+                            Apply-MultiSelectInputBuffer -Buffer $numberBuffer
+                        }
                     }
                 }
             }
-            elseif ($key.KeyChar -match '^[0-9]$') {
+            elseif ($SearchKeyMode -and $key.KeyChar -match '^[0-9.]$') {
+                $candidate = $numberBuffer + [string]$key.KeyChar
+                if (& $fnTestSearchPrefix -Items $Items -Buffer $candidate `
+                        -GetItemSearchKey $GetItemSearchKey) {
+                    $numberBuffer = $candidate
+                    Apply-MultiSelectInputBuffer -Buffer $numberBuffer
+                }
+            }
+            elseif (-not $SearchKeyMode -and $key.KeyChar -match '^[0-9]$') {
                 if ($singleDigitSelect) {
                     $digit = [string]$key.KeyChar
                     if (& $fnTestNumPrefix -Items $Items -Buffer $digit `
-                        -GetItemDisplayNumber $GetItemDisplayNumber -TestItemEnabled $TestItemEnabled) {
+                        -GetItemDisplayNumber $GetItemDisplayNumber) {
                         $numberBuffer = $digit
-                        Apply-MultiSelectNumberBuffer -Buffer $numberBuffer
+                        Apply-MultiSelectInputBuffer -Buffer $numberBuffer
                     }
                 }
                 else {
                     $candidate = $numberBuffer + $key.KeyChar
                     if (& $fnTestNumPrefix -Items $Items -Buffer $candidate `
-                        -GetItemDisplayNumber $GetItemDisplayNumber -TestItemEnabled $TestItemEnabled) {
+                        -GetItemDisplayNumber $GetItemDisplayNumber) {
                         $numberBuffer = $candidate
-                        Apply-MultiSelectNumberBuffer -Buffer $numberBuffer
+                        Apply-MultiSelectInputBuffer -Buffer $numberBuffer
                     }
                 }
             }
@@ -673,26 +763,37 @@ function Show-ShellMultiSelectListMenu {
             $checkChanged = $checkToggled
             $bufferChanged = ($oldNumberBuffer -ne $numberBuffer)
             $footerChanged = $pageChanged -or $flashMessage -or $bufferChanged
-            $rowVisualChanged = $pageChanged -or $scrollChanged -or $selectionChanged -or $checkChanged
+            $fullRowRedraw = $pageChanged -or $scrollChanged -or $checkChanged
+            $batchNeeded = $fullRowRedraw -or $footerChanged
 
-            if ($useShellBatch -and ($rowVisualChanged -or $footerChanged)) {
+            if ($useShellBatch -and $batchNeeded) {
                 if ($script:ConsoleDrawBatchDepth -le 0) { Enter-ConsoleDrawBatch }
             }
 
-            if ($pageChanged -or $scrollChanged -or $selectionChanged -or $checkChanged) {
+            if ($fullRowRedraw) {
                 & $redrawPage
+            }
+            elseif ($selectionChanged) {
+                & $fnUpdateSelection -Items $Items -Layout $layout -PageIndex $pageIndex `
+                    -PageSize $PageSize -OldIndex $oldIndex -NewIndex $selectedIndex `
+                    -ScrollOffset $listScrollOffset -NumWidth $numWidth `
+                    -GetItemLabel $handlers['GetLabel'] -TestItemEnabled $TestItemEnabled `
+                    -GetItemDisplayNumber $GetItemDisplayNumber -DrawListRow $handlers['DrawListRow'] `
+                    -GetListRowSpec $handlers['GetListRowSpec'] -ContentLineWidth $contentLineWidth `
+                    -ContentStartColumn $contentStartColumn
             }
 
             if ($footerChanged) {
                 & $invokeFooter -FlashMessage $flashMessage
             }
 
-            if ($rowVisualChanged -or $footerChanged) {
+            $needsShellCursor = $fullRowRedraw -or $footerChanged -or $selectionChanged
+            if ($needsShellCursor -and (-not ($useShellBatch -and $batchNeeded))) {
                 Set-ToolkitShellInputCursor -Shell $ToolkitShell
                 if ((Get-ConsoleViewportTop) -gt 0) { $null = Sync-ConsoleViewportTop }
             }
 
-            if ($useShellBatch -and ($rowVisualChanged -or $footerChanged)) {
+            if ($useShellBatch -and $batchNeeded) {
                 $null = Complete-ConsoleDrawBatch -ToolkitShell $ToolkitShell
             }
         }
@@ -721,7 +822,9 @@ function Invoke-ShellMultiSelectList {
         [string]$FlashNothingSelectedKey = 'common.nothingSelected',
         [string]$FlashItemDisabledKey = 'message.disabledItem',
         [string]$FlashNothingSelected = '',
-        [string]$FlashItemDisabled = ''
+        [string]$FlashItemDisabled = '',
+        [switch]$SearchKeyMode,
+        [int]$SearchKeyWidth = 0
     )
 
     if ([string]::IsNullOrWhiteSpace($CountLabel)) {
@@ -747,20 +850,17 @@ function Invoke-ShellMultiSelectList {
     $gapField = "${CacheKey}MultiListColGap"
     $colGap = if ($Shell[$gapField]) { $Shell[$gapField] } else { $built.ColGap }
 
-    $maxNumber = 0
-    for ($i = 0; $i -lt $normalized.Count; $i++) {
-        $n = [int](Get-ShellListRowDisplayNumber -Row $normalized[$i] -Index $i)
-        if ($n -gt $maxNumber) { $maxNumber = $n }
-    }
-    if ($maxNumber -lt 1) { $maxNumber = $normalized.Count }
-    $numWidth = Get-ListNumberDisplayWidth -MaxNumber $maxNumber
-
     $contentMetrics = Get-ToolkitShellContentMetrics -Shell $Shell
     $null = Get-ShellMultiSelectCheckedSet -Shell $Shell -CacheKey $CacheKey
 
     $getDisplayNumber = {
         param($Row, [int]$Index)
         Get-ShellListRowDisplayNumber -Row $Row -Index $Index
+    }
+
+    $getSearchKey = {
+        param($Row, [int]$Index)
+        Get-ShellListRowSearchKey -Row $Row -Index $Index
     }
 
     $resolveMenuNumber = {
@@ -775,10 +875,22 @@ function Invoke-ShellMultiSelectList {
 
     $letterKeys = if ($ToolbarConfig.LetterKeys) { $ToolbarConfig.LetterKeys } else { @{} }
 
+    $numberWidth = 0
+    if (-not $SearchKeyMode) {
+        $maxNumber = 0
+        for ($i = 0; $i -lt $normalized.Count; $i++) {
+            $n = [int](Get-ShellListRowDisplayNumber -Row $normalized[$i] -Index $i)
+            if ($n -gt $maxNumber) { $maxNumber = $n }
+        }
+        if ($maxNumber -lt 1) { $maxNumber = $normalized.Count }
+        $numberWidth = Get-ListNumberDisplayWidth -MaxNumber $maxNumber
+    }
+
     $picked = Show-ShellMultiSelectListMenu -Header $header -Items $normalized -CountLabel $CountLabel `
         -TestItemEnabled $testRowEnabled -GetItemDisplayNumber $getDisplayNumber `
-        -ResolveMenuNumber $resolveMenuNumber -NumberDisplayWidth $numWidth `
-        -RowCache $rowCache -ColGap $colGap -CheckedCacheKey $CacheKey `
+        -GetItemSearchKey $getSearchKey -ResolveMenuNumber $resolveMenuNumber `
+        -NumberDisplayWidth $numberWidth -SearchKeyMode:$SearchKeyMode `
+        -SearchKeyWidth $SearchKeyWidth -RowCache $rowCache -ColGap $colGap -CheckedCacheKey $CacheKey `
         -MenuSplitActionSegments @($ToolbarConfig.Segments) -LetterKeys $letterKeys `
         -ToolkitShell $Shell -EscMeansBack:($ToolbarConfig.EscMeansBack) `
         -FlashNothingSelectedKey $FlashNothingSelectedKey -FlashItemDisabledKey $FlashItemDisabledKey `

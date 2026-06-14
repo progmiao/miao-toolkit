@@ -28,6 +28,7 @@ function ConvertTo-ShellListRows {
         [Parameter(Mandatory)]
         [scriptblock]$MapCells,
         [scriptblock]$GetNumber = $null,
+        [scriptblock]$GetSearchKey = $null,
         [scriptblock]$GetEnabled = $null,
         [switch]$KeepSource
     )
@@ -44,15 +45,21 @@ function ConvertTo-ShellListRows {
             $number = [int](& $GetNumber $item $index)
         }
 
+        $searchKey = ''
+        if ($GetSearchKey) {
+            $searchKey = [string](& $GetSearchKey $item $index)
+        }
+
         $enabled = $true
         if ($GetEnabled) {
             $enabled = [bool](& $GetEnabled $item $index)
         }
 
         $row = [ordered]@{
-            Number  = $number
-            Cells   = $cells
-            Enabled = $enabled
+            Number    = $number
+            Cells     = $cells
+            Enabled   = $enabled
+            SearchKey = $searchKey
         }
         if ($KeepSource) {
             $row['Source'] = $item
@@ -76,7 +83,7 @@ function Normalize-ShellListRows {
     $index = 0
 
     foreach ($row in $Rows) {
-        if (-not $row.Cells) {
+        if ($null -eq $row.Cells) {
             throw 'ShellListRow requires Cells.'
         }
         $cells = @($row.Cells | ForEach-Object { [string]$_ })
@@ -94,11 +101,17 @@ function Normalize-ShellListRows {
             $enabled = [bool]$row.Enabled
         }
 
+        $searchKey = ''
+        if ($null -ne $row.PSObject.Properties['SearchKey']) {
+            $searchKey = [string]$row.SearchKey
+        }
+
         $normalizedRow = [pscustomobject]@{
-            Number  = $number
-            Cells   = $cells
-            Enabled = $enabled
-            Source  = $row.Source
+            Number    = $number
+            Cells     = $cells
+            Enabled   = $enabled
+            SearchKey = $searchKey
+            Source    = $row.Source
         }
         $normalized.Add($normalizedRow)
         $index++
@@ -113,7 +126,8 @@ function Get-ShellListRowsCacheKey {
     if ($Rows.Count -eq 0) { return '' }
     return (($Rows | ForEach-Object {
         $src = if ($null -ne $_.Source) { Get-ShellListItemCommand $_.Source } else { '' }
-        "$($_.Number):$($_.Cells -join '|'):$($_.Enabled):$src"
+        $key = if ($null -ne $_.PSObject.Properties['SearchKey']) { [string]$_.SearchKey } else { '' }
+        "$($_.Number):${key}:$($_.Cells -join '|'):$($_.Enabled):$src"
     }) -join ';')
 }
 
@@ -371,6 +385,37 @@ function Resolve-ShellListRowNumberIndex {
     return -1
 }
 
+function Get-ShellListRowSearchKey {
+    param(
+        $Row,
+        [int]$Index
+    )
+
+    if ($null -eq $Row) { return '' }
+    if ($null -ne $Row.PSObject.Properties['SearchKey'] -and -not [string]::IsNullOrEmpty([string]$Row.SearchKey)) {
+        return [string]$Row.SearchKey
+    }
+    return [string](Get-ShellListRowDisplayNumber -Row $Row -Index $Index)
+}
+
+function Resolve-ShellListRowSearchKeyPrefixIndex {
+    param(
+        [array]$Rows,
+        [string]$Prefix,
+        [scriptblock]$TestItemEnabled = $null
+    )
+
+    if ([string]::IsNullOrEmpty($Prefix)) { return -1 }
+    for ($i = 0; $i -lt $Rows.Count; $i++) {
+        if ($TestItemEnabled -and -not (& $TestItemEnabled $Rows[$i] $i)) { continue }
+        $key = Get-ShellListRowSearchKey -Row $Rows[$i] -Index $i
+        if ($key.StartsWith($Prefix)) {
+            return $i
+        }
+    }
+    return -1
+}
+
 function Get-ShellSingleSelectListRowCache {
     param(
         [hashtable]$Shell,
@@ -380,7 +425,12 @@ function Get-ShellSingleSelectListRowCache {
     )
 
     $locale = Get-CurrentLocale
-    $layoutKey = if ($ColumnLayout.Preset) { $ColumnLayout.Preset } else { ($ColumnLayout.Widths -join ',') }
+    $layoutKey = if ($ColumnLayout.Preset) {
+        "$($ColumnLayout.Preset)|$($ColumnLayout.Widths -join ',')"
+    }
+    else {
+        ($ColumnLayout.Widths -join ',')
+    }
     $rowsKey = Get-ShellListRowsCacheKey -Rows $Rows
     $cacheField = "${CacheKey}ListRowCache"
     $localeField = "${CacheKey}ListRowCacheLocale"
@@ -466,6 +516,28 @@ function Invoke-ShellSingleSelectList {
 
     Sync-MiaoLocaleFromShell -Shell $Shell
 
+    $maxNumberPreview = 0
+    for ($i = 0; $i -lt $Rows.Count; $i++) {
+        $row = $Rows[$i]
+        $n = if ($null -ne $row.PSObject.Properties['Number'] -and [int]$row.Number -gt 0) {
+            [int]$row.Number
+        }
+        elseif ($null -ne $row.PSObject.Properties['Source'] -and $row.Source) {
+            [int](Get-ListItemDisplayNumberDefault -Item $row.Source -Index $i)
+        }
+        else {
+            $i + 1
+        }
+        if ($n -gt $maxNumberPreview) { $maxNumberPreview = $n }
+    }
+    if ($maxNumberPreview -lt $Rows.Count) { $maxNumberPreview = $Rows.Count }
+    if ($maxNumberPreview -lt 1) { $maxNumberPreview = 1 }
+    $numWidthPreview = Get-ListNumberDisplayWidth -MaxNumber $maxNumberPreview
+    if ($ColumnLayout.Preset -eq 'ToolList' -or $ColumnLayout.Preset -eq 'MenuList') {
+        $ColumnLayout = Resolve-ShellToolListColumnLayout -Shell $Shell -NumWidth $numWidthPreview `
+            -Preset $ColumnLayout.Preset
+    }
+
     $normalized = @(Normalize-ShellListRows -Rows $Rows -ColumnLayout $ColumnLayout)
 
     if (-not $SkipBodyInit) {
@@ -541,7 +613,9 @@ function Invoke-ShellSingleSelectList {
         -MenuSplitActionSegments @($ToolbarConfig.Segments) `
         -LetterKeys $letterKeys `
         -ToolkitShell $Shell `
-        -EscMeansBack:($ToolbarConfig.EscMeansBack)
+        -EscMeansBack:($ToolbarConfig.EscMeansBack) `
+        -CompactNavStatus:($ColumnLayout.Preset -eq 'ToolList') `
+        -AllowSpaceConfirm:($ColumnLayout.Preset -eq 'ToolList')
 
     return Resolve-ShellSingleSelectListPick -Picked $picked
 }

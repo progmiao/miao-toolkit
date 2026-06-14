@@ -498,9 +498,18 @@ function Invoke-ToolkitInitBuild {
             count  = $tools.Count
         }) -Phase toolbox
 
-        $columnLayout = New-ShellListColumnLayout -Preset ToolList
         $rows = Get-HomeToolListRows -Tools $tools
-        $layoutKey = [string]$columnLayout.Preset
+        $maxNumber = 0
+        foreach ($row in $rows) {
+            $n = [int]$row.Number
+            if ($n -gt $maxNumber) { $maxNumber = $n }
+        }
+        if ($maxNumber -lt $rows.Count) { $maxNumber = $rows.Count }
+        if ($maxNumber -lt 1) { $maxNumber = 1 }
+        $numWidth = Get-ListNumberDisplayWidth -MaxNumber $maxNumber
+        $columnLayout = Resolve-ShellToolListColumnLayout -NumWidth $numWidth `
+            -BrandInnerWidth (Get-ToolkitShellStandardBrandInnerWidth) -Preset 'ToolList'
+        $layoutKey = "$($columnLayout.Preset)|$($columnLayout.Widths -join ',')"
         $rowsKey = Get-ShellListRowsCacheKey -Rows $rows
         $built = Build-ShellSingleSelectListRowCache -Rows $rows -ColumnLayout $columnLayout
         $payload = Export-ToolkitRowCacheBuilt -Built $built -Rows $rows

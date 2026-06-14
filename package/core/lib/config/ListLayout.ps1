@@ -4,7 +4,7 @@ $script:ListNumberMinDisplayWidth = 2
 $script:ListPageNumberMinDisplayWidth = 2
 $script:ToolkitListColumnGap = 2
 $script:ToolkitCliCommandPrefix = 'miao'
-$script:ToolkitBrandSeparatorExtra = 8
+$script:ToolkitBrandSeparatorExtra = 0
 $script:ToolkitToolListColumnWidths = @{
     command     = 12
     name        = 18
@@ -44,6 +44,30 @@ function Format-ListTotalCountDisplay {
 
     $width = Get-ListNumberDisplayWidth -TotalCount $Count -MaxNumber $Count
     return $Count.ToString().PadLeft($width, '0')
+}
+
+function Resolve-ShellToolListColumnLayout {
+    param(
+        [hashtable]$Shell = $null,
+        [int]$NumWidth = 2,
+        [int]$BrandInnerWidth = 0,
+        [string]$Preset = 'ToolList'
+    )
+
+    $base = Get-ToolListColumnWidths
+    $metrics = Get-ToolkitShellContentMetrics -Shell $Shell -BrandInnerWidth $BrandInnerWidth
+    $maxRowWidth = [int]$metrics.EndColumn
+    $colGap = Get-MenuColumnGap
+    $leading = Get-ShellSingleSelectListLeadingSpaces
+    $prefixW = $leading + 1 + 1 + $NumWidth + $colGap
+    $fixedW = [int]$base.command + $colGap + [int]$base.name + $colGap
+    $descW = $maxRowWidth - $prefixW - $fixedW
+    if ($descW -lt 6) { $descW = 6 }
+
+    return @{
+        Preset = if ($Preset) { $Preset } else { 'ToolList' }
+        Widths = @([int]$base.command, [int]$base.name, [int]$descW)
+    }
 }
 
 function Resolve-ListNumberIndexDefault {

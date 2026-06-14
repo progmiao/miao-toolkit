@@ -35,7 +35,7 @@ $child = {
     $shell = Initialize-ToolkitShell
     $checked = Get-ShellMultiSelectCheckedSet -Shell $shell -CacheKey 'Test'
     $handlers = New-ShellMultiSelectListDrawHandlers -RowCache $built.RowCache -ColGap $built.ColGap `
-        -ToolkitShell $shell -CheckedCacheKey 'Test'
+        -CheckedIndexSet $checked
 
     Initialize-ToolkitShellBodyView -Shell $shell -SectionTitle 'test' -FooterTemplate ListWithToolbar
     $metrics = Get-ToolkitShellContentMetrics -Shell $shell

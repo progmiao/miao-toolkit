@@ -1,5 +1,96 @@
 ﻿# Shell 布局：header / title / content / footer 行号 metrics
 
+function Get-ToolkitShellStandardBrandInnerWidth {
+    if ($global:ToolkitShellStandardBrandInnerWidth -gt 0) {
+        $script:ToolkitShellStandardBrandInnerWidth = [int]$global:ToolkitShellStandardBrandInnerWidth
+        return [int]$global:ToolkitShellStandardBrandInnerWidth
+    }
+
+    if ($script:ToolkitShellStandardBrandInnerWidth -gt 0) {
+        $global:ToolkitShellStandardBrandInnerWidth = [int]$script:ToolkitShellStandardBrandInnerWidth
+        return [int]$script:ToolkitShellStandardBrandInnerWidth
+    }
+
+    $width = 0
+    if (Get-Command Test-ToolkitInitValid -ErrorAction SilentlyContinue) {
+        if (Test-ToolkitInitValid) {
+            $brand = Get-ToolkitBrandSnapshot -Locale 'zh'
+            if ($brand -and [int]$brand.brandInnerWidth -gt 0) {
+                $width = [int]$brand.brandInnerWidth
+            }
+        }
+    }
+
+    if ($width -le 0) {
+        $width = Measure-ToolkitShellBrandInnerWidthForLocale -Locale 'zh'
+    }
+
+    $script:ToolkitShellStandardBrandInnerWidth = [int]$width
+    $global:ToolkitShellStandardBrandInnerWidth = [int]$width
+    return [int]$width
+}
+
+function Measure-ToolkitShellBrandInnerWidthForLocale {
+    param([string]$Locale = 'zh')
+
+    $prev = Get-CurrentLocale
+    try {
+        $script:CurrentLocale = $Locale
+        return (Get-BrandInnerWidth -Header (New-ToolkitMenuHeader -HideSectionTitle))
+    }
+    finally {
+        $script:CurrentLocale = $prev
+    }
+}
+
+function Apply-ToolkitShellLayoutBrandInnerWidth {
+    param(
+        [hashtable]$Shell,
+        [int]$Width = 0
+    )
+
+    if (-not $Shell) { return }
+
+    if ($Width -le 0) {
+        $Width = Get-ToolkitShellStandardBrandInnerWidth
+    }
+
+    $Shell['LayoutBrandInnerWidth'] = $Width
+    $Shell['BrandInnerWidth'] = $Width
+    if ($Shell.Layout) {
+        $Shell.Layout['BrandInnerWidth'] = $Width
+    }
+    $null = Sync-ToolkitShellContentMetrics -Shell $Shell
+}
+
+function Get-ToolkitShellLayoutBarInnerWidth {
+    param([hashtable]$Shell = $null)
+
+    if ($Shell -and [int]$Shell.LayoutBrandInnerWidth -gt 0) {
+        return [int]$Shell.LayoutBrandInnerWidth
+    }
+    if ($Shell -and [int]$Shell.BrandInnerWidth -gt 0) {
+        return [int]$Shell.BrandInnerWidth
+    }
+    if ($Shell -and $Shell.Layout -and [int]$Shell.Layout.BrandInnerWidth -gt 0) {
+        return [int]$Shell.Layout.BrandInnerWidth
+    }
+
+    return Get-ToolkitShellStandardBrandInnerWidth
+}
+
+function Ensure-ToolkitShellLayoutBrandInnerWidth {
+    param([hashtable]$Shell)
+
+    if (-not $Shell) { return 0 }
+
+    $width = Get-ToolkitShellLayoutBarInnerWidth -Shell $Shell
+    if ([int]$Shell.LayoutBrandInnerWidth -ne $width) {
+        $null = Apply-ToolkitShellLayoutBrandInnerWidth -Shell $Shell -Width $width
+    }
+    return $width
+}
+
 function Get-ToolkitShellContentMetrics {
     param(
         [hashtable]$Shell = $null,
@@ -8,7 +99,10 @@ function Get-ToolkitShellContentMetrics {
 
     $inner = [int]$BrandInnerWidth
     if ($inner -le 0 -and $Shell) {
-        if ($Shell.BrandInnerWidth -gt 0) {
+        if ([int]$Shell.LayoutBrandInnerWidth -gt 0) {
+            $inner = [int]$Shell.LayoutBrandInnerWidth
+        }
+        elseif ($Shell.BrandInnerWidth -gt 0) {
             $inner = [int]$Shell.BrandInnerWidth
         }
         elseif ($Shell.Layout -and $Shell.Layout.BrandInnerWidth -gt 0) {
@@ -16,7 +110,7 @@ function Get-ToolkitShellContentMetrics {
         }
     }
     if ($inner -le 0) {
-        $inner = Get-BrandInnerWidth
+        $inner = Get-ToolkitShellStandardBrandInnerWidth
     }
 
     $lineWidth = Get-BrandSeparatorLineWidth -BrandInnerWidth $inner
@@ -39,7 +133,10 @@ function Get-ToolkitShellContentLineWidth {
     }
 
     if ($BrandInnerWidth -le 0 -and $Shell) {
-        if ([int]$Shell.BrandInnerWidth -gt 0) {
+        if ([int]$Shell.LayoutBrandInnerWidth -gt 0) {
+            $BrandInnerWidth = [int]$Shell.LayoutBrandInnerWidth
+        }
+        elseif ([int]$Shell.BrandInnerWidth -gt 0) {
             $BrandInnerWidth = [int]$Shell.BrandInnerWidth
         }
         elseif ($Shell.Layout -and [int]$Shell.Layout.BrandInnerWidth -gt 0) {
@@ -217,11 +314,9 @@ function Update-ToolkitShellViewLayout {
         $contentStart = Get-MenuHeaderRowCount -Header $header
         $layout['ContentStartRow'] = $contentStart
         $layout['TopRows'] = $contentStart
-        if (-not $layout.BrandInnerWidth) {
-            $layout['BrandInnerWidth'] = Get-BrandInnerWidth -Header $header
-        }
     }
 
+    $null = Ensure-ToolkitShellLayoutBrandInnerWidth -Shell $Shell
     $null = Sync-ToolkitShellContentMetrics -Shell $Shell
 
     $metrics = Get-ShellLayoutMetrics -FooterTemplate $FooterTemplate -Shell $Shell

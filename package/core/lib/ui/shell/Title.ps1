@@ -9,7 +9,7 @@ function Write-ToolkitShellSectionTitle {
     if ([string]::IsNullOrWhiteSpace($Title)) { return }
     if ($Shell.Layout.SectionTitleRow -lt 0) { return }
 
-    $barWidth = if ($Shell.BrandInnerWidth -gt 0) { $Shell.BrandInnerWidth } else { $Shell.Layout.BrandInnerWidth }
+    $barWidth = Get-ToolkitShellLayoutBarInnerWidth -Shell $Shell
     Write-BrandSectionCapLine -Row $Shell.Layout.SectionTitleRow -Title $Title -BrandInnerWidth $barWidth
 
     if ($Shell.Layout.SectionGapRow -ge 0) {

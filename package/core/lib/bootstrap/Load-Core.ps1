@@ -85,6 +85,7 @@ foreach ($fnName in @(
         'Select-MenuPageSelectionIndex'
         'Set-MenuListScrollOffset'
         'Test-MenuNumberBufferPrefix'
+        'Test-MenuSearchBufferPrefix'
         'Get-MenuMaxDisplayNumber'
         'Set-MenuInputCursorPosition'
         'Get-MenuMaxDisplayNumber'

@@ -11,7 +11,7 @@ function Write-ToolkitShellFooter {
     )
 
     $layout = $Shell.Layout
-    $barWidth = if ($Shell.BrandInnerWidth -gt 0) { $Shell.BrandInnerWidth } else { $layout.BrandInnerWidth }
+    $barWidth = Get-ToolkitShellLayoutBarInnerWidth -Shell $Shell
 
     if ($layout.GapRow -ge 0) {
         Write-FixedLine $layout.GapRow '' -Color DarkGray
@@ -32,7 +32,8 @@ function Write-ToolkitShellFooter {
             -FooterLayout Split -BrandInnerWidth $barWidth `
             -MenuSplitActionSegments $MenuFooter.MenuSplitActionSegments `
             -FlashMessage $splitFlash `
-            -MultiSelectNav:([bool]$MenuFooter.MultiSelectNav)
+            -MultiSelectNav:([bool]$MenuFooter.MultiSelectNav) `
+            -CompactNavStatus:([bool]$MenuFooter.CompactNavStatus)
         Clear-ToolkitShellBelowFooter -Shell $Shell
         return
     }

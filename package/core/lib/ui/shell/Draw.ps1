@@ -39,6 +39,8 @@ function Initialize-ToolkitShellBodyView {
         [string]$FooterTemplate
     )
 
+    $null = Ensure-ToolkitShellLayoutBrandInnerWidth -Shell $Shell
+
     $useBatch = Test-ToolkitShellUseBufferDraw
     if ($useBatch) { Enter-ConsoleDrawBatch }
 

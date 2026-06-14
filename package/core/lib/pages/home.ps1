@@ -24,10 +24,15 @@ function Invoke-HomePage {
 
     if ($Shell) {
         $currentLocale = Get-CurrentLocale
+        $layoutWidth = Get-ToolkitShellLayoutBarInnerWidth -Shell $Shell
         if (-not $Shell.HeaderLocale -or $Shell.HeaderLocale -ne $currentLocale) {
             Update-ToolkitShellBrandHeader -Shell $Shell
             Clear-ShellSingleSelectListCache -Shell $Shell -CacheKey 'Home'
         }
+        elseif ([int]$Shell.HomeListLayoutWidth -ne $layoutWidth) {
+            Clear-ShellSingleSelectListCache -Shell $Shell -CacheKey 'Home'
+        }
+        $Shell['HomeListLayoutWidth'] = $layoutWidth
     }
 
     return Invoke-ShellSingleSelectList -Shell $Shell `

@@ -24,7 +24,12 @@ $shell = @{ TestMultiListChecked = [System.Collections.Generic.HashSet[int]]::ne
 $checked = Get-ShellMultiSelectCheckedSet -Shell $shell -CacheKey 'Test'
 $checked.Add(0) | Out-Null
 $handlers = New-ShellMultiSelectListDrawHandlers -RowCache $built.RowCache -ColGap $built.ColGap `
-    -ToolkitShell $shell -CheckedCacheKey 'Test'
+    -CheckedIndexSet $checked
+
+$specFromHandler = & $handlers['GetListRowSpec'] 0 $true 2 1 $true
+if (-not $specFromHandler -or $specFromHandler.Text -notmatch '22\.0\.0') {
+    throw 'GetListRowSpec handler closure should survive after New-ShellMultiSelectListDrawHandlers returns'
+}
 
 $spec = Build-ShellMultiSelectListRowSpec -RowCacheEntry $built.RowCache[0] -Selected $true -Checked $true `
     -NumWidth 2 -DisplayNumber 1 -Gap $built.ColGap

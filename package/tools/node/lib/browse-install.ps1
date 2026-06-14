@@ -28,11 +28,11 @@ function Import-NodeBrowseInstallCore {
     . (Join-Path $coreLib 'ui\shell\SingleSelectList.ps1')
     . (Join-Path $coreLib 'ui\shell\MultiSelectList.ps1')
     . (Join-Path $coreLib 'ui\shell\Draw.ps1')
+    . (Join-Path $coreLib 'ui\shell\Layout.ps1')
     . (Join-Path $coreLib 'ui\shell\Header.ps1')
     . (Join-Path $coreLib 'ui\shell\Title.ps1')
     . (Join-Path $coreLib 'ui\shell\Exit.ps1')
     . (Join-Path $coreLib 'ui\shell\Footer.ps1')
-    . (Join-Path $coreLib 'ui\shell\Layout.ps1')
 }
 
 Import-NodeBrowseInstallCore
@@ -77,6 +77,22 @@ function Get-NodeBrowseInstallVersionLabel {
         -DefaultVersion $DefaultVersion -ActiveVersion $ActiveVersion)
 }
 
+function Get-NodeBrowseInstallTagsLabel {
+    param(
+        $Item,
+        [hashtable]$InstalledMap,
+        [string]$DefaultVersion,
+        [string]$ActiveVersion
+    )
+
+    $tag = ''
+    if ($Item.Version -eq $ActiveVersion) { $tag += ' [当前]' }
+    if ($InstalledMap.ContainsKey($Item.Version)) { $tag += ' [已安装]' }
+    if ($Item.Version -eq $DefaultVersion) { $tag += ' [默认]' }
+    if ($Item.Lts -and $Item.Lts -ne $false) { $tag += " [LTS:$($Item.Lts)]" }
+    return $tag
+}
+
 function Build-NodeBrowseInstallRows {
     param(
         [array]$Items,
@@ -85,10 +101,13 @@ function Build-NodeBrowseInstallRows {
         [string]$ActiveVersion
     )
 
-    return ConvertTo-ShellListRows -Items $Items -KeepSource -MapCells {
+    return ConvertTo-ShellListRows -Items $Items -KeepSource -GetSearchKey {
+        param($Item, [int]$Index)
+        [string]$Item.Version
+    } -MapCells {
         param($Item, [int]$Index)
         @(
-            (Get-NodeBrowseInstallVersionLabel -Item $Item -InstalledMap $InstalledMap `
+            (Get-NodeBrowseInstallTagsLabel -Item $Item -InstalledMap $InstalledMap `
                 -DefaultVersion $DefaultVersion -ActiveVersion $ActiveVersion)
         )
     } -GetEnabled {
@@ -97,13 +116,13 @@ function Build-NodeBrowseInstallRows {
     }
 }
 
-function Resolve-NodeBrowseInstallNameColumnWidth {
+function Resolve-NodeBrowseInstallTagsColumnWidth {
     param([hashtable]$Shell)
 
     $metrics = Get-ToolkitShellContentMetrics -Shell $Shell
-    $numWidth = Get-ListNumberDisplayWidth -TotalCount 999
+    $versionKeyWidth = Get-ShellMultiSelectSearchKeyWidth
     $gap = Get-MenuColumnGap
-    $prefixReserve = 2 + 3 + 1 + $numWidth + $gap
+    $prefixReserve = 2 + 3 + 1 + $versionKeyWidth + $gap
     return [Math]::Max(12, [int]$metrics.EndColumn - $prefixReserve)
 }
 
@@ -130,13 +149,15 @@ function Write-NodeBrowseInstallLoadingLine {
         })
     $row = [int]$layout.ListStartRow
     $useBatch = Test-ShellConsoleBatchDraw
-    if ($useBatch -and $script:ConsoleDrawBatchDepth -le 0) {
+    $enteredBatch = $false
+    if ($useBatch) {
         Enter-ConsoleDrawBatch
+        $enteredBatch = $true
     }
     Prepare-ConsoleRowWrite -Row $row
     Write-FixedLine $row $text -Color Yellow
     Set-ConsoleCursorAfterRowWrite -Row $row
-    if ($useBatch) {
+    if ($enteredBatch) {
         $null = Complete-ConsoleDrawBatch -ToolkitShell $Shell
     }
     if ((Get-ConsoleViewportTop) -gt 0) {
@@ -295,7 +316,7 @@ function Show-NodeBrowseInstallSelectionPreview {
     }
 
     $toolbar = New-ShellSystemToolbarConfig -HideSystem -HideHelp
-    $barWidth = if ($Shell.BrandInnerWidth -gt 0) { $Shell.BrandInnerWidth } else { $layout.BrandInnerWidth }
+    $barWidth = Get-ToolkitShellLayoutBarInnerWidth -Shell $Shell
     $lineWidth = Get-BrandSeparatorLineWidth -BrandInnerWidth $barWidth
     $enterHint = Format-I18nPressEnterBack
     Write-MenuBarLine -Row $layout.ToolbarRow -InnerWidth $lineWidth `
@@ -320,6 +341,8 @@ function Show-NodeBrowseInstallSelectionPreview {
 
 function Invoke-NodeBrowseInstallPage {
     param([hashtable]$Shell)
+
+    $null = Ensure-ToolkitShellLayoutBrandInnerWidth -Shell $Shell
 
     if (-not (Get-Command volta -ErrorAction SilentlyContinue)) {
         Initialize-ToolkitShellBodyView -Shell $Shell -SectionTitle (Get-NodeBrowseInstallSectionTitle) `
@@ -379,7 +402,7 @@ function Invoke-NodeBrowseInstallPage {
         return (Get-ShellNavMarker -Action 'back')
     }
 
-    $nameWidth = Resolve-NodeBrowseInstallNameColumnWidth -Shell $Shell
+    $tagsWidth = Resolve-NodeBrowseInstallTagsColumnWidth -Shell $Shell
     $rows = Build-NodeBrowseInstallRows -Items $sorted -InstalledMap $voltaInfo.Map `
         -DefaultVersion $voltaInfo.Default -ActiveVersion $activeVersion
 
@@ -389,8 +412,9 @@ function Invoke-NodeBrowseInstallPage {
     $invokeMultiSelect = Get-Command Invoke-ShellMultiSelectList -CommandType Function -ErrorAction Stop
     $picked = & $invokeMultiSelect -Shell $Shell -SectionTitle $sectionTitle `
         -Rows $rows -CacheKey 'NodeBrowse' `
-        -ColumnLayout (New-ShellListColumnLayout -Widths @($nameWidth)) `
-        -ToolbarConfig $toolbar -CountLabel (Get-NodeBrowseI18n -Key 'node.browse.countUnit')
+        -ColumnLayout (New-ShellListColumnLayout -Widths @($tagsWidth)) `
+        -ToolbarConfig $toolbar -CountLabel (Get-NodeBrowseI18n -Key 'node.browse.countUnit') `
+        -SearchKeyMode
 
     if (Test-ShellNavMarker $picked) {
         return $picked
