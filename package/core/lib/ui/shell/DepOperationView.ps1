@@ -27,6 +27,7 @@ function Register-DepOperationFnCache {
             'Get-ToolkitDepLogMaxScroll'
             'Sync-ToolkitDepLogScrollToEnd'
             'Get-ToolkitDepLogWrapWidth'
+            'Get-ToolkitDepOperationLogLayout'
             'Update-ToolkitDepLoadingStatus'
             'Invoke-ToolkitDepLogInputIfAvailable'
             'Draw-ToolkitDepOperationView'
@@ -115,16 +116,44 @@ function Get-ToolkitDepOperationLogLines {
 
     if ($null -eq $Log) { return $null }
 
-    if ($Log -is [System.Collections.IDictionary]) {
-        if ($Log.Contains('Lines')) {
-            return $Log['Lines']
-        }
-        if ($Log.ContainsKey('Lines')) {
-            return $Log['Lines']
-        }
+    # 必须用一元逗号返回 List，否则 PowerShell 会枚举/解包，空列表变 $null、单条变元素本身
+    if ($Log -is [System.Collections.IDictionary] -and $Log.Contains('Lines')) {
+        return ,$Log['Lines']
     }
 
-    return $Log.Lines
+    if ($null -ne $Log.Lines) {
+        return ,$Log.Lines
+    }
+
+    return $null
+}
+
+function Get-ToolkitDepOperationLogLayout {
+    param([hashtable]$Layout)
+
+    $listStart = [int]$Layout.ListStartRow
+    $listEnd = [int]$Layout.ListEndRow
+    $gapRow = [int]$Layout.GapRow
+    $maxPaintRow = if ($gapRow -ge 0) { [Math]::Min($listEnd, $gapRow - 1) } else { $listEnd }
+
+    $idealSeparatorRow = $listStart + 3
+    $separatorRow = [Math]::Min($idealSeparatorRow, $maxPaintRow)
+    if ($separatorRow -lt ($listStart + 2)) {
+        $separatorRow = [Math]::Min($listStart + 2, $maxPaintRow)
+    }
+
+    $contentStartRow = $separatorRow + 1
+    $contentViewportRows = 0
+    if ($contentStartRow -le $maxPaintRow) {
+        $contentViewportRows = $maxPaintRow - $contentStartRow + 1
+    }
+
+    return @{
+        SeparatorRow          = $separatorRow
+        ContentStartRow       = $contentStartRow
+        ContentViewportRows   = $contentViewportRows
+        MaxPaintRow           = $maxPaintRow
+    }
 }
 
 function Get-ToolkitDepLogWrapWidth {
@@ -297,7 +326,14 @@ function Invoke-ToolkitDepLogInputIfAvailable {
     $maxScroll = Get-ToolkitDepLogMaxScroll -Log $Log -ViewportRows $ViewportRows
     $peek = & $fnPeekKey
     if (-not $peek) { return 'none' }
-    if ($peek -eq 'Escape' -and $OnExitKey) {
+
+    if (Test-ToolkitShellToolbarLocked -Shell $Shell) {
+        if ($peek -eq 'Escape' -or $peek -eq 'Other' -or $peek -eq 'Enter') {
+            $null = & $fnReadKey
+            return 'none'
+        }
+    }
+    elseif ($peek -eq 'Escape' -and $OnExitKey) {
         $vk = & $fnReadKey
         if ($vk -eq 'Escape') {
             & $OnExitKey
@@ -1164,6 +1200,8 @@ function Draw-ToolkitDepOperationLogViewport {
     $separatorText = & $fnFormatSep -BrandInnerWidth $barWidth
     & $fnWriteFixed $LogSeparatorRow $separatorText -Color DarkGray
 
+    $layoutMetrics = Get-ToolkitDepOperationLogLayout -Layout $layout
+    $maxPaintRow = [int]$layoutMetrics.MaxPaintRow
     if ($LogContentViewportRows -le 0) { return }
 
     $logLines = Get-ToolkitDepOperationLogLines -Log $Log
@@ -1176,6 +1214,9 @@ function Draw-ToolkitDepOperationLogViewport {
     for ($row = 0; $row -lt $LogContentViewportRows; $row++) {
         $idx = $Log.ScrollOffset + $row
         $screenRow = $contentStartRow + $row
+        if ($screenRow -gt $maxPaintRow) {
+            break
+        }
         if ($idx -ge 0 -and $idx -lt $lineCount) {
             $line = $logLines[$idx]
             $prefix = if ($line.Kind -eq 'separator') { '' } else { ' ' }
@@ -1277,16 +1318,9 @@ function Invoke-ToolkitDepOperationView {
         -FooterTemplate SystemToolbarOnly
 
     $layout = $Shell.Layout
-    $logSeparatorRow = $layout.ListStartRow + 3
-    $logAreaRows = [Math]::Max(1, $layout.ListViewportHeight - 3)
-    if ($logSeparatorRow -gt $layout.ListEndRow) {
-        $logSeparatorRow = $layout.ListEndRow
-    }
-    $availableLogRows = $layout.ListEndRow - $logSeparatorRow + 1
-    if ($availableLogRows -lt $logAreaRows) {
-        $logAreaRows = [Math]::Max(1, $availableLogRows)
-    }
-    $logContentViewportRows = [Math]::Max(1, $logAreaRows - 1)
+    $logLayout = Get-ToolkitDepOperationLogLayout -Layout $layout
+    $logSeparatorRow = [int]$logLayout.SeparatorRow
+    $logContentViewportRows = [int]$logLayout.ContentViewportRows
 
     $log = if ($SharedLog) { $SharedLog } else { New-ToolkitDepOperationLog }
     $contentMetrics = if ($Shell.Layout.ContentMetrics) { $Shell.Layout.ContentMetrics } else {
@@ -1354,7 +1388,7 @@ function Invoke-ToolkitDepOperationView {
             -StatusSegments $statusSegments
         & $fnDrawLogViewport -Shell $Shell -Log $log `
             -LogSeparatorRow $logSeparatorRow -LogContentViewportRows $logContentViewportRows
-        & $renderFooter
+        Invoke-ToolkitShellRegisteredFooter -Shell $Shell
         & $fnCompleteBatch -ToolkitShell $Shell
     }.GetNewClosure()
 
@@ -1553,6 +1587,7 @@ function Invoke-ToolkitDepOperationView {
     }
 
     if ($plan -and -not $PreflightErrorKey) {
+        Set-ToolkitShellToolbarLocked -Shell $Shell -Locked $true
         foreach ($item in @($plan.Items)) {
             if ($runner.State.Cancelled) { break }
             if ($ui.ProgressCurrent -gt 0) {
@@ -1613,6 +1648,7 @@ function Invoke-ToolkitDepOperationView {
         }
         $complete = $true
         $log.AutoScroll = $false
+        Set-ToolkitShellToolbarLocked -Shell $Shell -Locked $false
         & $invokeDepOperationRedrawNow
     }
     else {
@@ -1658,9 +1694,10 @@ function Invoke-ToolkitDepOperationView {
                     continue
                 }
 
-                if ($complete) {
+                if ($complete -and -not (Test-ToolkitShellToolbarLocked -Shell $Shell)) {
                     Prepare-ToolkitShellBodyDraw -Shell $Shell
                     $key = [Console]::ReadKey($true)
+                    Set-CursorVisible $false
                     if ($key.KeyChar -match '^[qQ]$') {
                         $Shell.Layout['BodyDirty'] = $true
                         return (Test-ToolkitDepRunnerSuccess -Runner $runner)
@@ -1677,6 +1714,7 @@ function Invoke-ToolkitDepOperationView {
         }
     }
     finally {
+        Set-ToolkitShellToolbarLocked -Shell $Shell -Locked $false
         & $fnClearExitExtension -Shell $Shell
     }
 }

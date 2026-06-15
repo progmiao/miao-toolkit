@@ -148,6 +148,9 @@ while ($true) {
     }
 
     $code = Invoke-NodeAction $picked
+    if (Test-ShellNavMarker $code) {
+        return $code
+    }
     if ($code -ne 0) {
         Start-Sleep -Milliseconds 1200
     }

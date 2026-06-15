@@ -52,9 +52,58 @@ function New-ShellSystemToolbarConfig {
     }
 
     return @{
-        Segments     = $segments
-        LetterKeys   = $letterKeys
-        EscMeansBack = (-not $HideBack)
+        Segments   = $segments
+        LetterKeys = $letterKeys
+        AllowBack  = (-not $HideBack)
+    }
+}
+
+function Set-ToolkitShellToolbarLocked {
+    param(
+        [hashtable]$Shell,
+        [bool]$Locked = $true
+    )
+
+    if (-not $Shell) { return }
+    $Shell['ToolbarLocked'] = $Locked
+}
+
+function Test-ToolkitShellToolbarLocked {
+    param([hashtable]$Shell)
+
+    return ($Shell -and $Shell.ContainsKey('ToolbarLocked') -and [bool]$Shell['ToolbarLocked'])
+}
+
+function Get-ShellSystemToolbarBarColor {
+    param([hashtable]$Shell)
+
+    if (Test-ToolkitShellToolbarLocked -Shell $Shell) {
+        return [System.ConsoleColor]::DarkGray
+    }
+    return [System.ConsoleColor]::Gray
+}
+
+function Drain-ShellLockedToolbarKeys {
+    param(
+        [hashtable]$Shell,
+        [switch]$AllowLogScroll,
+        [int]$MaxEvents = 16
+    )
+
+    if (-not (Test-ToolkitShellToolbarLocked -Shell $Shell)) { return }
+
+    $fnTestKey = Get-Command Test-ConsoleKeyAvailable -CommandType Function -ErrorAction SilentlyContinue
+    $fnPeek = Get-Command Get-ConsoleVirtualKeyPeek -CommandType Function -ErrorAction SilentlyContinue
+    $fnRead = Get-Command Read-ConsoleVirtualKeyConsume -CommandType Function -ErrorAction SilentlyContinue
+    if (-not $fnTestKey -or -not $fnPeek -or -not $fnRead) { return }
+
+    $drained = 0
+    while ($drained -lt $MaxEvents -and (& $fnTestKey)) {
+        $peek = & $fnPeek
+        if (-not $peek) { break }
+        if ($AllowLogScroll -and $peek -in @('UpArrow', 'DownArrow')) { break }
+        $null = & $fnRead
+        $drained++
     }
 }
 
@@ -77,14 +126,22 @@ function Read-ShellSystemToolbarKey {
         return $confirm
     }
 
+    if (Test-ToolkitShellToolbarLocked -Shell $Shell) {
+        Drain-ShellLockedToolbarKeys -Shell $Shell
+        return $null
+    }
+
     Prepare-ToolkitShellBodyDraw -Shell $Shell
     $key = [Console]::ReadKey($true)
+    Set-CursorVisible $false
 
     if ($key.Key -eq 'Escape') {
-        if ($ToolbarConfig.EscMeansBack) {
-            return (Get-ShellNavMarker -Action 'back')
-        }
-        return (Get-ShellNavMarker -Action 'quit')
+        Request-ShellExit -Shell $Shell
+        return 'exitConfirm'
+    }
+
+    if ($key.KeyChar -match '^[qQ]$' -and $ToolbarConfig.AllowBack) {
+        return (Get-ShellNavMarker -Action 'back')
     }
 
     if ($key.KeyChar) {

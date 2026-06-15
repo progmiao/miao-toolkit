@@ -2227,7 +2227,7 @@ function Show-PaginatedMenu {
         [hashtable]$ToolkitShell = $null,
         [scriptblock]$RenderFooter = $null,
         [scriptblock]$GetListRowSpec = $null,
-        [switch]$EscMeansBack,
+        [switch]$AllowBack,
         [switch]$CompactNavStatus,
         [switch]$AllowSpaceConfirm
     )
@@ -2432,7 +2432,7 @@ function Show-PaginatedMenu {
                 }
             }
             elseif ($key.KeyChar -match '^[qQ]$') {
-                if ($EscMeansBack) {
+                if ($AllowBack) {
                     Set-MenuInputCursorPosition -Layout $layout -ToolkitShell $ToolkitShell
                     return [pscustomobject]@{ _kind = 'shellNav'; action = 'back' }
                 }
@@ -2568,12 +2568,7 @@ function Show-PaginatedMenu {
                             Request-ShellExit -Shell $ToolkitShell
                             continue
                         }
-                        elseif ($EscMeansBack) {
-                            return [pscustomobject]@{ _kind = 'shellNav'; action = 'back' }
-                        }
-                        else {
-                            return $null
-                        }
+                        return $null
                     }
                 }
             }

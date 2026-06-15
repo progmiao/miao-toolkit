@@ -12,16 +12,9 @@ function Invoke-ToolkitInitView {
         -FooterTemplate SystemToolbarOnly
 
     $layout = $Shell.Layout
-    $logSeparatorRow = $layout.ListStartRow + 3
-    $logAreaRows = [Math]::Max(1, $layout.ListViewportHeight - 3)
-    if ($logSeparatorRow -gt $layout.ListEndRow) {
-        $logSeparatorRow = $layout.ListEndRow
-    }
-    $availableLogRows = $layout.ListEndRow - $logSeparatorRow + 1
-    if ($availableLogRows -lt $logAreaRows) {
-        $logAreaRows = [Math]::Max(1, $availableLogRows)
-    }
-    $logContentViewportRows = [Math]::Max(1, $logAreaRows - 1)
+    $logLayout = Get-ToolkitDepOperationLogLayout -Layout $layout
+    $logSeparatorRow = [int]$logLayout.SeparatorRow
+    $logContentViewportRows = [int]$logLayout.ContentViewportRows
 
     $log = New-ToolkitDepOperationLog
     $contentMetrics = if ($Shell.Layout.ContentMetrics) { $Shell.Layout.ContentMetrics } else {
@@ -72,7 +65,7 @@ function Invoke-ToolkitInitView {
             -StatusSegments $statusSegments
         & $fnDrawLogViewport -Shell $Shell -Log $log `
             -LogSeparatorRow $logSeparatorRow -LogContentViewportRows $logContentViewportRows
-        & $renderFooter
+        Invoke-ToolkitShellRegisteredFooter -Shell $Shell
         if ($useBufferDraw) {
             $null = & $fnCompleteBatch -ToolkitShell $Shell
         }
@@ -99,6 +92,7 @@ function Invoke-ToolkitInitView {
             Clear-ConsoleInputBuffer
         }
 
+        Set-ToolkitShellToolbarLocked -Shell $Shell -Locked $true
         & $RedrawView
 
         try {
@@ -135,6 +129,7 @@ function Invoke-ToolkitInitView {
 
         $complete = $true
         $log.AutoScroll = $false
+        Set-ToolkitShellToolbarLocked -Shell $Shell -Locked $false
         & $RedrawView
         & $fnDrainStaleInput
 
@@ -159,9 +154,10 @@ function Invoke-ToolkitInitView {
                     continue
                 }
 
-                if ($complete) {
+                if ($complete -and -not (Test-ToolkitShellToolbarLocked -Shell $Shell)) {
                     Prepare-ToolkitShellBodyDraw -Shell $Shell
                     $key = [Console]::ReadKey($true)
+                    Set-CursorVisible $false
                     if ($key.KeyChar -match '^[qQ]$') {
                         $Shell.Layout['BodyDirty'] = $true
                         return (Get-ShellNavMarker -Action 'back')
@@ -178,6 +174,7 @@ function Invoke-ToolkitInitView {
         }
     }
     finally {
+        Set-ToolkitShellToolbarLocked -Shell $Shell -Locked $false
         & $fnClearExitExtension -Shell $Shell
     }
 }

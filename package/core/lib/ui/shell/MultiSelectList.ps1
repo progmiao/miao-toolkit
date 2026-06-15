@@ -438,7 +438,7 @@ function Show-ShellMultiSelectListMenu {
         [switch]$SearchKeyMode,
         [int]$SearchKeyWidth = 0,
         [hashtable]$ToolkitShell = $null,
-        [switch]$EscMeansBack,
+        [switch]$AllowBack,
         [array]$RowCache = @(),
         [string]$ColGap = '',
         [string]$CheckedCacheKey = '',
@@ -614,7 +614,13 @@ function Show-ShellMultiSelectListMenu {
             $flashMessage = ''
             $checkToggled = $false
 
+            if ($ToolkitShell) {
+                Prepare-ToolkitShellBodyDraw -Shell $ToolkitShell
+            }
             $key = [Console]::ReadKey($true)
+            if ($ToolkitShell) {
+                Set-CursorVisible $false
+            }
 
             if ($key.Key -eq 'Backspace') {
                 if (-not [string]::IsNullOrEmpty($numberBuffer)) {
@@ -653,7 +659,7 @@ function Show-ShellMultiSelectListMenu {
                 }
             }
             elseif ($key.KeyChar -match '^[qQ]$') {
-                if ($EscMeansBack) {
+                if ($AllowBack) {
                     & $fnSetMenuCursor -Layout $layout -ToolkitShell $ToolkitShell
                     return (Get-ShellNavMarker -Action 'back')
                 }
@@ -801,7 +807,9 @@ function Show-ShellMultiSelectListMenu {
         }
     }
     finally {
-        Set-CursorVisible $true
+        if (-not $ToolkitShell) {
+            Set-CursorVisible $true
+        }
     }
 }
 
@@ -894,7 +902,7 @@ function Invoke-ShellMultiSelectList {
         -NumberDisplayWidth $numberWidth -SearchKeyMode:$SearchKeyMode `
         -SearchKeyWidth $SearchKeyWidth -RowCache $rowCache -ColGap $colGap -CheckedCacheKey $CacheKey `
         -MenuSplitActionSegments @($ToolbarConfig.Segments) -LetterKeys $letterKeys `
-        -ToolkitShell $Shell -EscMeansBack:($ToolbarConfig.EscMeansBack) `
+        -ToolkitShell $Shell -AllowBack:($ToolbarConfig.AllowBack) `
         -FlashNothingSelectedKey $FlashNothingSelectedKey -FlashItemDisabledKey $FlashItemDisabledKey `
         -FlashNothingSelected $FlashNothingSelected -FlashItemDisabled $FlashItemDisabled
 

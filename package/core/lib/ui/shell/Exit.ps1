@@ -130,6 +130,7 @@ function Read-ShellExitKey {
 
     Prepare-ToolkitShellBodyDraw -Shell $Shell
     $key = [Console]::ReadKey($true)
+    Set-CursorVisible $false
 
     if ($key.Key -eq 'Escape' -or ($key.KeyChar -match '^[yY]$')) {
         Clear-ShellExit -Shell $Shell
@@ -188,6 +189,10 @@ function Process-ShellEscInputIfAvailable {
     param([hashtable]$Shell)
 
     if (-not $Shell) { return $null }
+    if (Test-ToolkitShellToolbarLocked -Shell $Shell) {
+        Drain-ShellLockedToolbarKeys -Shell $Shell
+        return $null
+    }
     if (-not (Test-ConsoleKeyAvailable)) { return $null }
 
     if ($Shell.ExitMode) {

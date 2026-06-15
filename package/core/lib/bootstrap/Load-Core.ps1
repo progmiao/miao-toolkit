@@ -50,6 +50,7 @@ foreach ($fnName in @(
         'Format-I18nPressEnterBack'
         'Format-I18nKeyDisplay'
         'Write-ToolkitShellFooter'
+        'Invoke-ToolkitShellRegisteredFooter'
         'New-ShellSystemToolbarFooterRenderer'
         'New-ShellSystemToolbarConfig'
         'Register-ToolkitShellFooter'

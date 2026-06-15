@@ -58,9 +58,29 @@ function Write-ToolkitShellFooter {
     }
 
     $barSegments = Format-ShellSystemToolbarBarSegments -Segments $ToolbarConfig.Segments -ColumnCount $footerColCount
+    $barColor = Get-ShellSystemToolbarBarColor -Shell $Shell
     Write-MenuBarLine -Row $layout.ToolbarRow -InnerWidth $lineWidth `
-        -Segments $barSegments -ColumnCount $footerColCount
+        -Segments $barSegments -ColumnCount $footerColCount -Color $barColor
     Clear-ToolkitShellBelowFooter -Shell $Shell
+}
+
+function Invoke-ToolkitShellRegisteredFooter {
+    param(
+        [hashtable]$Shell,
+        [hashtable]$InvokeArgs = @{}
+    )
+
+    if (-not $Shell) { return }
+
+    if ($Shell.ExitMode) {
+        Write-ShellExitFooter -Shell $Shell
+        return
+    }
+
+    $renderer = $Shell.FooterRenderer
+    if ($renderer) {
+        & $renderer $InvokeArgs
+    }
 }
 
 # 兼容旧名

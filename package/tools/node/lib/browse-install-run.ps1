@@ -1,8 +1,47 @@
 # node — 浏览并安装：批量安装进度与日志视图
 
+function Get-NodeBrowseInstallCoreLib {
+    if ($script:NodeBrowseInstallCoreLib) {
+        return $script:NodeBrowseInstallCoreLib
+    }
+    if ($coreLib) {
+        return [string]$coreLib
+    }
+
+    $toolRoot = Split-Path $PSScriptRoot -Parent
+    $script:NodeBrowseInstallCoreLib = (Join-Path $toolRoot '..\..\core\lib')
+    return $script:NodeBrowseInstallCoreLib
+}
+
+function Ensure-NodeBrowseInstallShellUi {
+    $coreLib = Get-NodeBrowseInstallCoreLib
+
+    foreach ($rel in @(
+            'ui\shell\SystemToolbar.ps1'
+            'ui\shell\Exit.ps1'
+            'ui\shell\Footer.ps1'
+            'ui\shell\DepOperationView.ps1'
+        )) {
+        $path = Join-Path $coreLib $rel
+        $name = [IO.Path]::GetFileNameWithoutExtension($rel)
+        if ($name -eq 'DepOperationView') {
+            if (Get-Command Draw-ToolkitDepOperationView -ErrorAction SilentlyContinue) { continue }
+        }
+        elseif ($name -eq 'Footer') {
+            if (Get-Command Invoke-ToolkitShellRegisteredFooter -ErrorAction SilentlyContinue) { continue }
+        }
+        elseif ($name -eq 'Exit') {
+            if (Get-Command Write-ShellExitFooter -ErrorAction SilentlyContinue) { continue }
+        }
+        elseif ($name -eq 'SystemToolbar') {
+            if (Get-Command Set-ToolkitShellToolbarLocked -ErrorAction SilentlyContinue) { continue }
+        }
+        . $path
+    }
+}
+
 function Ensure-NodeBrowseInstallDepView {
-    if (Get-Command Draw-ToolkitDepOperationView -ErrorAction SilentlyContinue) { return }
-    . (Join-Path $coreLib 'ui\shell\DepOperationView.ps1')
+    Ensure-NodeBrowseInstallShellUi
 }
 
 function New-NodeBrowseInstallLog {
@@ -236,16 +275,14 @@ function Wait-NodeVoltaInstallProcess {
             $pollState.LastLoadingTick = $now
         }
 
+        if (Test-ToolkitShellToolbarLocked -Shell $Shell) {
+            Drain-ShellLockedToolbarKeys -Shell $Shell -AllowLogScroll
+        }
+
         $inputResult = & $FnLogInput -Shell $Shell -Log $Log -ViewportRows $LogViewportRows `
             -OnExitKey $OnExitKey -ScrollState $ScrollState
         if ($inputResult -eq 'scroll') {
             & $Redraw
-        }
-        elseif ($inputResult -eq 'exit') {
-            $Cancelled.Value = $true
-            Stop-NodeVoltaInstallProcess -State $State | Out-Null
-            Drain-NodeVoltaInstallQueue -State $State -Log $Log -LoadingState $LoadingState -Redraw $Redraw
-            return 1
         }
 
         Start-Sleep -Milliseconds 30
@@ -263,7 +300,7 @@ function Run-NodeBrowseInstallOperation {
         [array]$Items
     )
 
-    Ensure-NodeBrowseInstallDepView
+    Ensure-NodeBrowseInstallShellUi
 
     $versions = @($Items | ForEach-Object {
         if ($_.Version) { [string]$_.Version }
@@ -283,16 +320,9 @@ function Run-NodeBrowseInstallOperation {
     Initialize-ToolkitShellBodyView -Shell $Shell -SectionTitle $sectionTitle -FooterTemplate SystemToolbarOnly
 
     $layout = $Shell.Layout
-    $logSeparatorRow = $layout.ListStartRow + 3
-    $logAreaRows = [Math]::Max(1, $layout.ListViewportHeight - 3)
-    if ($logSeparatorRow -gt $layout.ListEndRow) {
-        $logSeparatorRow = $layout.ListEndRow
-    }
-    $availableLogRows = $layout.ListEndRow - $logSeparatorRow + 1
-    if ($availableLogRows -lt $logAreaRows) {
-        $logAreaRows = [Math]::Max(1, $availableLogRows)
-    }
-    $logContentViewportRows = [Math]::Max(1, $logAreaRows - 1)
+    $logLayout = Get-ToolkitDepOperationLogLayout -Layout $layout
+    $logSeparatorRow = [int]$logLayout.SeparatorRow
+    $logContentViewportRows = [int]$logLayout.ContentViewportRows
 
     $contentMetrics = if ($Shell.Layout.ContentMetrics) { $Shell.Layout.ContentMetrics } else {
         Sync-ToolkitShellContentMetrics -Shell $Shell
@@ -331,6 +361,7 @@ function Run-NodeBrowseInstallOperation {
 
     $fnDrawLogViewport = Resolve-DepOperationFn 'Draw-ToolkitDepOperationLogViewport'
     $fnPeekKey = Resolve-DepOperationFn 'Get-ConsoleVirtualKeyPeek'
+    $fnWriteExitFooter = Get-Command Write-ShellExitFooter -CommandType Function -ErrorAction Stop
 
     $RedrawView = {
         $itemSubPercent = if ($ui.ItemInFlight) { [int]$ui.ItemSubPercent } else { -1 }
@@ -343,7 +374,12 @@ function Run-NodeBrowseInstallOperation {
             -StatusSegments $statusSegments
         & $fnDrawLogViewport -Shell $Shell -Log $log `
             -LogSeparatorRow $logSeparatorRow -LogContentViewportRows $logContentViewportRows
-        & $renderFooter
+        if ($Shell.ExitMode) {
+            & $fnWriteExitFooter -Shell $Shell
+        }
+        else {
+            & $renderFooter
+        }
         if ($useBufferDraw) {
             $null = & $fnCompleteBatch -ToolkitShell $Shell
         }
@@ -372,6 +408,7 @@ function Run-NodeBrowseInstallOperation {
             Clear-ConsoleInputBuffer
         }
 
+        Set-ToolkitShellToolbarLocked -Shell $Shell -Locked $true
         & $RedrawView
 
         for ($i = 0; $i -lt $total; $i++) {
@@ -447,6 +484,7 @@ function Run-NodeBrowseInstallOperation {
         }
 
         $log.AutoScroll = $false
+        Set-ToolkitShellToolbarLocked -Shell $Shell -Locked $false
         & $RedrawView
         & $fnDrainStaleInput
 
@@ -471,23 +509,27 @@ function Run-NodeBrowseInstallOperation {
                     continue
                 }
 
-                Prepare-ToolkitShellBodyDraw -Shell $Shell
-                $key = [Console]::ReadKey($true)
-                if ($key.KeyChar -match '^[qQ]$') {
-                    $Shell.Layout['BodyDirty'] = $true
-                    return $null
+                if (-not (Test-ToolkitShellToolbarLocked -Shell $Shell)) {
+                    Prepare-ToolkitShellBodyDraw -Shell $Shell
+                    $key = [Console]::ReadKey($true)
+                    Set-CursorVisible $false
+                    if ($key.KeyChar -match '^[qQ]$') {
+                        $Shell.Layout['BodyDirty'] = $true
+                        return $null
+                    }
+                    if ($key.Key -eq 'Escape') {
+                        $null = & $onExitKey
+                        & $RedrawView
+                    }
+                    continue
                 }
-                if ($key.Key -eq 'Escape') {
-                    $null = & $onExitKey
-                    & $RedrawView
-                }
-                continue
             }
 
             Start-Sleep -Milliseconds 20
         }
     }
     finally {
+        Set-ToolkitShellToolbarLocked -Shell $Shell -Locked $false
         & $fnClearExitExtension -Shell $Shell
     }
 }

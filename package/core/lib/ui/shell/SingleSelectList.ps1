@@ -639,7 +639,7 @@ function Invoke-ShellSingleSelectList {
         -MenuSplitActionSegments @($ToolbarConfig.Segments) `
         -LetterKeys $letterKeys `
         -ToolkitShell $Shell `
-        -EscMeansBack:($ToolbarConfig.EscMeansBack) `
+        -AllowBack:($ToolbarConfig.AllowBack) `
         -CompactNavStatus:($ColumnLayout.Preset -eq 'ToolList') `
         -AllowSpaceConfirm:($ColumnLayout.Preset -eq 'ToolList')
 

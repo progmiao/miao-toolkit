@@ -303,7 +303,8 @@ function Show-InstallMultiSelectMenu {
                         continue
                     }
                     'Escape' {
-                        return (Get-ShellNavMarker -Action 'back')
+                        Request-ShellExit -Shell $Shell
+                        continue
                     }
                 }
             }

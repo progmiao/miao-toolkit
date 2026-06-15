@@ -263,10 +263,28 @@ function Wait-NodeBrowseRemoteVersionsLoad {
     $spinnerFrames = @('|', '/', '-', '\')
     $spinnerIndex = 0
 
+    Set-ToolkitShellToolbarLocked -Shell $Shell -Locked $true
     Show-NodeBrowseInstallLoadingFrame -Shell $Shell -SectionTitle $SectionTitle `
         -Spinner $spinnerFrames[0]
 
     while ($true) {
+        if ($Shell.ExitMode) {
+            if (Test-ConsoleKeyAvailable) {
+                $key = Read-ShellSystemToolbarKey -Shell $Shell -ToolbarConfig $toolbar
+                if ($key -eq 'exitCancel' -or $key -eq 'exitConfirm') { continue }
+                if ($key -eq 'exitConfirmed') {
+                    Stop-NodeBrowseRemoteVersionsFetch -Fetch $Fetch
+                    return @{ Nav = (Get-ShellNavMarker -Action 'quit'); Remote = $null; Error = $null }
+                }
+                if (Test-ShellNavMarker $key) {
+                    Stop-NodeBrowseRemoteVersionsFetch -Fetch $Fetch
+                    return @{ Nav = $key; Remote = $null; Error = $null }
+                }
+            }
+            Start-Sleep -Milliseconds 120
+            continue
+        }
+
         $spinner = $spinnerFrames[$spinnerIndex % $spinnerFrames.Count]
         Write-NodeBrowseInstallLoadingLine -Shell $Shell -Spinner $spinner
         $spinnerIndex++
@@ -275,15 +293,21 @@ function Wait-NodeBrowseRemoteVersionsLoad {
             break
         }
 
+        if (Test-ToolkitShellToolbarLocked -Shell $Shell) {
+            Drain-ShellLockedToolbarKeys -Shell $Shell
+        }
+
         if (Test-ConsoleKeyAvailable) {
             $key = Read-ShellSystemToolbarKey -Shell $Shell -ToolbarConfig $toolbar
-            if ($key -eq 'exitCancel') { continue }
+            if ($key -eq 'exitCancel' -or $key -eq 'exitConfirm') { continue }
             if ($key -eq 'exitConfirmed') {
                 Stop-NodeBrowseRemoteVersionsFetch -Fetch $Fetch
+                Set-ToolkitShellToolbarLocked -Shell $Shell -Locked $false
                 return @{ Nav = (Get-ShellNavMarker -Action 'quit'); Remote = $null; Error = $null }
             }
             if (Test-ShellNavMarker $key) {
                 Stop-NodeBrowseRemoteVersionsFetch -Fetch $Fetch
+                Set-ToolkitShellToolbarLocked -Shell $Shell -Locked $false
                 return @{ Nav = $key; Remote = $null; Error = $null }
             }
         }
@@ -293,9 +317,11 @@ function Wait-NodeBrowseRemoteVersionsLoad {
 
     try {
         $remote = Complete-NodeBrowseRemoteVersionsFetch -Fetch $Fetch
+        Set-ToolkitShellToolbarLocked -Shell $Shell -Locked $false
         return @{ Nav = $null; Remote = $remote; Error = $null }
     }
     catch {
+        Set-ToolkitShellToolbarLocked -Shell $Shell -Locked $false
         return @{ Nav = $null; Remote = $null; Error = $_ }
     }
 }
