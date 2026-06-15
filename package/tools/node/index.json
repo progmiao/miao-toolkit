@@ -51,7 +51,7 @@
       "command": "uninstall",
       "name": "node.action.uninstall.name",
       "description": "node.action.uninstall.description",
-      "script": "lib/uninstall-node.ps1",
+      "script": "lib/browse-uninstall.ps1",
       "param": { "switch": "Uninstall", "alias": "u" },
       "enabled": true
     }

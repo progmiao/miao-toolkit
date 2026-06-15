@@ -25,7 +25,8 @@ function Start-ToolkitShellSession {
         [switch]$ToolboxDepSelectAll
     )
 
-    $shell = Initialize-ToolkitShell
+    $null = Sync-ToolkitSessionInitState -Refresh
+    $shell = Initialize-ToolkitShell -Force
     if ($FocusToolIds.Count -gt 0) {
         $shell['InstallFocusToolIds'] = @($FocusToolIds)
     }
@@ -44,6 +45,8 @@ function Start-ToolkitShellSession {
     if ($InitialView -eq 'ToolDep') {
         $shell['ToolDepIntent'] = $ToolDepIntent
     }
+
+    $null = Sync-ToolkitSessionInitState -Shell $shell
     $viewStack = [System.Collections.Generic.List[string]]@(Get-ShellInitialViewStack -InitialView $InitialView)
     $sessionExitCode = 0
     $quitSession = $false
@@ -55,7 +58,7 @@ function Start-ToolkitShellSession {
 
             switch ($view) {
                 'ToolList' {
-                    if (-not (Test-ToolkitInitValid)) {
+                    if (-not $shell.InitReady) {
                         $shell.Layout['BodyDirty'] = $true
                         Import-MiaoModule -Name Init
                         Push-ShellViewStack -ViewStack $viewStack -View 'Init'
@@ -273,6 +276,7 @@ function Start-ToolkitShellSession {
                 'Init' {
                     $nav = Invoke-ShellInitView -Shell $shell
                     if (Test-ShellNavMarker $nav 'back') {
+                        $null = Sync-ToolkitSessionInitState -Shell $shell -Refresh
                         Pop-ShellViewStack -ViewStack $viewStack | Out-Null
                         $shell.Layout['BodyDirty'] = $true
                         Update-ToolkitShellBrandHeader -Shell $shell

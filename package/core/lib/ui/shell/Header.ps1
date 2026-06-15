@@ -5,8 +5,18 @@ function Write-ToolkitShellBrandArea {
 
     $layoutWidth = Get-ToolkitShellStandardBrandInnerWidth
 
-    if (Test-ToolkitInitValid) {
-        $brand = Get-ToolkitBrandSnapshot -Locale (Get-CurrentLocale)
+    if (Test-ToolkitSessionInitReady) {
+        $brand = $null
+        if ($Shell -and $Shell.BrandSnapshot) {
+            $brand = $Shell.BrandSnapshot
+        }
+        elseif ($script:ToolkitHomeBrandSnapshot -and `
+            [string]$script:ToolkitHomeBrandSnapshotLocale -eq (Get-CurrentLocale)) {
+            $brand = $script:ToolkitHomeBrandSnapshot
+        }
+        if (-not $brand) {
+            $brand = Get-ToolkitBrandSnapshot -Locale (Get-CurrentLocale)
+        }
         if ($brand) {
             Write-MenuHeaderFromSnapshot -Snapshot $brand -StartRow 0 -LayoutBrandInnerWidth $layoutWidth
             $contentStart = [int]$brand.contentStartRow

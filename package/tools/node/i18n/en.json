@@ -9,20 +9,20 @@
     },
     "action": {
       "install": {
-        "name": "Browse and install",
-        "description": "Install Node from the version list"
+        "name": "Install Node.js",
+        "description": "Install Node on this machine from the version list"
       },
       "pin": {
-        "name": "Pin for project",
-        "description": "Lock Node version for the current project directory"
+        "name": "Pin Node.js",
+        "description": "Lock the Node version for the current project directory"
       },
       "default": {
-        "name": "Set global default",
-        "description": "Default Node version when not pinned"
+        "name": "Default Node.js",
+        "description": "Node version to use when not pinned"
       },
       "uninstall": {
-        "name": "Uninstall Node",
-        "description": "Remove an installed Node version from this machine"
+        "name": "Uninstall Node.js",
+        "description": "Remove installed Node versions from this machine"
       }
     },
     "browse": {
@@ -43,6 +43,36 @@
       "installLogFailed": "node@{version} failed (exit code {code})",
       "installSummary": "Done: {success} succeeded, {failed} failed (of {total})",
       "installCancelled": "Install cancelled"
+    },
+    "uninstall": {
+      "sectionTitle": "Uninstall Node",
+      "uninstallPageTitle": "Node.js uninstall",
+      "noInstalled": "No installed versions",
+      "voltaMissing": "Volta not found — install it from the dependency menu first",
+      "countUnit": "versions",
+      "statusReady": "Ready to uninstall",
+      "uninstallStatusStarting": "{spinner} Starting Volta uninstall node@{version}… ({elapsed}s)",
+      "uninstallStatusWorking": "{spinner} Uninstalling node@{version}… ({elapsed}s)",
+      "promoteStatusStarting": "{spinner} Switching default to node@{version}… ({elapsed}s)",
+      "promoteStatusWorking": "{spinner} Setting node@{version} as default… ({elapsed}s)",
+      "logStart": "Starting uninstall node@{version}",
+      "logPromoteDefault": "node@{version} is global default; switching default to node@{replacement} first",
+      "logPromoteSuccess": "Default switched to node@{replacement}",
+      "logPromoteFailed": "Failed to switch default to node@{replacement} (exit code {code})",
+      "logNoReplacement": "node@{version} is the last installed version; no default switch needed",
+      "logCleanupStart": "Cleaning Volta image cache for node@{version}",
+      "logCleanupNoHome": "Volta home not found; skipping image cleanup",
+      "logCleanupScan": "Scanning image root: {root}",
+      "logCleanupNone": "No image directories found for node@{version}",
+      "logCleanupRemove": "Remove image directory: {path}",
+      "logCleanupRemoved": "Removed: {path}",
+      "logCleanupFailed": "Failed to remove {path}: {error}",
+      "logSuccess": "node@{version} uninstalled",
+      "logFailed": "node@{version} uninstall failed (exit code {code})",
+      "logVoltaExitIgnored": "Volta exit code {code}, but version removed from list",
+      "logVerifyListed": "Verify failed: node@{version} still in volta list",
+      "logVerifyImageRemain": "Verify failed: node@{version} image dirs remain: {paths}",
+      "uninstallCancelled": "Uninstall cancelled"
     }
   }
 }

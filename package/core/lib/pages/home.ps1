@@ -28,6 +28,7 @@ function Invoke-HomePage {
         if (-not $Shell.HeaderLocale -or $Shell.HeaderLocale -ne $currentLocale) {
             Update-ToolkitShellBrandHeader -Shell $Shell
             Clear-ShellSingleSelectListCache -Shell $Shell -CacheKey 'Home'
+            $null = Sync-ToolkitSessionInitState -Shell $Shell -Refresh
         }
         elseif ([int]$Shell.HomeListLayoutWidth -ne $layoutWidth) {
             Clear-ShellSingleSelectListCache -Shell $Shell -CacheKey 'Home'

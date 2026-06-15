@@ -4,6 +4,31 @@ $script:ToolkitToolsMemoryCache = $null
 $script:ToolkitDiskListRowCaches = @{}
 $script:ToolkitInitManifest = $null
 $script:ToolkitInitToolStateCache = $null
+$script:ToolkitSessionInitValid = $null
+$script:ToolkitSessionInitValidLocale = $null
+$script:ToolkitHomeBrandSnapshot = $null
+$script:ToolkitHomeBrandSnapshotLocale = $null
+$script:ToolkitHomeRowsPayloadCache = $null
+$script:ToolkitHomeRowsPayloadLocale = $null
+
+function Clear-ToolkitSessionInitState {
+    $script:ToolkitSessionInitValid = $null
+    $script:ToolkitSessionInitValidLocale = $null
+    $script:ToolkitHomeBrandSnapshot = $null
+    $script:ToolkitHomeBrandSnapshotLocale = $null
+    $script:ToolkitHomeRowsPayloadCache = $null
+    $script:ToolkitHomeRowsPayloadLocale = $null
+}
+
+function Set-ToolkitSessionInitValidState {
+    param(
+        [bool]$Valid,
+        [string]$Locale = (Get-CurrentLocale)
+    )
+
+    $script:ToolkitSessionInitValid = $Valid
+    $script:ToolkitSessionInitValidLocale = [string]$Locale
+}
 
 function Get-ToolkitInitRoot {
     $dir = Join-Path (Get-UserConfigDirectory) 'init'
@@ -224,6 +249,7 @@ function Reset-ToolkitToolsMemoryCache {
     $script:ToolkitDiskListRowCaches = @{}
     $script:ToolkitInitManifest = $null
     $script:ToolkitInitToolStateCache = $null
+    Clear-ToolkitSessionInitState
 }
 
 function Get-ToolkitInitManifest {
@@ -243,7 +269,7 @@ function Get-ToolkitInitManifest {
     }
 }
 
-function Test-ToolkitInitValid {
+function Test-ToolkitInitValidCore {
     $manifest = Get-ToolkitInitManifest
     if (-not $manifest) { return $false }
 
@@ -260,6 +286,90 @@ function Test-ToolkitInitValid {
     if (-not (Test-Path (Get-ToolkitInitToolsStatePath))) { return $false }
 
     return $true
+}
+
+function Test-ToolkitInitValid {
+    param([switch]$Refresh)
+
+    $locale = Get-CurrentLocale
+    if (-not $Refresh -and $null -ne $script:ToolkitSessionInitValid `
+        -and [string]$script:ToolkitSessionInitValidLocale -eq $locale) {
+        return [bool]$script:ToolkitSessionInitValid
+    }
+
+    $result = Test-ToolkitInitValidCore
+    Set-ToolkitSessionInitValidState -Valid $result -Locale $locale
+    return $result
+}
+
+function Test-ToolkitSessionInitReady {
+    if ($null -ne $script:ToolkitSessionInitValid -and `
+        [string]$script:ToolkitSessionInitValidLocale -eq (Get-CurrentLocale)) {
+        return [bool]$script:ToolkitSessionInitValid
+    }
+
+    return (Test-ToolkitInitValid)
+}
+
+function Initialize-ToolkitHomeBundle {
+    param([hashtable]$Shell = $null)
+
+    if (-not (Test-ToolkitSessionInitReady)) { return $false }
+
+    $locale = Get-CurrentLocale
+
+    if ($null -eq $script:ToolkitToolsMemoryCache) {
+        $script:ToolkitToolsMemoryCache = @(Get-ToolkitToolsFromInit -Locale $locale)
+    }
+
+    $brand = Get-ToolkitBrandSnapshot -Locale $locale
+    if ($brand) {
+        $script:ToolkitHomeBrandSnapshot = $brand
+        $script:ToolkitHomeBrandSnapshotLocale = $locale
+        if ($Shell) {
+            $Shell['BrandSnapshot'] = $brand
+        }
+    }
+
+    $path = Get-ToolkitInitHomeRowsPath -Locale $locale
+    if (Test-Path $path) {
+        try {
+            $script:ToolkitHomeRowsPayloadCache = Get-Content -Raw -Path $path -Encoding UTF8 | ConvertFrom-Json
+            $script:ToolkitHomeRowsPayloadLocale = $locale
+        }
+        catch {
+            $script:ToolkitHomeRowsPayloadCache = $null
+            $script:ToolkitHomeRowsPayloadLocale = $null
+        }
+    }
+
+    if ($Shell) {
+        $Shell['InitReady'] = $true
+        $Shell['HomeBundleReady'] = $true
+    }
+    return $true
+}
+
+function Sync-ToolkitSessionInitState {
+    param(
+        [hashtable]$Shell = $null,
+        [switch]$Refresh
+    )
+
+    $valid = Test-ToolkitInitValid -Refresh:$Refresh
+    if ($Shell) {
+        $Shell['InitReady'] = $valid
+        if (-not $valid) {
+            $Shell['HomeBundleReady'] = $false
+            $Shell.Remove('BrandSnapshot')
+        }
+    }
+
+    if ($valid) {
+        Initialize-ToolkitHomeBundle -Shell $Shell | Out-Null
+    }
+
+    return $valid
 }
 
 function Get-ToolkitBrandSnapshot {
@@ -291,7 +401,7 @@ function Get-ToolkitTools {
         return $script:ToolkitToolsMemoryCache
     }
 
-    if (Test-ToolkitInitValid) {
+    if (Test-ToolkitSessionInitReady) {
         $script:ToolkitToolsMemoryCache = @(Get-ToolkitToolsFromInit)
         return $script:ToolkitToolsMemoryCache
     }
@@ -317,14 +427,28 @@ function Get-ToolkitDiskListRowCache {
         return $script:ToolkitDiskListRowCaches[$field]
     }
 
-    if (-not (Test-ToolkitInitValid)) { return $null }
+    if (-not (Test-ToolkitSessionInitReady)) { return $null }
     if ($CacheKey -ne 'Home') { return $null }
 
     $path = Get-ToolkitInitHomeRowsPath -Locale $Locale
-    if (-not (Test-Path $path)) { return $null }
+    $payload = $null
+    if ($script:ToolkitHomeRowsPayloadCache -and `
+        [string]$script:ToolkitHomeRowsPayloadLocale -eq $Locale) {
+        $payload = $script:ToolkitHomeRowsPayloadCache
+    }
+    elseif (Test-Path $path) {
+        try {
+            $payload = Get-Content -Raw -Path $path -Encoding UTF8 | ConvertFrom-Json
+        }
+        catch {
+            return $null
+        }
+    }
+    else {
+        return $null
+    }
 
     try {
-        $payload = Get-Content -Raw -Path $path -Encoding UTF8 | ConvertFrom-Json
         if ([string]$payload.layoutKey -ne $LayoutKey) { return $null }
         if ([string]$payload.rowsKey -ne $RowsKey) { return $null }
 
@@ -351,6 +475,7 @@ function Set-ToolkitSessionLocale {
     $script:CurrentLocale = $Locale
     $script:I18nCatalogCache = @{}
     $script:ToolI18nCatalogCache = @{}
+    Clear-ToolkitSessionInitState
 }
 
 function Discover-ToolsForLocale {
@@ -579,6 +704,8 @@ function Invoke-ToolkitInitBuild {
 
     Reset-ToolkitToolsMemoryCache
     $script:ToolkitInitManifest = $manifest
+    Set-ToolkitSessionInitValidState -Valid $true
+    Initialize-ToolkitHomeBundle | Out-Null
 
     Invoke-InitBuildProgress -Message (Get-I18n -Key 'page.init.logComplete') -Phase toolbox -Percent 100
 }

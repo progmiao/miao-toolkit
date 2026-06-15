@@ -112,6 +112,7 @@ function Invoke-ToolkitInitView {
             $ui.StatusText = ''
             $ui.StatusSegments = Get-ToolkitDepBatchSummarySegments -Intent init `
                 -TotalCount $buildProgress.Total -SuccessCount $buildProgress.Total -FailedCount 0
+            Initialize-ToolkitHomeBundle -Shell $Shell | Out-Null
             Update-ToolkitShellBrandHeader -Shell $Shell
         }
         catch {

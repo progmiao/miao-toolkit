@@ -16,6 +16,7 @@ $LibDir = Join-Path (Split-Path $BinDir -Parent) 'core/lib'
 . (Join-Path $LibDir 'bootstrap\Load-Core.ps1') -LibDirectory $LibDir
 Initialize-Paths -BinDirectory $BinDir
 
+$null = Sync-ToolkitSessionInitState -Refresh
 $Tools = @(Get-ToolkitTools)
 
 if ($MiaoArgs.Count -eq 0) {

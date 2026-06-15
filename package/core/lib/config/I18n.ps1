@@ -299,6 +299,16 @@ function Sync-MiaoLocaleFromShell {
     $script:CurrentLocale = $locale
     $script:I18nCatalogCache = @{}
     $script:ToolI18nCatalogCache = @{}
+    if (Get-Command Clear-ToolkitSessionInitState -ErrorAction SilentlyContinue) {
+        Clear-ToolkitSessionInitState
+    }
+    if ($Shell) {
+        $Shell['InitReady'] = $false
+        $Shell['HomeBundleReady'] = $false
+        if ($Shell.ContainsKey('BrandSnapshot')) {
+            $Shell.Remove('BrandSnapshot')
+        }
+    }
 }
 
 function Set-UserLocale {

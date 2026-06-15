@@ -9,19 +9,19 @@
     },
     "action": {
       "install": {
-        "name": "浏览并安装",
+        "name": "安装 Node.js",
         "description": "从版本列表安装 Node 到本机"
       },
       "pin": {
-        "name": "为项目指定",
+        "name": "指定 Node.js",
         "description": "锁定当前目录项目的 Node 版本"
       },
       "default": {
-        "name": "设置全局默认",
+        "name": "默认 Node.js",
         "description": "设置未 pin 时使用的 Node 版本"
       },
       "uninstall": {
-        "name": "卸载 Node",
+        "name": "卸载 Node.js",
         "description": "卸载本机已安装的 Node 版本"
       }
     },
@@ -43,6 +43,36 @@
       "installLogFailed": "node@{version} 安装失败（退出码 {code}）",
       "installSummary": "安装完成：成功 {success}，失败 {failed}（共 {total}）",
       "installCancelled": "安装已取消"
+    },
+    "uninstall": {
+      "sectionTitle": "卸载 Node",
+      "uninstallPageTitle": "Node.js 卸载",
+      "noInstalled": "暂无已安装版本",
+      "voltaMissing": "未找到 Volta，请先在依赖菜单中安装",
+      "countUnit": "个版本",
+      "statusReady": "准备卸载",
+      "uninstallStatusStarting": "{spinner} 正在启动 Volta 卸载 node@{version}…（{elapsed}s）",
+      "uninstallStatusWorking": "{spinner} 正在卸载 node@{version}…（{elapsed}s）",
+      "promoteStatusStarting": "{spinner} 正在切换默认版本至 node@{version}…（{elapsed}s）",
+      "promoteStatusWorking": "{spinner} 正在设置 node@{version} 为默认…（{elapsed}s）",
+      "logStart": "开始卸载 node@{version}",
+      "logPromoteDefault": "node@{version} 为全局默认，先切换默认至 node@{replacement}",
+      "logPromoteSuccess": "默认版本已切换至 node@{replacement}",
+      "logPromoteFailed": "切换默认至 node@{replacement} 失败（退出码 {code}）",
+      "logNoReplacement": "node@{version} 为最后一个已安装版本，无需切换默认",
+      "logCleanupStart": "清理 node@{version} 的 Volta 镜像缓存",
+      "logCleanupNoHome": "未找到 Volta 目录，跳过镜像清理",
+      "logCleanupScan": "扫描镜像目录：{root}",
+      "logCleanupNone": "未找到 node@{version} 的镜像目录",
+      "logCleanupRemove": "删除镜像目录：{path}",
+      "logCleanupRemoved": "已删除：{path}",
+      "logCleanupFailed": "删除失败 {path}：{error}",
+      "logSuccess": "node@{version} 卸载成功",
+      "logFailed": "node@{version} 卸载失败（退出码 {code}）",
+      "logVoltaExitIgnored": "Volta 退出码 {code}，但版本已从列表移除",
+      "logVerifyListed": "验证失败：node@{version} 仍在 volta list 中",
+      "logVerifyImageRemain": "验证失败：node@{version} 镜像目录仍存在：{paths}",
+      "uninstallCancelled": "卸载已取消"
     }
   }
 }

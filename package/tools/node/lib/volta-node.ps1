@@ -140,3 +140,143 @@ function Sort-NodeVersionItems {
 
     return @($Items | Sort-Object { [version]($_.Version.Split('-')[0]) } -Descending)
 }
+
+function Get-VoltaHomeDirectory {
+    if (-not [string]::IsNullOrWhiteSpace($env:VOLTA_HOME)) {
+        return [string]$env:VOLTA_HOME.TrimEnd('\', '/')
+    }
+
+    if ($IsWindows -or ($env:OS -match 'Windows')) {
+        $localAppData = $env:LOCALAPPDATA
+        if (-not [string]::IsNullOrWhiteSpace($localAppData)) {
+            return (Join-Path $localAppData 'Volta')
+        }
+    }
+
+    $home = $env:USERPROFILE
+    if ([string]::IsNullOrWhiteSpace($home)) { $home = $env:HOME }
+    if (-not [string]::IsNullOrWhiteSpace($home)) {
+        return (Join-Path $home '.volta')
+    }
+    return $null
+}
+
+function Get-VoltaNodeImageRoot {
+    $voltaHome = Get-VoltaHomeDirectory
+    if ([string]::IsNullOrWhiteSpace($voltaHome)) { return $null }
+    return (Join-Path $voltaHome 'tools\image\node')
+}
+
+function Get-VoltaNodeVersionImagePaths {
+    param([string]$Version)
+
+    $root = Get-VoltaNodeImageRoot
+    if ([string]::IsNullOrWhiteSpace($root)) { return @() }
+
+    $norm = Normalize-NodeVersionLabel -Version $Version
+    if ([string]::IsNullOrWhiteSpace($norm)) { return @() }
+
+    $paths = [System.Collections.Generic.List[string]]::new()
+    $seen = @{}
+
+    foreach ($name in @("v$norm", $norm, "node-v$norm")) {
+        $path = Join-Path $root $name
+        if ($seen[$path]) { continue }
+        $seen[$path] = $true
+        if (Test-Path -LiteralPath $path) {
+            $paths.Add($path) | Out-Null
+        }
+    }
+
+    if (Test-Path -LiteralPath $root) {
+        foreach ($dir in @(Get-ChildItem -LiteralPath $root -Directory -ErrorAction SilentlyContinue)) {
+            if ($dir.Name -match [regex]::Escape($norm)) {
+                if (-not $seen[$dir.FullName]) {
+                    $seen[$dir.FullName] = $true
+                    $paths.Add($dir.FullName) | Out-Null
+                }
+            }
+        }
+    }
+
+    return @($paths.ToArray())
+}
+
+function Order-NodeVersionsForUninstall {
+    param(
+        [array]$VersionsToUninstall,
+        [string]$DefaultVersion
+    )
+
+    $defaultNorm = Normalize-NodeVersionLabel -Version $DefaultVersion
+    return @($VersionsToUninstall | Sort-Object @{
+            Expression = {
+                $v = Normalize-NodeVersionLabel -Version $_
+                if ($defaultNorm -and $v -eq $defaultNorm) { 1 } else { 0 }
+            }
+        }, @{
+            Expression = { [version]($_.Split('-')[0]) }
+            Descending = $true
+        })
+}
+
+function Get-NodeDefaultReplacementVersion {
+    param(
+        [hashtable]$InstalledMap,
+        [string]$ExcludeVersion
+    )
+
+    if ($null -eq $InstalledMap) { return $null }
+
+    $exclude = Normalize-NodeVersionLabel -Version $ExcludeVersion
+    $candidates = @($InstalledMap.Keys | Where-Object {
+        $v = Normalize-NodeVersionLabel -Version $_
+        $v -and $v -ne $exclude
+    })
+    if ($candidates.Count -eq 0) { return $null }
+
+    return @($candidates | Sort-Object { [version]($_.Split('-')[0]) } -Descending | Select-Object -First 1)
+}
+
+function Remove-VoltaNodeVersionImageDirs {
+    param([string]$Version)
+
+    $root = Get-VoltaNodeImageRoot
+    $result = @{
+        Root    = $root
+        Paths   = @()
+        Removed = @()
+        Failed  = @()
+    }
+
+    if ([string]::IsNullOrWhiteSpace($root)) {
+        return $result
+    }
+
+    $paths = Get-VoltaNodeVersionImagePaths -Version $Version
+    $result.Paths = @($paths)
+
+    foreach ($path in $paths) {
+        try {
+            Remove-Item -LiteralPath $path -Recurse -Force -ErrorAction Stop
+            $result.Removed += $path
+        }
+        catch {
+            $result.Failed += [pscustomobject]@{
+                Path  = $path
+                Error = $_.Exception.Message
+            }
+        }
+    }
+    return $result
+}
+
+function Test-VoltaNodeVersionAbsent {
+    param([string]$Version)
+
+    $norm = Normalize-NodeVersionLabel -Version $Version
+    if ([string]::IsNullOrWhiteSpace($norm)) { return $true }
+
+    $info = Get-VoltaNodeVersionInfo
+    return -not $info.Map.ContainsKey($norm)
+}

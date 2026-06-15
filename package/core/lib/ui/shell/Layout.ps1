@@ -12,9 +12,16 @@ function Get-ToolkitShellStandardBrandInnerWidth {
     }
 
     $width = 0
-    if (Get-Command Test-ToolkitInitValid -ErrorAction SilentlyContinue) {
-        if (Test-ToolkitInitValid) {
-            $brand = Get-ToolkitBrandSnapshot -Locale 'zh'
+    if (Get-Command Test-ToolkitSessionInitReady -ErrorAction SilentlyContinue) {
+        if (Test-ToolkitSessionInitReady) {
+            $brand = $null
+            if ($script:ToolkitHomeBrandSnapshot -and `
+                [string]$script:ToolkitHomeBrandSnapshotLocale -eq 'zh') {
+                $brand = $script:ToolkitHomeBrandSnapshot
+            }
+            if (-not $brand) {
+                $brand = Get-ToolkitBrandSnapshot -Locale 'zh'
+            }
             if ($brand -and [int]$brand.brandInnerWidth -gt 0) {
                 $width = [int]$brand.brandInnerWidth
             }
