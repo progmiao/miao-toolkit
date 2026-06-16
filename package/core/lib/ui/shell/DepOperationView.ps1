@@ -560,7 +560,8 @@ function Format-ToolkitDepProgressBar {
         [int]$Total,
         [string]$Name,
         [int]$BrandInnerWidth = 0,
-        [int]$ItemSubPercent = -1
+        [int]$ItemSubPercent = -1,
+        [int]$LoadingPercent = -1
     )
 
     if ($Total -le 0) { $Total = 1 }
@@ -579,7 +580,13 @@ function Format-ToolkitDepProgressBar {
         24
     }
 
-    $countText = "$Current/$Total"
+    $useLoadingPercent = ($LoadingPercent -ge 0 -and $LoadingPercent -le 100)
+    $countText = if ($useLoadingPercent) {
+        "$LoadingPercent%"
+    }
+    else {
+        "$Current/$Total"
+    }
     $suffix = " $countText  $Name"
     $suffixWidth = & $fnDisplayWidth $suffix
     $barInner = $inner - 2 - $suffixWidth
@@ -592,12 +599,17 @@ function Format-ToolkitDepProgressBar {
         $barInner = [Math]::Max(1, $inner - 2 - $suffixWidth)
     }
 
-    $effective = [double]$Current
-    if ($ItemSubPercent -ge 0 -and $ItemSubPercent -le 100 -and $Current -lt $Total) {
-        $effective = $Current + ($ItemSubPercent / 100.0)
+    if ($useLoadingPercent) {
+        $ratio = $LoadingPercent / 100.0
     }
+    else {
+        $effective = [double]$Current
+        if ($ItemSubPercent -ge 0 -and $ItemSubPercent -le 100 -and $Current -lt $Total) {
+            $effective = $Current + ($ItemSubPercent / 100.0)
+        }
 
-    $ratio = [Math]::Min(1.0, [Math]::Max(0.0, $effective / [double]$Total))
+        $ratio = [Math]::Min(1.0, [Math]::Max(0.0, $effective / [double]$Total))
+    }
     $filled = [Math]::Min($barInner, [int][Math]::Round($ratio * $barInner))
     $bar = ('#' * $filled) + ('-' * [Math]::Max(0, $barInner - $filled))
     $content = & $fnPad "[$bar]$suffix" $inner

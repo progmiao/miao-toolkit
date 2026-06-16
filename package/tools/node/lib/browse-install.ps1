@@ -67,7 +67,7 @@ function Get-NodeBrowseI18n {
 
 function Get-NodeBrowseInstallSectionTitle {
     return (Resolve-ToolI18nLabel -ToolRoot $toolRoot -Key 'node.browse.sectionTitle' `
-        -Fallback '浏览并安装')
+        -Fallback '安装Node.js')
 }
 
 function Get-NodeBrowseInstallProgressSectionTitle {
@@ -146,26 +146,53 @@ function Format-NodeBrowseListLine {
     return (Get-NodeBrowseListLineIndent) + $Text
 }
 
-function Write-NodeBrowseInstallLoadingLine {
+function Get-NodeBrowseInstallLoadingStatusText {
+    param(
+        [string]$Spinner,
+        [string]$StatusKey = 'node.browse.loading'
+    )
+
+    return (Get-NodeBrowseI18n -Key $StatusKey -Vars @{
+        spinner = $Spinner
+    })
+}
+
+function Write-NodeBrowseInstallLoadingView {
     param(
         [hashtable]$Shell,
-        [string]$Spinner
+        [string]$Spinner,
+        [int]$Percent = 0,
+        [string]$StatusKey = 'node.browse.loadingFetch'
     )
 
     $layout = $Shell.Layout
-    $text = Format-NodeBrowseListLine -Text (Get-NodeBrowseI18n -Key 'node.browse.loading' -Vars @{
-            spinner = $Spinner
-        })
-    $row = [int]$layout.ListStartRow
+    $barWidth = if ($Shell.BrandInnerWidth -gt 0) { [int]$Shell.BrandInnerWidth } else { [int]$layout.BrandInnerWidth }
+    if ($barWidth -le 0) {
+        $null = Ensure-ToolkitShellLayoutBrandInnerWidth -Shell $Shell
+        $barWidth = if ($Shell.BrandInnerWidth -gt 0) { [int]$Shell.BrandInnerWidth } else { [int]$Shell.Layout.BrandInnerWidth }
+    }
+
+    $percent = [Math]::Min(100, [Math]::Max(0, $Percent))
+    $fnFormatBar = Resolve-DepOperationFn 'Format-ToolkitDepProgressBar'
+    $barLine = & $fnFormatBar -Current 0 -Total 1 -Name '' -BrandInnerWidth $barWidth `
+        -LoadingPercent $percent
+    $statusText = Get-NodeBrowseInstallLoadingStatusText -Spinner $Spinner -StatusKey $StatusKey
+    $statusRow = [int]$layout.ListStartRow + 1
+    $progressRow = [int]$layout.ListStartRow
+
     $useBatch = Test-ShellConsoleBatchDraw
     $enteredBatch = $false
     if ($useBatch) {
         Enter-ConsoleDrawBatch
         $enteredBatch = $true
     }
-    Prepare-ConsoleRowWrite -Row $row
-    Write-FixedLine $row $text -Color Yellow
-    Set-ConsoleCursorAfterRowWrite -Row $row
+
+    Write-FixedLine $progressRow $barLine -Color Cyan
+    Write-FixedLine $statusRow " $statusText" -Color White
+    for ($row = 2; $row -lt $layout.ListViewportHeight; $row++) {
+        Write-FixedLine ($layout.ListStartRow + $row) '' -Color DarkGray
+    }
+
     if ($enteredBatch) {
         $null = Complete-ConsoleDrawBatch -ToolkitShell $Shell
     }
@@ -178,18 +205,41 @@ function Show-NodeBrowseInstallLoadingFrame {
     param(
         [hashtable]$Shell,
         [string]$SectionTitle,
-        [string]$Spinner = '|'
+        [string]$Spinner = '|',
+        [int]$Percent = 0,
+        [string]$StatusKey = 'node.browse.loadingFetch'
     )
 
     Initialize-ToolkitShellBodyView -Shell $Shell -SectionTitle $SectionTitle -FooterTemplate SystemToolbarOnly
-    Write-NodeBrowseInstallLoadingLine -Shell $Shell -Spinner $Spinner
-    $layout = $Shell.Layout
-    for ($row = 1; $row -lt $layout.ListViewportHeight; $row++) {
-        Write-FixedLine ($layout.ListStartRow + $row) '' -Color DarkGray
-    }
+    Write-NodeBrowseInstallLoadingView -Shell $Shell -Spinner $Spinner -Percent $Percent -StatusKey $StatusKey
     $toolbar = New-ShellSystemToolbarConfig
     Write-ToolkitShellFooter -Shell $Shell -Template SystemToolbarOnly -ToolbarConfig $toolbar
     Finalize-ToolkitShellBodyView -Shell $Shell
+}
+
+function Get-NodeBrowseInstallFetchPercents {
+    return @(5, 15, 25, 35)
+}
+
+function Step-NodeBrowseInstallLoadingPercent {
+    param(
+        [hashtable]$Shell,
+        [string]$Spinner,
+        [int]$FromPercent,
+        [int]$ToPercent,
+        [string]$StatusKey,
+        [int]$Steps = 4,
+        [int]$DelayMs = 60
+    )
+
+    if ($Steps -le 0) { $Steps = 1 }
+    for ($step = 1; $step -le $Steps; $step++) {
+        $percent = $FromPercent + [int][Math]::Round(($ToPercent - $FromPercent) * $step / $Steps)
+        Write-NodeBrowseInstallLoadingView -Shell $Shell -Spinner $Spinner -Percent $percent -StatusKey $StatusKey
+        if ($step -lt $Steps -and $DelayMs -gt 0) {
+            Start-Sleep -Milliseconds $DelayMs
+        }
+    }
 }
 
 function Start-NodeBrowseRemoteVersionsFetch {
@@ -262,10 +312,11 @@ function Wait-NodeBrowseRemoteVersionsLoad {
     $toolbar = New-ShellSystemToolbarConfig
     $spinnerFrames = @('|', '/', '-', '\')
     $spinnerIndex = 0
+    $fetchPercents = Get-NodeBrowseInstallFetchPercents
 
     Set-ToolkitShellToolbarLocked -Shell $Shell -Locked $true
     Show-NodeBrowseInstallLoadingFrame -Shell $Shell -SectionTitle $SectionTitle `
-        -Spinner $spinnerFrames[0]
+        -Spinner $spinnerFrames[0] -Percent $fetchPercents[0] -StatusKey 'node.browse.loadingFetch'
 
     while ($true) {
         if ($Shell.ExitMode) {
@@ -286,7 +337,9 @@ function Wait-NodeBrowseRemoteVersionsLoad {
         }
 
         $spinner = $spinnerFrames[$spinnerIndex % $spinnerFrames.Count]
-        Write-NodeBrowseInstallLoadingLine -Shell $Shell -Spinner $spinner
+        $percent = $fetchPercents[$spinnerIndex % $fetchPercents.Count]
+        Write-NodeBrowseInstallLoadingView -Shell $Shell -Spinner $spinner -Percent $percent `
+            -StatusKey 'node.browse.loadingFetch'
         $spinnerIndex++
 
         if (-not (Test-NodeBrowseRemoteVersionsFetchRunning -Fetch $Fetch)) {
@@ -315,8 +368,21 @@ function Wait-NodeBrowseRemoteVersionsLoad {
         Start-Sleep -Milliseconds 120
     }
 
+    $spinner = $spinnerFrames[$spinnerIndex % $spinnerFrames.Count]
+    Step-NodeBrowseInstallLoadingPercent -Shell $Shell -Spinner $spinner -FromPercent 40 -ToPercent 55 `
+        -StatusKey 'node.browse.loadingCompute' -Steps 3 -DelayMs 50
+
     try {
         $remote = Complete-NodeBrowseRemoteVersionsFetch -Fetch $Fetch
+        $spinner = $spinnerFrames[($spinnerIndex + 1) % $spinnerFrames.Count]
+        Step-NodeBrowseInstallLoadingPercent -Shell $Shell -Spinner $spinner -FromPercent 55 -ToPercent 75 `
+            -StatusKey 'node.browse.loadingCompute' -Steps 2 -DelayMs 40
+        $spinner = $spinnerFrames[($spinnerIndex + 2) % $spinnerFrames.Count]
+        Step-NodeBrowseInstallLoadingPercent -Shell $Shell -Spinner $spinner -FromPercent 75 -ToPercent 90 `
+            -StatusKey 'node.browse.loadingResult' -Steps 3 -DelayMs 50
+        $spinner = $spinnerFrames[($spinnerIndex + 3) % $spinnerFrames.Count]
+        Step-NodeBrowseInstallLoadingPercent -Shell $Shell -Spinner $spinner -FromPercent 90 -ToPercent 95 `
+            -StatusKey 'node.browse.loadingResult' -Steps 2 -DelayMs 40
         Set-ToolkitShellToolbarLocked -Shell $Shell -Locked $false
         return @{ Nav = $null; Remote = $remote; Error = $null }
     }
@@ -346,6 +412,9 @@ function Invoke-NodeBrowseInstallPage {
     if ($loadResult.Nav) {
         return $loadResult.Nav
     }
+
+    Write-NodeBrowseInstallLoadingView -Shell $Shell -Spinner '/' -Percent 100 -StatusKey 'node.browse.loadingDraw'
+    Start-Sleep -Milliseconds 80
 
     try {
         if ($loadResult.Error) {

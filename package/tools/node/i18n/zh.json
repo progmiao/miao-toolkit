@@ -26,9 +26,13 @@
       }
     },
     "browse": {
-      "sectionTitle": "浏览并安装",
+      "sectionTitle": "安装Node.js",
       "installPageTitle": "Node.js 安装",
       "loading": "{spinner} 正在加载 Node 版本列表…",
+      "loadingFetch": "{spinner} 正在获取 Node 版本数据…",
+      "loadingCompute": "{spinner} 正在计算可用版本…",
+      "loadingResult": "{spinner} 正在整理版本列表…",
+      "loadingDraw": "{spinner} 开始绘制版本列表…",
       "loadFailed": "加载失败",
       "noVersions": "无可用版本",
       "voltaMissing": "未找到 Volta，请先在依赖菜单中安装",
@@ -45,7 +49,7 @@
       "installCancelled": "安装已取消"
     },
     "uninstall": {
-      "sectionTitle": "卸载 Node",
+      "sectionTitle": "卸载Node.js",
       "uninstallPageTitle": "Node.js 卸载",
       "noInstalled": "暂无已安装版本",
       "voltaMissing": "未找到 Volta，请先在依赖菜单中安装",

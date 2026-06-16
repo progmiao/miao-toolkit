@@ -66,7 +66,7 @@ function Get-NodeBrowseUninstallI18n {
 
 function Get-NodeBrowseUninstallSectionTitle {
     return (Resolve-ToolI18nLabel -ToolRoot $toolRoot -Key 'node.uninstall.sectionTitle' `
-        -Fallback '卸载 Node')
+        -Fallback '卸载Node.js')
 }
 
 function Get-NodeBrowseUninstallProgressSectionTitle {

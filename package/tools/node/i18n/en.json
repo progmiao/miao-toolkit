@@ -26,9 +26,13 @@
       }
     },
     "browse": {
-      "sectionTitle": "Browse and install",
+      "sectionTitle": "Install Node.js",
       "installPageTitle": "Node.js install",
       "loading": "{spinner} Loading Node versions…",
+      "loadingFetch": "{spinner} Fetching Node version data…",
+      "loadingCompute": "{spinner} Computing available versions…",
+      "loadingResult": "{spinner} Preparing version list…",
+      "loadingDraw": "{spinner} Rendering version list…",
       "loadFailed": "Failed to load versions",
       "noVersions": "No versions available",
       "voltaMissing": "Volta not found — install it from the dependency menu first",
@@ -45,7 +49,7 @@
       "installCancelled": "Install cancelled"
     },
     "uninstall": {
-      "sectionTitle": "Uninstall Node",
+      "sectionTitle": "Uninstall Node.js",
       "uninstallPageTitle": "Node.js uninstall",
       "noInstalled": "No installed versions",
       "voltaMissing": "Volta not found — install it from the dependency menu first",
