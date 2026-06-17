@@ -217,28 +217,123 @@ function Show-NodeBrowseInstallLoadingFrame {
     Finalize-ToolkitShellBodyView -Shell $Shell
 }
 
-function Get-NodeBrowseInstallFetchPercents {
-    return @(5, 15, 25, 35)
+function Get-NodeBrowseInstallLoadingStatusKeyForPercent {
+    param([int]$Percent)
+
+    if ($Percent -ge 100) { return 'node.browse.loadingDraw' }
+    if ($Percent -ge 80) { return 'node.browse.loadingResult' }
+    if ($Percent -ge 55) { return 'node.browse.loadingCompute' }
+    return 'node.browse.loadingFetch'
 }
 
-function Step-NodeBrowseInstallLoadingPercent {
+function Update-NodeBrowseInstallLoadingProgress {
     param(
         [hashtable]$Shell,
-        [string]$Spinner,
-        [int]$FromPercent,
-        [int]$ToPercent,
-        [string]$StatusKey,
-        [int]$Steps = 4,
-        [int]$DelayMs = 60
+        [hashtable]$Progress,
+        [int]$TargetPercent
     )
 
-    if ($Steps -le 0) { $Steps = 1 }
-    for ($step = 1; $step -le $Steps; $step++) {
-        $percent = $FromPercent + [int][Math]::Round(($ToPercent - $FromPercent) * $step / $Steps)
-        Write-NodeBrowseInstallLoadingView -Shell $Shell -Spinner $Spinner -Percent $percent -StatusKey $StatusKey
-        if ($step -lt $Steps -and $DelayMs -gt 0) {
-            Start-Sleep -Milliseconds $DelayMs
+    $spinnerFrames = @('|', '/', '-', '\')
+    if ($TargetPercent -gt $Progress.Percent) {
+        $Progress.Percent = $TargetPercent
+    }
+
+    $spinner = $spinnerFrames[$Progress.SpinnerIndex % $spinnerFrames.Count]
+    $Progress.SpinnerIndex++
+    $statusKey = Get-NodeBrowseInstallLoadingStatusKeyForPercent -Percent $Progress.Percent
+    Write-NodeBrowseInstallLoadingView -Shell $Shell -Spinner $spinner -Percent $Progress.Percent `
+        -StatusKey $statusKey
+}
+
+function Complete-NodeBrowseInstallLoadingProgress {
+    param(
+        [hashtable]$Shell,
+        [hashtable]$Progress,
+        [array]$Targets
+    )
+
+    foreach ($target in $Targets) {
+        Update-NodeBrowseInstallLoadingProgress -Shell $Shell -Progress $Progress -TargetPercent $target
+    }
+}
+
+function Build-NodeBrowseInstallBaseVersions {
+    param([array]$Remote)
+
+    $seen = @{}
+    $baseVersions = @()
+    foreach ($r in $Remote) {
+        $ver = Normalize-NodeVersionLabel -Version ([string]$r.Version)
+        if (-not $seen[$ver]) {
+            $baseVersions += $r
+            $seen[$ver] = $true
         }
+    }
+    return $baseVersions
+}
+
+function Build-NodeBrowseInstallMergedItems {
+    param(
+        [array]$BaseVersions,
+        [hashtable]$VoltaInfo
+    )
+
+    $items = [System.Collections.Generic.List[object]]::new()
+    $seen = @{}
+    foreach ($r in $BaseVersions) {
+        $ver = Normalize-NodeVersionLabel -Version ([string]$r.Version)
+        if (-not $seen[$ver]) {
+            $items.Add($r)
+            $seen[$ver] = $true
+        }
+    }
+    foreach ($ver in $VoltaInfo.Map.Keys) {
+        if (-not $seen[$ver]) {
+            $items.Add((New-NodeVersionMenuItem -Version $ver))
+            $seen[$ver] = $true
+        }
+    }
+    return @($items.ToArray())
+}
+
+function Prepare-NodeBrowseInstallListContent {
+    param(
+        [hashtable]$Shell,
+        [hashtable]$Progress,
+        [array]$Remote
+    )
+
+    Update-NodeBrowseInstallLoadingProgress -Shell $Shell -Progress $Progress -TargetPercent 60
+    $baseVersions = Build-NodeBrowseInstallBaseVersions -Remote $Remote
+
+    Update-NodeBrowseInstallLoadingProgress -Shell $Shell -Progress $Progress -TargetPercent 70
+    $voltaInfo = Get-VoltaNodeVersionInfo
+    $activeVersion = Get-ActiveNodeVersion
+
+    Update-NodeBrowseInstallLoadingProgress -Shell $Shell -Progress $Progress -TargetPercent 85
+    $merged = Build-NodeBrowseInstallMergedItems -BaseVersions $baseVersions -VoltaInfo $voltaInfo
+    $sorted = Sort-NodeVersionItems -Items $merged
+
+    Update-NodeBrowseInstallLoadingProgress -Shell $Shell -Progress $Progress -TargetPercent 95
+    $tagsWidth = Resolve-NodeBrowseInstallTagsColumnWidth -Shell $Shell
+    $rows = Build-NodeBrowseInstallRows -Items $sorted -InstalledMap $voltaInfo.Map `
+        -DefaultVersion $voltaInfo.Default -ActiveVersion $activeVersion
+    $columnLayout = New-ShellListColumnLayout -Widths @($tagsWidth)
+
+    Clear-ShellMultiSelectListCache -Shell $Shell -CacheKey 'NodeBrowse'
+    Initialize-ShellMultiSelectListDependencies
+    $normalized = @(Normalize-ShellListRows -Rows $rows -ColumnLayout $columnLayout)
+    $null = Get-ShellMultiSelectListRowCache -Shell $Shell -CacheKey 'NodeBrowse' `
+        -Rows $normalized -ColumnLayout $columnLayout
+
+    return @{
+        BaseVersions  = $baseVersions
+        Rows          = $rows
+        VoltaInfo     = $voltaInfo
+        ActiveVersion = $activeVersion
+        Sorted        = $sorted
+        TagsWidth     = $tagsWidth
+        ColumnLayout  = $columnLayout
     }
 }
 
@@ -310,13 +405,14 @@ function Wait-NodeBrowseRemoteVersionsLoad {
     )
 
     $toolbar = New-ShellSystemToolbarConfig
-    $spinnerFrames = @('|', '/', '-', '\')
-    $spinnerIndex = 0
-    $fetchPercents = Get-NodeBrowseInstallFetchPercents
+    $progress = @{
+        Percent      = 0
+        SpinnerIndex = 0
+    }
 
     Set-ToolkitShellToolbarLocked -Shell $Shell -Locked $true
     Show-NodeBrowseInstallLoadingFrame -Shell $Shell -SectionTitle $SectionTitle `
-        -Spinner $spinnerFrames[0] -Percent $fetchPercents[0] -StatusKey 'node.browse.loadingFetch'
+        -Spinner '|' -Percent 0 -StatusKey 'node.browse.loadingFetch'
 
     while ($true) {
         if ($Shell.ExitMode) {
@@ -336,14 +432,17 @@ function Wait-NodeBrowseRemoteVersionsLoad {
             continue
         }
 
-        $spinner = $spinnerFrames[$spinnerIndex % $spinnerFrames.Count]
-        $percent = $fetchPercents[$spinnerIndex % $fetchPercents.Count]
-        Write-NodeBrowseInstallLoadingView -Shell $Shell -Spinner $spinner -Percent $percent `
-            -StatusKey 'node.browse.loadingFetch'
-        $spinnerIndex++
-
         if (-not (Test-NodeBrowseRemoteVersionsFetchRunning -Fetch $Fetch)) {
             break
+        }
+
+        $fetchCap = 55
+        if ($progress.Percent -lt $fetchCap) {
+            $nextPercent = [Math]::Min($fetchCap, $progress.Percent + 2)
+            Update-NodeBrowseInstallLoadingProgress -Shell $Shell -Progress $progress -TargetPercent $nextPercent
+        }
+        else {
+            Update-NodeBrowseInstallLoadingProgress -Shell $Shell -Progress $progress -TargetPercent $fetchCap
         }
 
         if (Test-ToolkitShellToolbarLocked -Shell $Shell) {
@@ -368,27 +467,17 @@ function Wait-NodeBrowseRemoteVersionsLoad {
         Start-Sleep -Milliseconds 120
     }
 
-    $spinner = $spinnerFrames[$spinnerIndex % $spinnerFrames.Count]
-    Step-NodeBrowseInstallLoadingPercent -Shell $Shell -Spinner $spinner -FromPercent 40 -ToPercent 55 `
-        -StatusKey 'node.browse.loadingCompute' -Steps 3 -DelayMs 50
-
     try {
         $remote = Complete-NodeBrowseRemoteVersionsFetch -Fetch $Fetch
-        $spinner = $spinnerFrames[($spinnerIndex + 1) % $spinnerFrames.Count]
-        Step-NodeBrowseInstallLoadingPercent -Shell $Shell -Spinner $spinner -FromPercent 55 -ToPercent 75 `
-            -StatusKey 'node.browse.loadingCompute' -Steps 2 -DelayMs 40
-        $spinner = $spinnerFrames[($spinnerIndex + 2) % $spinnerFrames.Count]
-        Step-NodeBrowseInstallLoadingPercent -Shell $Shell -Spinner $spinner -FromPercent 75 -ToPercent 90 `
-            -StatusKey 'node.browse.loadingResult' -Steps 3 -DelayMs 50
-        $spinner = $spinnerFrames[($spinnerIndex + 3) % $spinnerFrames.Count]
-        Step-NodeBrowseInstallLoadingPercent -Shell $Shell -Spinner $spinner -FromPercent 90 -ToPercent 95 `
-            -StatusKey 'node.browse.loadingResult' -Steps 2 -DelayMs 40
+        if ($progress.Percent -lt 55) {
+            Complete-NodeBrowseInstallLoadingProgress -Shell $Shell -Progress $progress -Targets @(55)
+        }
         Set-ToolkitShellToolbarLocked -Shell $Shell -Locked $false
-        return @{ Nav = $null; Remote = $remote; Error = $null }
+        return @{ Nav = $null; Remote = $remote; Error = $null; Progress = $progress }
     }
     catch {
         Set-ToolkitShellToolbarLocked -Shell $Shell -Locked $false
-        return @{ Nav = $null; Remote = $null; Error = $_ }
+        return @{ Nav = $null; Remote = $null; Error = $_; Progress = $progress }
     }
 }
 
@@ -413,9 +502,6 @@ function Invoke-NodeBrowseInstallPage {
         return $loadResult.Nav
     }
 
-    Write-NodeBrowseInstallLoadingView -Shell $Shell -Spinner '/' -Percent 100 -StatusKey 'node.browse.loadingDraw'
-    Start-Sleep -Milliseconds 80
-
     try {
         if ($loadResult.Error) {
             throw $loadResult.Error
@@ -431,37 +517,40 @@ function Invoke-NodeBrowseInstallPage {
         return (Get-ShellNavMarker -Action 'back')
     }
 
-    $seen = @{}
-    $baseVersions = @()
-    foreach ($r in $remote) {
-        $ver = Normalize-NodeVersionLabel -Version ([string]$r.Version)
-        if (-not $seen[$ver]) {
-            $baseVersions += $r
-            $seen[$ver] = $true
-        }
+    $progress = if ($loadResult.Progress) {
+        $loadResult.Progress
+    }
+    else {
+        @{ Percent = 55; SpinnerIndex = 0 }
     }
 
+    $preparedList = Prepare-NodeBrowseInstallListContent -Shell $Shell -Progress $progress -Remote $remote
+    $baseVersions = $preparedList.BaseVersions
+    $usePreparedList = $true
+    $skipListCacheClear = $true
+
     while ($true) {
-        $voltaInfo = Get-VoltaNodeVersionInfo
-        $activeVersion = Get-ActiveNodeVersion
-
-        $items = [System.Collections.Generic.List[object]]::new()
-        $seen = @{}
-        foreach ($r in $baseVersions) {
-            $ver = Normalize-NodeVersionLabel -Version ([string]$r.Version)
-            if (-not $seen[$ver]) {
-                $items.Add($r)
-                $seen[$ver] = $true
-            }
+        if ($usePreparedList) {
+            $voltaInfo = $preparedList.VoltaInfo
+            $activeVersion = $preparedList.ActiveVersion
+            $sorted = $preparedList.Sorted
+            $rows = $preparedList.Rows
+            $tagsWidth = $preparedList.TagsWidth
+            $columnLayout = $preparedList.ColumnLayout
+            $usePreparedList = $false
         }
-        foreach ($ver in $voltaInfo.Map.Keys) {
-            if (-not $seen[$ver]) {
-                $items.Add((New-NodeVersionMenuItem -Version $ver))
-                $seen[$ver] = $true
-            }
+        else {
+            $voltaInfo = Get-VoltaNodeVersionInfo
+            $activeVersion = Get-ActiveNodeVersion
+
+            $merged = Build-NodeBrowseInstallMergedItems -BaseVersions $baseVersions -VoltaInfo $voltaInfo
+            $sorted = Sort-NodeVersionItems -Items $merged
+            $tagsWidth = Resolve-NodeBrowseInstallTagsColumnWidth -Shell $Shell
+            $rows = Build-NodeBrowseInstallRows -Items $sorted -InstalledMap $voltaInfo.Map `
+                -DefaultVersion $voltaInfo.Default -ActiveVersion $activeVersion
+            $columnLayout = New-ShellListColumnLayout -Widths @($tagsWidth)
         }
 
-        $sorted = Sort-NodeVersionItems -Items @($items.ToArray())
         if ($sorted.Count -eq 0) {
             Initialize-ToolkitShellBodyView -Shell $Shell -SectionTitle $sectionTitle -FooterTemplate SystemToolbarOnly
             $layout = $Shell.Layout
@@ -470,17 +559,20 @@ function Invoke-NodeBrowseInstallPage {
             return (Get-ShellNavMarker -Action 'back')
         }
 
-        $tagsWidth = Resolve-NodeBrowseInstallTagsColumnWidth -Shell $Shell
-        $rows = Build-NodeBrowseInstallRows -Items $sorted -InstalledMap $voltaInfo.Map `
-            -DefaultVersion $voltaInfo.Default -ActiveVersion $activeVersion
+        if (-not $skipListCacheClear) {
+            Clear-ShellMultiSelectListCache -Shell $Shell -CacheKey 'NodeBrowse'
+        }
+        $skipListCacheClear = $false
 
-        Clear-ShellMultiSelectListCache -Shell $Shell -CacheKey 'NodeBrowse'
+        if ($progress.Percent -lt 100) {
+            Update-NodeBrowseInstallLoadingProgress -Shell $Shell -Progress $progress -TargetPercent 100
+        }
 
         $toolbar = New-ShellSystemToolbarConfig
         $invokeMultiSelect = Get-Command Invoke-ShellMultiSelectList -CommandType Function -ErrorAction Stop
         $picked = & $invokeMultiSelect -Shell $Shell -SectionTitle $sectionTitle `
             -Rows $rows -CacheKey 'NodeBrowse' `
-            -ColumnLayout (New-ShellListColumnLayout -Widths @($tagsWidth)) `
+            -ColumnLayout $columnLayout `
             -ToolbarConfig $toolbar -CountLabel (Get-NodeBrowseI18n -Key 'node.browse.countUnit') `
             -SearchKeyMode
 
