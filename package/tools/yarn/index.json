@@ -1,0 +1,59 @@
+{
+  "no": 2,
+  "command": "yarn",
+  "name": "yarn.name",
+  "description": "yarn.description",
+  "interactive": true,
+  "dependencies": {
+    "menus": {
+      "install": "yarn.deps.install",
+      "update": "yarn.deps.update",
+      "uninstall": "yarn.deps.uninstall"
+    },
+    "packages": [
+      {
+        "name": "volta",
+        "checkCommand": "volta --version",
+        "version": "latest",
+        "install": {
+          "type": "winget",
+          "packageId": "Volta.Volta"
+        }
+      }
+    ]
+  },
+  "actions": [
+    {
+      "command": "install",
+      "name": "yarn.action.install.name",
+      "description": "yarn.action.install.description",
+      "script": "lib/browse-install.ps1",
+      "param": { "switch": "Install", "alias": "i" },
+      "enabled": true
+    },
+    {
+      "command": "pin",
+      "name": "yarn.action.pin.name",
+      "description": "yarn.action.pin.description",
+      "script": "lib/pin-project.ps1",
+      "param": { "switch": "Pin", "alias": "p" },
+      "enabled": true
+    },
+    {
+      "command": "default",
+      "name": "yarn.action.default.name",
+      "description": "yarn.action.default.description",
+      "script": "lib/set-default.ps1",
+      "param": { "switch": "Default", "alias": "d" },
+      "enabled": true
+    },
+    {
+      "command": "uninstall",
+      "name": "yarn.action.uninstall.name",
+      "description": "yarn.action.uninstall.description",
+      "script": "lib/browse-uninstall.ps1",
+      "param": { "switch": "Uninstall", "alias": "u" },
+      "enabled": true
+    }
+  ]
+}

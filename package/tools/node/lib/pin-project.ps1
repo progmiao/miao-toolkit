@@ -139,10 +139,13 @@ function Invoke-NodePinProjectPage {
 
         $contentLine = Format-NodePinContentLineMessage -ToolRoot $toolRoot -PinContext $pinContext `
             -VoltaInfo $voltaInfo
+        $statusMessage = Format-NodePinMessageLineMessage -ToolRoot $toolRoot -PinContext $pinContext `
+            -VoltaInfo $voltaInfo
+        $messageLine = if ([string]::IsNullOrWhiteSpace($flashMessage)) { $statusMessage } else { $flashMessage }
 
         $picked = Invoke-NodePinVersionSingleSelectPage -Shell $Shell -ToolRoot $toolRoot `
             -Rows $rows -ColumnLayout $columnLayout -InitialContentLine $contentLine `
-            -InitialFlashMessage $flashMessage -SectionTitle $nodeActionSectionTitle
+            -InitialFlashMessage $messageLine -SectionTitle $nodeActionSectionTitle
         $flashMessage = ''
 
         if (Test-ShellNavMarker $picked) {

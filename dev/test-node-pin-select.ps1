@@ -42,7 +42,11 @@ $ctx = @{
     PinnedVersion    = '20.11.0'
     WorkingDirectory = 'C:\work\demo-app'
 }
-$msg = Format-NodePinGapContextMessage -ToolRoot $toolRoot -PinContext $ctx -VoltaInfo $voltaInfo
-if ([string]::IsNullOrWhiteSpace($msg)) { throw 'expected context gap message' }
+$msg = Format-NodePinContentLineMessage -ToolRoot $toolRoot -PinContext $ctx -VoltaInfo $voltaInfo
+if ([string]::IsNullOrWhiteSpace($msg)) { throw 'expected context content line message' }
+
+$noProject = @{ HasProject = $false; ProjectName = 'demo'; PackageJsonRel = '' }
+$warn = Format-NodePinMessageLineMessage -ToolRoot $toolRoot -PinContext $noProject -VoltaInfo $voltaInfo
+if ([string]::IsNullOrWhiteSpace($warn)) { throw 'expected no-project warning on message line' }
 
 Write-Host 'test-node-pin-select: OK'

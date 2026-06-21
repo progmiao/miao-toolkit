@@ -1,6 +1,6 @@
-# node — 指定项目 Node 版本（全量列表 + 标准单选）
+# yarn — 指定项目 Yarn 版本（全量列表 + 标准单选）
 
-function Get-NodePinI18n {
+function Get-YarnPinI18n {
     param(
         [string]$ToolRoot,
         [string]$Key,
@@ -10,7 +10,7 @@ function Get-NodePinI18n {
     return Get-ToolI18n -ToolRoot $ToolRoot -Key $Key -Vars $Vars
 }
 
-function Get-NodePinTagsLabel {
+function Get-YarnPinTagsLabel {
     param(
         $Item,
         [hashtable]$InstalledMap,
@@ -19,20 +19,20 @@ function Get-NodePinTagsLabel {
         [string]$PinnedVersion
     )
 
-    return (Get-NodeVersionStatusTags -Item $Item -InstalledMap $InstalledMap `
+    return (Get-YarnVersionStatusTags -Item $Item -InstalledMap $InstalledMap `
         -DefaultVersion $DefaultVersion -ActiveVersion $ActiveVersion `
         -PinnedVersion $PinnedVersion -IncludeInstalledTag)
 }
 
-function Build-NodePinMergedItems {
+function Build-YarnPinMergedItems {
     param(
         [array]$BaseVersions,
         [hashtable]$VoltaInfo,
         [string]$PinnedVersion
     )
 
-    $merged = @(Build-NodeBrowseInstallMergedItems -BaseVersions $BaseVersions -VoltaInfo $VoltaInfo)
-    $pinned = Normalize-NodeVersionLabel -Version $PinnedVersion
+    $merged = @(Build-YarnBrowseInstallMergedItems -BaseVersions $BaseVersions -VoltaInfo $VoltaInfo)
+    $pinned = Normalize-YarnVersionLabel -Version $PinnedVersion
     if ([string]::IsNullOrWhiteSpace($pinned)) {
         return $merged
     }
@@ -43,17 +43,17 @@ function Build-NodePinMergedItems {
 
     $seen = @{}
     foreach ($item in $merged) {
-        $ver = Normalize-NodeVersionLabel -Version ([string]$item.Version)
+        $ver = Normalize-YarnVersionLabel -Version ([string]$item.Version)
         if ($ver) { $seen[$ver] = $true }
     }
     if ($seen[$pinned]) {
         return $merged
     }
 
-    return @($merged + @((New-NodeVersionMenuItem -Version $pinned)))
+    return @($merged + @((New-YarnVersionMenuItem -Version $pinned)))
 }
 
-function Build-NodePinRows {
+function Build-YarnPinRows {
     param(
         [array]$Items,
         [hashtable]$InstalledMap,
@@ -69,7 +69,7 @@ function Build-NodePinRows {
         param($Item, [int]$Index)
         @(
             [string]$Item.Version
-            (Get-NodePinTagsLabel -Item $Item -InstalledMap $InstalledMap `
+            (Get-YarnPinTagsLabel -Item $Item -InstalledMap $InstalledMap `
                 -DefaultVersion $DefaultVersion -ActiveVersion $ActiveVersion `
                 -PinnedVersion $PinnedVersion)
         )
@@ -79,7 +79,7 @@ function Build-NodePinRows {
     }
 }
 
-function Format-NodePinContentLineMessage {
+function Format-YarnPinContentLineMessage {
     param(
         [string]$ToolRoot,
         [hashtable]$PinContext,
@@ -90,29 +90,29 @@ function Format-NodePinContentLineMessage {
         return ''
     }
 
-    $pinned = Normalize-NodeVersionLabel -Version ([string]$PinContext.PinnedVersion)
+    $pinned = Normalize-YarnVersionLabel -Version ([string]$PinContext.PinnedVersion)
     $projectLabel = [string]$PinContext.ProjectName
     $pathLabel = [string]$PinContext.PackageJsonRel
     $isSubProject = ($pathLabel -and $pathLabel -ne 'package.json')
 
     if ($pinned) {
         if ($isSubProject) {
-            return (Get-NodePinI18n -ToolRoot $ToolRoot -Key 'node.pin.contextSubProjectPinned' `
+            return (Get-YarnPinI18n -ToolRoot $ToolRoot -Key 'yarn.pin.contextSubProjectPinned' `
                 -Vars @{ path = $pathLabel; version = $pinned })
         }
-        return (Get-NodePinI18n -ToolRoot $ToolRoot -Key 'node.pin.contextProjectPinned' `
+        return (Get-YarnPinI18n -ToolRoot $ToolRoot -Key 'yarn.pin.contextProjectPinned' `
             -Vars @{ project = $projectLabel; version = $pinned })
     }
 
     if ($isSubProject) {
-        return (Get-NodePinI18n -ToolRoot $ToolRoot -Key 'node.pin.contextSubProjectUnpinned' `
+        return (Get-YarnPinI18n -ToolRoot $ToolRoot -Key 'yarn.pin.contextSubProjectUnpinned' `
             -Vars @{ path = $pathLabel })
     }
-    return (Get-NodePinI18n -ToolRoot $ToolRoot -Key 'node.pin.contextProjectUnpinned' `
+    return (Get-YarnPinI18n -ToolRoot $ToolRoot -Key 'yarn.pin.contextProjectUnpinned' `
         -Vars @{ project = $projectLabel })
 }
 
-function Format-NodePinMessageLineMessage {
+function Format-YarnPinMessageLineMessage {
     param(
         [string]$ToolRoot,
         [hashtable]$PinContext,
@@ -120,39 +120,27 @@ function Format-NodePinMessageLineMessage {
         [string]$SelectedVersion = ''
     )
 
-    $pinned = Normalize-NodeVersionLabel -Version ([string]$PinContext.PinnedVersion)
-    $selected = Normalize-NodeVersionLabel -Version $SelectedVersion
+    $pinned = Normalize-YarnVersionLabel -Version ([string]$PinContext.PinnedVersion)
+    $selected = Normalize-YarnVersionLabel -Version $SelectedVersion
     $installedMap = if ($VoltaInfo -and $VoltaInfo.Map) { $VoltaInfo.Map } else { @{} }
 
-    if ($selected -and -not (Test-NodeVersionInstalled -Version $selected -InstalledMap $installedMap)) {
+    if ($selected -and -not (Test-YarnVersionInstalled -Version $selected -InstalledMap $installedMap)) {
         if ($pinned -and $selected -eq $pinned) {
-            return (Get-NodePinI18n -ToolRoot $ToolRoot -Key 'node.pin.contextPinnedNotInstalled' `
+            return (Get-YarnPinI18n -ToolRoot $ToolRoot -Key 'yarn.pin.contextPinnedNotInstalled' `
                 -Vars @{ version = $selected })
         }
-        return (Get-NodePinI18n -ToolRoot $ToolRoot -Key 'node.pin.contextSelectedNotInstalled' `
+        return (Get-YarnPinI18n -ToolRoot $ToolRoot -Key 'yarn.pin.contextSelectedNotInstalled' `
             -Vars @{ version = $selected })
     }
 
     if (-not $PinContext.HasProject) {
-        return (Get-NodePinI18n -ToolRoot $ToolRoot -Key 'node.pin.contextNoProject')
+        return (Get-YarnPinI18n -ToolRoot $ToolRoot -Key 'yarn.pin.contextNoProject')
     }
 
     return ''
 }
 
-function Format-NodePinGapContextMessage {
-    param(
-        [string]$ToolRoot,
-        [hashtable]$PinContext,
-        [hashtable]$VoltaInfo,
-        [string]$SelectedVersion = ''
-    )
-
-    return Format-NodePinContentLineMessage -ToolRoot $ToolRoot -PinContext $PinContext `
-        -VoltaInfo $VoltaInfo
-}
-
-function Prepare-NodePinListContent {
+function Prepare-YarnPinListContent {
     param(
         [hashtable]$Shell,
         [hashtable]$Progress,
@@ -160,28 +148,28 @@ function Prepare-NodePinListContent {
         [string]$PinnedVersion
     )
 
-    Update-NodeBrowseInstallLoadingProgress -Shell $Shell -Progress $Progress -TargetPercent 60
-    $baseVersions = Build-NodeBrowseInstallBaseVersions -Remote $Remote
+    Update-YarnBrowseInstallLoadingProgress -Shell $Shell -Progress $Progress -TargetPercent 60
+    $baseVersions = Build-YarnBrowseInstallBaseVersions -Remote $Remote
 
-    Update-NodeBrowseInstallLoadingProgress -Shell $Shell -Progress $Progress -TargetPercent 70
-    $voltaInfo = Get-VoltaNodeVersionInfo
-    $activeVersion = Get-ActiveNodeVersion
+    Update-YarnBrowseInstallLoadingProgress -Shell $Shell -Progress $Progress -TargetPercent 70
+    $voltaInfo = Get-VoltaYarnVersionInfo
+    $activeVersion = Get-ActiveYarnVersion
 
-    Update-NodeBrowseInstallLoadingProgress -Shell $Shell -Progress $Progress -TargetPercent 85
-    $merged = Build-NodePinMergedItems -BaseVersions $baseVersions -VoltaInfo $voltaInfo `
+    Update-YarnBrowseInstallLoadingProgress -Shell $Shell -Progress $Progress -TargetPercent 85
+    $merged = Build-YarnPinMergedItems -BaseVersions $baseVersions -VoltaInfo $voltaInfo `
         -PinnedVersion $PinnedVersion
-    $sorted = Sort-NodeVersionItems -Items $merged
+    $sorted = Sort-YarnVersionItems -Items $merged
 
-    Update-NodeBrowseInstallLoadingProgress -Shell $Shell -Progress $Progress -TargetPercent 95
-    $widths = Resolve-NodeInstalledVersionColumnWidths -Shell $Shell
-    $rows = Build-NodePinRows -Items $sorted -InstalledMap $voltaInfo.Map `
+    Update-YarnBrowseInstallLoadingProgress -Shell $Shell -Progress $Progress -TargetPercent 95
+    $widths = Resolve-YarnInstalledVersionColumnWidths -Shell $Shell
+    $rows = Build-YarnPinRows -Items $sorted -InstalledMap $voltaInfo.Map `
         -DefaultVersion $voltaInfo.Default -ActiveVersion $activeVersion `
         -PinnedVersion $PinnedVersion
     $columnLayout = New-ShellListColumnLayout -Widths @($widths.Version, $widths.Tags)
 
-    Clear-ShellSingleSelectListCache -Shell $Shell -CacheKey 'NodePin'
+    Clear-ShellSingleSelectListCache -Shell $Shell -CacheKey 'YarnPin'
     $normalized = @(Normalize-ShellListRows -Rows $rows -ColumnLayout $columnLayout)
-    $null = Get-ShellSingleSelectListRowCache -Shell $Shell -CacheKey 'NodePin' `
+    $null = Get-ShellSingleSelectListRowCache -Shell $Shell -CacheKey 'YarnPin' `
         -Rows $normalized -ColumnLayout $columnLayout
 
     return @{
@@ -194,7 +182,7 @@ function Prepare-NodePinListContent {
     }
 }
 
-function Invoke-NodePinVersionSingleSelectPage {
+function Invoke-YarnPinVersionSingleSelectPage {
     param(
         [hashtable]$Shell,
         [string]$ToolRoot,
@@ -209,15 +197,15 @@ function Invoke-NodePinVersionSingleSelectPage {
     $toolbar = New-ShellSystemToolbarConfig
     $invokeSingleSelect = Get-Command Invoke-ShellSingleSelectList -CommandType Function -ErrorAction Stop
     return & $invokeSingleSelect -Shell $Shell -SectionTitle $sectionTitle `
-        -Rows $Rows -CacheKey 'NodePin' `
+        -Rows $Rows -CacheKey 'YarnPin' `
         -ColumnLayout $ColumnLayout `
         -ToolbarConfig $toolbar `
-        -CountLabel (Get-NodePinI18n -ToolRoot $ToolRoot -Key 'node.pin.countUnit') `
+        -CountLabel (Get-YarnPinI18n -ToolRoot $ToolRoot -Key 'yarn.pin.countUnit') `
         -InitialContentLine $InitialContentLine `
         -InitialFlashMessage $InitialFlashMessage
 }
 
-function Resolve-NodePinPickSourceItem {
+function Resolve-YarnPinPickSourceItem {
     param($Picked)
 
     if ($null -eq $Picked) { return $null }

@@ -2,17 +2,10 @@
     "enabled":  true,
     "tools":  [
                   {
-                      "no":  2,
+                      "no":  3,
                       "command":  "pnpm",
                       "name":  "pnpm 包管理",
                       "description":  "快速、节省磁盘空间的 Node 包管理器",
-                      "requiresInstall":  false
-                  },
-                  {
-                      "no":  3,
-                      "command":  "yarn",
-                      "name":  "Yarn 包管理",
-                      "description":  "可靠、经典的 Node 包管理器",
                       "requiresInstall":  false
                   },
                   {
@@ -59,254 +52,254 @@
                   },
                   {
                       "no":  10,
-                      "command":  "yarn",
-                      "name":  "Yarn 包管理",
-                      "description":  "可靠、经典的 Node 包管理器",
+                      "command":  "npm",
+                      "name":  "npm 包管理",
+                      "description":  "Node.js 官方包管理器",
                       "requiresInstall":  false
                   },
                   {
                       "no":  11,
-                      "command":  "npm",
-                      "name":  "npm 包管理",
-                      "description":  "Node.js 官方包管理器",
+                      "command":  "claude-code",
+                      "name":  "Claude Code",
+                      "description":  "Claude 编码助手 CLI 集成",
                       "requiresInstall":  false
                   },
                   {
                       "no":  12,
-                      "command":  "claude-code",
-                      "name":  "Claude Code",
-                      "description":  "Claude 编码助手 CLI 集成",
+                      "command":  "superpowers",
+                      "name":  "Superpowers",
+                      "description":  "开发工作流增强工具集",
                       "requiresInstall":  false
                   },
                   {
                       "no":  13,
-                      "command":  "superpowers",
-                      "name":  "Superpowers",
-                      "description":  "开发工作流增强工具集",
+                      "command":  "skill",
+                      "name":  "Skill",
+                      "description":  "Cursor Agent Skill 管理与调试",
                       "requiresInstall":  false
                   },
                   {
                       "no":  14,
-                      "command":  "skill",
-                      "name":  "Skill",
-                      "description":  "Cursor Agent Skill 管理与调试",
+                      "command":  "hermes",
+                      "name":  "Hermes",
+                      "description":  "开发通信与消息桥接工具",
                       "requiresInstall":  false
                   },
                   {
                       "no":  15,
-                      "command":  "hermes",
-                      "name":  "Hermes",
-                      "description":  "开发通信与消息桥接工具",
+                      "command":  "pnpm",
+                      "name":  "pnpm 包管理",
+                      "description":  "快速、节省磁盘空间的 Node 包管理器",
                       "requiresInstall":  false
                   },
                   {
                       "no":  16,
-                      "command":  "pnpm",
-                      "name":  "pnpm 包管理",
-                      "description":  "快速、节省磁盘空间的 Node 包管理器",
+                      "command":  "npm",
+                      "name":  "npm 包管理",
+                      "description":  "Node.js 官方包管理器",
                       "requiresInstall":  false
                   },
                   {
                       "no":  17,
-                      "command":  "yarn",
-                      "name":  "Yarn 包管理",
-                      "description":  "可靠、经典的 Node 包管理器",
+                      "command":  "claude-code",
+                      "name":  "Claude Code",
+                      "description":  "Claude 编码助手 CLI 集成",
                       "requiresInstall":  false
                   },
                   {
                       "no":  18,
-                      "command":  "npm",
-                      "name":  "npm 包管理",
-                      "description":  "Node.js 官方包管理器",
+                      "command":  "superpowers",
+                      "name":  "Superpowers",
+                      "description":  "开发工作流增强工具集",
                       "requiresInstall":  false
                   },
                   {
                       "no":  19,
-                      "command":  "claude-code",
-                      "name":  "Claude Code",
-                      "description":  "Claude 编码助手 CLI 集成",
+                      "command":  "skill",
+                      "name":  "Skill",
+                      "description":  "Cursor Agent Skill 管理与调试",
                       "requiresInstall":  false
                   },
                   {
                       "no":  20,
-                      "command":  "superpowers",
-                      "name":  "Superpowers",
-                      "description":  "开发工作流增强工具集",
+                      "command":  "hermes",
+                      "name":  "Hermes",
+                      "description":  "开发通信与消息桥接工具",
                       "requiresInstall":  false
                   },
                   {
                       "no":  21,
-                      "command":  "skill",
-                      "name":  "Skill",
-                      "description":  "Cursor Agent Skill 管理与调试",
+                      "command":  "pnpm",
+                      "name":  "pnpm 包管理",
+                      "description":  "快速、节省磁盘空间的 Node 包管理器",
                       "requiresInstall":  false
                   },
                   {
                       "no":  22,
-                      "command":  "hermes",
-                      "name":  "Hermes",
-                      "description":  "开发通信与消息桥接工具",
+                      "command":  "npm",
+                      "name":  "npm 包管理",
+                      "description":  "Node.js 官方包管理器",
                       "requiresInstall":  false
                   },
                   {
                       "no":  23,
-                      "command":  "pnpm",
-                      "name":  "pnpm 包管理",
-                      "description":  "快速、节省磁盘空间的 Node 包管理器",
+                      "command":  "claude-code",
+                      "name":  "Claude Code",
+                      "description":  "Claude 编码助手 CLI 集成",
                       "requiresInstall":  false
                   },
                   {
                       "no":  24,
-                      "command":  "yarn",
-                      "name":  "Yarn 包管理",
-                      "description":  "可靠、经典的 Node 包管理器",
+                      "command":  "superpowers",
+                      "name":  "Superpowers",
+                      "description":  "开发工作流增强工具集",
                       "requiresInstall":  false
                   },
                   {
                       "no":  25,
-                      "command":  "npm",
-                      "name":  "npm 包管理",
-                      "description":  "Node.js 官方包管理器",
+                      "command":  "skill",
+                      "name":  "Skill",
+                      "description":  "Cursor Agent Skill 管理与调试",
                       "requiresInstall":  false
                   },
                   {
                       "no":  26,
-                      "command":  "claude-code",
-                      "name":  "Claude Code",
-                      "description":  "Claude 编码助手 CLI 集成",
+                      "command":  "hermes",
+                      "name":  "Hermes",
+                      "description":  "开发通信与消息桥接工具",
                       "requiresInstall":  false
                   },
                   {
                       "no":  27,
-                      "command":  "superpowers",
-                      "name":  "Superpowers",
-                      "description":  "开发工作流增强工具集",
+                      "command":  "pnpm",
+                      "name":  "pnpm 包管理",
+                      "description":  "快速、节省磁盘空间的 Node 包管理器",
                       "requiresInstall":  false
                   },
                   {
                       "no":  28,
-                      "command":  "skill",
-                      "name":  "Skill",
-                      "description":  "Cursor Agent Skill 管理与调试",
+                      "command":  "npm",
+                      "name":  "npm 包管理",
+                      "description":  "Node.js 官方包管理器",
                       "requiresInstall":  false
                   },
                   {
                       "no":  29,
-                      "command":  "hermes",
-                      "name":  "Hermes",
-                      "description":  "开发通信与消息桥接工具",
+                      "command":  "claude-code",
+                      "name":  "Claude Code",
+                      "description":  "Claude 编码助手 CLI 集成",
                       "requiresInstall":  false
                   },
                   {
                       "no":  30,
-                      "command":  "pnpm",
-                      "name":  "pnpm 包管理",
-                      "description":  "快速、节省磁盘空间的 Node 包管理器",
+                      "command":  "superpowers",
+                      "name":  "Superpowers",
+                      "description":  "开发工作流增强工具集",
                       "requiresInstall":  false
                   },
                   {
                       "no":  31,
-                      "command":  "yarn",
-                      "name":  "Yarn 包管理",
-                      "description":  "可靠、经典的 Node 包管理器",
+                      "command":  "skill",
+                      "name":  "Skill",
+                      "description":  "Cursor Agent Skill 管理与调试",
                       "requiresInstall":  false
                   },
                   {
                       "no":  32,
-                      "command":  "npm",
-                      "name":  "npm 包管理",
-                      "description":  "Node.js 官方包管理器",
+                      "command":  "hermes",
+                      "name":  "Hermes",
+                      "description":  "开发通信与消息桥接工具",
                       "requiresInstall":  false
                   },
                   {
                       "no":  33,
-                      "command":  "claude-code",
-                      "name":  "Claude Code",
-                      "description":  "Claude 编码助手 CLI 集成",
-                      "requiresInstall":  false
-                  },
-                  {
-                      "no":  34,
-                      "command":  "superpowers",
-                      "name":  "Superpowers",
-                      "description":  "开发工作流增强工具集",
-                      "requiresInstall":  false
-                  },
-                  {
-                      "no":  35,
-                      "command":  "skill",
-                      "name":  "Skill",
-                      "description":  "Cursor Agent Skill 管理与调试",
-                      "requiresInstall":  false
-                  },
-                  {
-                      "no":  36,
-                      "command":  "hermes",
-                      "name":  "Hermes",
-                      "description":  "开发通信与消息桥接工具",
-                      "requiresInstall":  false
-                  },
-                  {
-                      "no":  37,
                       "command":  "pnpm",
                       "name":  "pnpm 包管理",
                       "description":  "快速、节省磁盘空间的 Node 包管理器",
                       "requiresInstall":  false
                   },
                   {
-                      "no":  38,
-                      "command":  "yarn",
-                      "name":  "Yarn 包管理",
-                      "description":  "可靠、经典的 Node 包管理器",
-                      "requiresInstall":  false
-                  },
-                  {
-                      "no":  39,
+                      "no":  34,
                       "command":  "npm",
                       "name":  "npm 包管理",
                       "description":  "Node.js 官方包管理器",
                       "requiresInstall":  false
                   },
                   {
-                      "no":  40,
+                      "no":  35,
                       "command":  "claude-code",
                       "name":  "Claude Code",
                       "description":  "Claude 编码助手 CLI 集成",
                       "requiresInstall":  false
                   },
                   {
-                      "no":  41,
+                      "no":  36,
                       "command":  "superpowers",
                       "name":  "Superpowers",
                       "description":  "开发工作流增强工具集",
                       "requiresInstall":  false
                   },
                   {
-                      "no":  42,
+                      "no":  37,
                       "command":  "skill",
                       "name":  "Skill",
                       "description":  "Cursor Agent Skill 管理与调试",
                       "requiresInstall":  false
                   },
                   {
-                      "no":  43,
+                      "no":  38,
                       "command":  "hermes",
                       "name":  "Hermes",
                       "description":  "开发通信与消息桥接工具",
                       "requiresInstall":  false
                   },
                   {
-                      "no":  44,
+                      "no":  39,
                       "command":  "pnpm",
                       "name":  "pnpm 包管理",
                       "description":  "快速、节省磁盘空间的 Node 包管理器",
                       "requiresInstall":  false
                   },
                   {
+                      "no":  40,
+                      "command":  "npm",
+                      "name":  "npm 包管理",
+                      "description":  "Node.js 官方包管理器",
+                      "requiresInstall":  false
+                  },
+                  {
+                      "no":  41,
+                      "command":  "claude-code",
+                      "name":  "Claude Code",
+                      "description":  "Claude 编码助手 CLI 集成",
+                      "requiresInstall":  false
+                  },
+                  {
+                      "no":  42,
+                      "command":  "superpowers",
+                      "name":  "Superpowers",
+                      "description":  "开发工作流增强工具集",
+                      "requiresInstall":  false
+                  },
+                  {
+                      "no":  43,
+                      "command":  "skill",
+                      "name":  "Skill",
+                      "description":  "Cursor Agent Skill 管理与调试",
+                      "requiresInstall":  false
+                  },
+                  {
+                      "no":  44,
+                      "command":  "hermes",
+                      "name":  "Hermes",
+                      "description":  "开发通信与消息桥接工具",
+                      "requiresInstall":  false
+                  },
+                  {
                       "no":  45,
-                      "command":  "yarn",
-                      "name":  "Yarn 包管理",
-                      "description":  "可靠、经典的 Node 包管理器",
+                      "command":  "pnpm",
+                      "name":  "pnpm 包管理",
+                      "description":  "快速、节省磁盘空间的 Node 包管理器",
                       "requiresInstall":  false
                   },
                   {
@@ -353,212 +346,212 @@
                   },
                   {
                       "no":  52,
-                      "command":  "yarn",
-                      "name":  "Yarn 包管理",
-                      "description":  "可靠、经典的 Node 包管理器",
+                      "command":  "npm",
+                      "name":  "npm 包管理",
+                      "description":  "Node.js 官方包管理器",
                       "requiresInstall":  false
                   },
                   {
                       "no":  53,
-                      "command":  "npm",
-                      "name":  "npm 包管理",
-                      "description":  "Node.js 官方包管理器",
+                      "command":  "claude-code",
+                      "name":  "Claude Code",
+                      "description":  "Claude 编码助手 CLI 集成",
                       "requiresInstall":  false
                   },
                   {
                       "no":  54,
-                      "command":  "claude-code",
-                      "name":  "Claude Code",
-                      "description":  "Claude 编码助手 CLI 集成",
+                      "command":  "superpowers",
+                      "name":  "Superpowers",
+                      "description":  "开发工作流增强工具集",
                       "requiresInstall":  false
                   },
                   {
                       "no":  55,
-                      "command":  "superpowers",
-                      "name":  "Superpowers",
-                      "description":  "开发工作流增强工具集",
+                      "command":  "skill",
+                      "name":  "Skill",
+                      "description":  "Cursor Agent Skill 管理与调试",
                       "requiresInstall":  false
                   },
                   {
                       "no":  56,
-                      "command":  "skill",
-                      "name":  "Skill",
-                      "description":  "Cursor Agent Skill 管理与调试",
+                      "command":  "hermes",
+                      "name":  "Hermes",
+                      "description":  "开发通信与消息桥接工具",
                       "requiresInstall":  false
                   },
                   {
                       "no":  57,
-                      "command":  "hermes",
-                      "name":  "Hermes",
-                      "description":  "开发通信与消息桥接工具",
+                      "command":  "pnpm",
+                      "name":  "pnpm 包管理",
+                      "description":  "快速、节省磁盘空间的 Node 包管理器",
                       "requiresInstall":  false
                   },
                   {
                       "no":  58,
-                      "command":  "pnpm",
-                      "name":  "pnpm 包管理",
-                      "description":  "快速、节省磁盘空间的 Node 包管理器",
+                      "command":  "npm",
+                      "name":  "npm 包管理",
+                      "description":  "Node.js 官方包管理器",
                       "requiresInstall":  false
                   },
                   {
                       "no":  59,
-                      "command":  "yarn",
-                      "name":  "Yarn 包管理",
-                      "description":  "可靠、经典的 Node 包管理器",
+                      "command":  "claude-code",
+                      "name":  "Claude Code",
+                      "description":  "Claude 编码助手 CLI 集成",
                       "requiresInstall":  false
                   },
                   {
                       "no":  60,
-                      "command":  "npm",
-                      "name":  "npm 包管理",
-                      "description":  "Node.js 官方包管理器",
+                      "command":  "superpowers",
+                      "name":  "Superpowers",
+                      "description":  "开发工作流增强工具集",
                       "requiresInstall":  false
                   },
                   {
                       "no":  61,
-                      "command":  "claude-code",
-                      "name":  "Claude Code",
-                      "description":  "Claude 编码助手 CLI 集成",
+                      "command":  "skill",
+                      "name":  "Skill",
+                      "description":  "Cursor Agent Skill 管理与调试",
                       "requiresInstall":  false
                   },
                   {
                       "no":  62,
-                      "command":  "superpowers",
-                      "name":  "Superpowers",
-                      "description":  "开发工作流增强工具集",
+                      "command":  "hermes",
+                      "name":  "Hermes",
+                      "description":  "开发通信与消息桥接工具",
                       "requiresInstall":  false
                   },
                   {
                       "no":  63,
-                      "command":  "skill",
-                      "name":  "Skill",
-                      "description":  "Cursor Agent Skill 管理与调试",
+                      "command":  "pnpm",
+                      "name":  "pnpm 包管理",
+                      "description":  "快速、节省磁盘空间的 Node 包管理器",
                       "requiresInstall":  false
                   },
                   {
                       "no":  64,
-                      "command":  "hermes",
-                      "name":  "Hermes",
-                      "description":  "开发通信与消息桥接工具",
+                      "command":  "npm",
+                      "name":  "npm 包管理",
+                      "description":  "Node.js 官方包管理器",
                       "requiresInstall":  false
                   },
                   {
                       "no":  65,
-                      "command":  "pnpm",
-                      "name":  "pnpm 包管理",
-                      "description":  "快速、节省磁盘空间的 Node 包管理器",
+                      "command":  "claude-code",
+                      "name":  "Claude Code",
+                      "description":  "Claude 编码助手 CLI 集成",
                       "requiresInstall":  false
                   },
                   {
                       "no":  66,
-                      "command":  "yarn",
-                      "name":  "Yarn 包管理",
-                      "description":  "可靠、经典的 Node 包管理器",
+                      "command":  "superpowers",
+                      "name":  "Superpowers",
+                      "description":  "开发工作流增强工具集",
                       "requiresInstall":  false
                   },
                   {
                       "no":  67,
-                      "command":  "npm",
-                      "name":  "npm 包管理",
-                      "description":  "Node.js 官方包管理器",
+                      "command":  "skill",
+                      "name":  "Skill",
+                      "description":  "Cursor Agent Skill 管理与调试",
                       "requiresInstall":  false
                   },
                   {
                       "no":  68,
-                      "command":  "claude-code",
-                      "name":  "Claude Code",
-                      "description":  "Claude 编码助手 CLI 集成",
+                      "command":  "hermes",
+                      "name":  "Hermes",
+                      "description":  "开发通信与消息桥接工具",
                       "requiresInstall":  false
                   },
                   {
                       "no":  69,
-                      "command":  "superpowers",
-                      "name":  "Superpowers",
-                      "description":  "开发工作流增强工具集",
-                      "requiresInstall":  false
-                  },
-                  {
-                      "no":  70,
-                      "command":  "skill",
-                      "name":  "Skill",
-                      "description":  "Cursor Agent Skill 管理与调试",
-                      "requiresInstall":  false
-                  },
-                  {
-                      "no":  71,
-                      "command":  "hermes",
-                      "name":  "Hermes",
-                      "description":  "开发通信与消息桥接工具",
-                      "requiresInstall":  false
-                  },
-                  {
-                      "no":  72,
                       "command":  "pnpm",
                       "name":  "pnpm 包管理",
                       "description":  "快速、节省磁盘空间的 Node 包管理器",
                       "requiresInstall":  false
                   },
                   {
-                      "no":  73,
-                      "command":  "yarn",
-                      "name":  "Yarn 包管理",
-                      "description":  "可靠、经典的 Node 包管理器",
-                      "requiresInstall":  false
-                  },
-                  {
-                      "no":  74,
+                      "no":  70,
                       "command":  "npm",
                       "name":  "npm 包管理",
                       "description":  "Node.js 官方包管理器",
                       "requiresInstall":  false
                   },
                   {
-                      "no":  75,
+                      "no":  71,
                       "command":  "claude-code",
                       "name":  "Claude Code",
                       "description":  "Claude 编码助手 CLI 集成",
                       "requiresInstall":  false
                   },
                   {
-                      "no":  76,
+                      "no":  72,
                       "command":  "superpowers",
                       "name":  "Superpowers",
                       "description":  "开发工作流增强工具集",
                       "requiresInstall":  false
                   },
                   {
-                      "no":  77,
+                      "no":  73,
                       "command":  "skill",
                       "name":  "Skill",
                       "description":  "Cursor Agent Skill 管理与调试",
                       "requiresInstall":  false
                   },
                   {
-                      "no":  78,
+                      "no":  74,
                       "command":  "hermes",
                       "name":  "Hermes",
                       "description":  "开发通信与消息桥接工具",
                       "requiresInstall":  false
                   },
                   {
-                      "no":  79,
+                      "no":  75,
                       "command":  "pnpm",
                       "name":  "pnpm 包管理",
                       "description":  "快速、节省磁盘空间的 Node 包管理器",
                       "requiresInstall":  false
                   },
                   {
+                      "no":  76,
+                      "command":  "npm",
+                      "name":  "npm 包管理",
+                      "description":  "Node.js 官方包管理器",
+                      "requiresInstall":  false
+                  },
+                  {
+                      "no":  77,
+                      "command":  "claude-code",
+                      "name":  "Claude Code",
+                      "description":  "Claude 编码助手 CLI 集成",
+                      "requiresInstall":  false
+                  },
+                  {
+                      "no":  78,
+                      "command":  "superpowers",
+                      "name":  "Superpowers",
+                      "description":  "开发工作流增强工具集",
+                      "requiresInstall":  false
+                  },
+                  {
+                      "no":  79,
+                      "command":  "skill",
+                      "name":  "Skill",
+                      "description":  "Cursor Agent Skill 管理与调试",
+                      "requiresInstall":  false
+                  },
+                  {
                       "no":  80,
-                      "command":  "yarn",
-                      "name":  "Yarn 包管理",
-                      "description":  "可靠、经典的 Node 包管理器",
+                      "command":  "hermes",
+                      "name":  "Hermes",
+                      "description":  "开发通信与消息桥接工具",
                       "requiresInstall":  false
                   },
                   {
                       "no":  81,
-                      "command":  "npm",
-                      "name":  "npm 包管理",
-                      "description":  "Node.js 官方包管理器",
+                      "command":  "pnpm",
+                      "name":  "pnpm 包管理",
+                      "description":  "快速、节省磁盘空间的 Node 包管理器",
                       "requiresInstall":  false
                   }
               ]
