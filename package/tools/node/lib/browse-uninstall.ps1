@@ -1,7 +1,8 @@
-# node — 浏览并卸载（Shell 多选已安装版本列表）
+﻿# node — 浏览并卸载（Shell 多选已安装版本列表）
 
 param(
     [hashtable]$ToolkitShell = $null,
+    $Action = $null,
 
     [int]$PageSize = 0,
     [int]$ViewHeight = 0
@@ -38,7 +39,10 @@ function Import-NodeBrowseUninstallCore {
 }
 
 Import-NodeBrowseUninstallCore
+. (Join-Path $PSScriptRoot 'node-action-title.ps1')
+Import-NodeActionTitleCore -CoreLib $coreLib
 . (Join-Path $PSScriptRoot 'volta-node.ps1')
+Set-NodeVoltaToolRoot -ToolRoot $toolRoot
 . (Join-Path $PSScriptRoot 'browse-install-run.ps1')
 . (Join-Path $PSScriptRoot 'browse-uninstall-run.ps1')
 Initialize-PathsFromToolRoot -ToolRoot $toolRoot
@@ -55,6 +59,11 @@ if (-not $ToolkitShell) {
 
 Sync-MiaoLocaleFromShell -Shell $ToolkitShell
 
+$nodeToolAction = Resolve-NodeToolAction -ToolRoot $toolRoot -Action $Action -ScriptLeaf 'browse-uninstall.ps1'
+$nodeActionSectionTitle = Get-NodeActionSectionTitle -ToolRoot $toolRoot -Action $nodeToolAction `
+    -ScriptLeaf 'browse-uninstall.ps1'
+$script:NodeActionSectionTitle = $nodeActionSectionTitle
+
 function Get-NodeBrowseUninstallI18n {
     param(
         [string]$Key,
@@ -62,16 +71,6 @@ function Get-NodeBrowseUninstallI18n {
     )
 
     return Get-ToolI18n -ToolRoot $toolRoot -Key $Key -Vars $Vars
-}
-
-function Get-NodeBrowseUninstallSectionTitle {
-    return (Resolve-ToolI18nLabel -ToolRoot $toolRoot -Key 'node.uninstall.sectionTitle' `
-        -Fallback '卸载Node.js')
-}
-
-function Get-NodeBrowseUninstallProgressSectionTitle {
-    return (Resolve-ToolI18nLabel -ToolRoot $toolRoot -Key 'node.uninstall.uninstallPageTitle' `
-        -Fallback 'Node.js 卸载')
 }
 
 function Get-NodeBrowseUninstallTagsLabel {
@@ -125,7 +124,7 @@ function Invoke-NodeBrowseUninstallPage {
     param([hashtable]$Shell)
 
     $null = Ensure-ToolkitShellLayoutBrandInnerWidth -Shell $Shell
-    $sectionTitle = Get-NodeBrowseUninstallSectionTitle
+    $sectionTitle = $nodeActionSectionTitle
 
     if (-not (Get-Command volta -ErrorAction SilentlyContinue)) {
         Initialize-ToolkitShellBodyView -Shell $Shell -SectionTitle $sectionTitle `
@@ -138,7 +137,7 @@ function Invoke-NodeBrowseUninstallPage {
 
     while ($true) {
         $voltaInfo = Get-VoltaNodeVersionInfo
-        $activeVersion = Get-ActiveNodeVersion
+        $activeVersion = Get-ActiveNodeVersion -TimeoutMs 2000
         $installed = @($voltaInfo.Map.Keys)
 
         if ($installed.Count -eq 0) {
@@ -174,7 +173,13 @@ function Invoke-NodeBrowseUninstallPage {
             return (Get-ShellNavMarker -Action 'back')
         }
 
-        $uninstallResult = Run-NodeBrowseUninstallOperation -Shell $Shell -Items $picked
+        $pickedVersions = @((Get-NodeBrowseUninstallPlanVersions -Items $picked -InstalledMap $voltaInfo.Map))
+        if ($pickedVersions.Count -eq 0) {
+            return (Get-ShellNavMarker -Action 'back')
+        }
+
+        $uninstallResult = Run-NodeBrowseUninstallOperation -Shell $Shell -Items $picked `
+            -SectionTitle $nodeActionSectionTitle
         if (Test-ShellNavMarker $uninstallResult) {
             return $uninstallResult
         }

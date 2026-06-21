@@ -1,6 +1,9 @@
-﻿# node — 设置全局默认 Node 版本（volta install node@x）
+﻿# node — 设置全局默认 Node 版本（Shell 单选已安装列表）
 
 param(
+    [hashtable]$ToolkitShell = $null,
+    $Action = $null,
+
     [int]$PageSize = 0,
     [int]$ViewHeight = 0
 )
@@ -9,78 +12,96 @@ $ErrorActionPreference = 'Stop'
 
 $toolRoot = Split-Path $PSScriptRoot -Parent
 $coreLib = Join-Path $toolRoot '..\..\core\lib'
-. (Join-Path $coreLib 'config\Paths.ps1')
-. (Join-Path $coreLib 'config\ListLayout.ps1')
-. (Join-Path $coreLib 'config\UserConfig.ps1')
-. (Join-Path $coreLib 'config\I18n.ps1')
-. (Join-Path $coreLib 'ui\console\Console-Menu.ps1')
+
+. (Join-Path $PSScriptRoot 'node-installed-select.ps1')
+Import-NodeInstalledSelectCore -CoreLib $coreLib
+. (Join-Path $PSScriptRoot 'node-action-title.ps1')
+Import-NodeActionTitleCore -CoreLib $coreLib
 . (Join-Path $PSScriptRoot 'volta-node.ps1')
+Initialize-NodeVoltaToolRoot -ToolRoot $toolRoot
 Initialize-PathsFromToolRoot -ToolRoot $toolRoot
+
+$nodeToolAction = Resolve-NodeToolAction -ToolRoot $toolRoot -Action $Action -ScriptLeaf 'set-default.ps1'
+$nodeActionSectionTitle = Get-NodeActionSectionTitle -ToolRoot $toolRoot -Action $nodeToolAction `
+    -ScriptLeaf 'set-default.ps1'
 
 $paging = Resolve-MenuPagingDefaults -PageSize $PageSize -ViewHeight $ViewHeight
 $PageSize = $paging.PageSize
 $ViewHeight = $paging.ViewHeight
 
-$configPath = Join-Path $toolRoot 'index.json'
-$toolConfig = Get-Content -Raw -Path $configPath -Encoding UTF8 | ConvertFrom-Json
-
-Assert-VoltaAvailable
-
-$voltaInfo = Get-VoltaNodeVersionInfo
-$activeVersion = Get-ActiveNodeVersion
-$installedVersions = @($voltaInfo.Map.Keys)
-
-if ($installedVersions.Count -eq 0) {
-    Write-MessageBlock -Title '暂无已安装版本' -Lines @(
-        '请先在「浏览并安装」中安装 Node 版本。'
-    ) -TitleColor Yellow
-    exit 0
+$standaloneShell = $false
+if (-not $ToolkitShell) {
+    $ToolkitShell = Initialize-ToolkitShell
+    $standaloneShell = $true
 }
 
-$items = Sort-NodeVersionItems -Items @(
-    $installedVersions | ForEach-Object {
-        New-NodeVersionMenuItem -Version $_
+Sync-MiaoLocaleFromShell -Shell $ToolkitShell
+
+function Get-NodeSetDefaultFlashMessage {
+    param(
+        [string]$ToolRoot,
+        [string]$Version,
+        [int]$ExitCode,
+        [bool]$NoChange
+    )
+
+    if ($NoChange) {
+        return (Get-NodeInstalledSelectI18n -ToolRoot $ToolRoot -Key 'node.default.noChange' `
+            -Vars @{ version = $Version })
     }
-)
-
-$header = New-ToolMenuHeader -ToolConfig $toolConfig -SectionTitle '设置全局默认 · 选择版本'
-$header.Description = 'Enter 确认后执行: volta install node@版本（设为 default）'
-
-$selected = Show-PaginatedMenu -Header $header -Items $items -CountLabel '个版本' `
-    -HideColHeader `
-    -GetItemLabel {
-        param($Item, [int]$Index)
-        Format-NodeVersionMenuLabel -Item $Item -InstalledMap $voltaInfo.Map `
-            -DefaultVersion $voltaInfo.Default -ActiveVersion $activeVersion
+    if ($ExitCode -ne 0) {
+        return (Get-NodeInstalledSelectI18n -ToolRoot $ToolRoot -Key 'node.default.failed')
     }
 
-if (-not $selected) {
-    Write-MessageBlock -Title '已取消' -TitleColor Yellow
-    exit 0
+    $message = Get-NodeInstalledSelectI18n -ToolRoot $ToolRoot -Key 'node.default.success' `
+        -Vars @{ version = $Version }
+    $active = Get-ActiveNodeVersion
+    if (-not [string]::IsNullOrWhiteSpace($active)) {
+        $message += ' · ' + (Get-NodeInstalledSelectI18n -ToolRoot $ToolRoot -Key 'node.default.activeNode' `
+            -Vars @{ version = $active })
+    }
+    return $message
 }
 
-$ver = $selected.Version
-if ($ver -eq $voltaInfo.Default) {
-    Write-MessageBlock -Title '无需更改' -Lines @("v$ver 已是全局默认版本。") -TitleColor DarkGray
-    exit 0
-}
+function Invoke-NodeSetDefaultPage {
+    param([hashtable]$Shell)
 
-Write-MessageBlock -Title '设置全局默认' -Lines @("执行: volta install node@$ver") -TitleColor Green
-& volta install "node@$ver"
-$code = $LASTEXITCODE
+    $flashMessage = ''
 
-$after = @()
-if ($code -eq 0) {
-    $after += '已设为全局默认。'
-    if (Get-Command node -ErrorAction SilentlyContinue) {
-        $after += "当前 node: $(node -v)"
+    while ($true) {
+        $picked = Invoke-NodeInstalledVersionSingleSelectPage -Shell $Shell -ToolRoot $toolRoot `
+            -I18nPrefix 'node.default' -CacheKey 'NodeDefault' -InitialFlashMessage $flashMessage `
+            -SectionTitle $nodeActionSectionTitle
+        $flashMessage = ''
+
+        if (Test-ShellNavMarker $picked) {
+            return $picked
+        }
+        if ($null -eq $picked) {
+            return (Get-ShellNavMarker -Action 'back')
+        }
+
+        $ver = Resolve-NodeInstalledVersionFromPick -Picked $picked
+        if ([string]::IsNullOrWhiteSpace($ver)) {
+            continue
+        }
+
+        $voltaInfo = Get-VoltaNodeVersionInfo
+        if ($ver -eq $voltaInfo.Default) {
+            $flashMessage = Get-NodeSetDefaultFlashMessage -ToolRoot $toolRoot -Version $ver `
+                -ExitCode 0 -NoChange
+            continue
+        }
+
+        & volta install "node@$ver"
+        $code = $LASTEXITCODE
+        $flashMessage = Get-NodeSetDefaultFlashMessage -ToolRoot $toolRoot -Version $ver `
+            -ExitCode $code -NoChange:$false
     }
 }
-else {
-    $after += '设置未成功，请查看上方 Volta 输出。'
+
+$result = Invoke-NodeSetDefaultPage -Shell $ToolkitShell
+if ($standaloneShell) {
+    exit $(if ($null -eq $result) { 0 } elseif ($result -is [int]) { $result } else { 0 })
 }
-
-Write-MessageBlock -Title $(if ($code -eq 0) { '完成' } else { '提示' }) -Lines $after `
-    -TitleColor $(if ($code -eq 0) { 'Green' } else { 'Yellow' })
-
-exit $code
+return $result

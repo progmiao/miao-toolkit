@@ -288,6 +288,16 @@ function Get-BrandSeparatorLineWidth {
     return $BrandInnerWidth + (Get-BrandSeparatorExtra)
 }
 
+function Get-BrandContentWriteWidth {
+    param([int]$BrandInnerWidth = 0)
+
+    if ($BrandInnerWidth -le 0) {
+        $BrandInnerWidth = Get-ToolkitShellStandardBrandInnerWidth
+    }
+
+    return 1 + (Get-BrandSeparatorLineWidth -BrandInnerWidth $BrandInnerWidth)
+}
+
 function Format-BrandHorizontalLine {
     param([int]$BrandInnerWidth)
 
@@ -430,10 +440,106 @@ function Write-HeaderBrandRow {
     }
 
     if ($used -lt $width) {
-        Write-Host (' ' * ($width - $used)) -NoNewline
+        $padTo = if ($BrandInnerWidth -gt 0) {
+            Get-BrandContentWriteWidth -BrandInnerWidth $BrandInnerWidth
+        }
+        else {
+            $width
+        }
+        if ($used -lt $padTo) {
+            Write-Host (' ' * ($padTo - $used)) -NoNewline
+        }
     }
 
-    try { [Console]::SetCursorPosition(0, $Row) } catch {}
+    Set-ConsoleCursorAfterRowWrite -Row $Row
+}
+
+function Try-Write-HeaderBrandRowBuffer {
+    param(
+        [int]$Row,
+        [string]$LeftText,
+        [string]$RightText,
+        [System.ConsoleColor]$LeftColor = [System.ConsoleColor]::DarkCyan,
+        [System.ConsoleColor]$RightColor = [System.ConsoleColor]::DarkGray,
+        [int]$LogoColumnWidth,
+        [int]$Gap = 2,
+        [int]$BrandInnerWidth = 0
+    )
+
+    if (-not (Test-ConsoleBufferDrawAvailable)) { return $false }
+
+    $fnNewCells = Get-Command New-ConsoleBufferRowCells -ErrorAction SilentlyContinue
+    $fnWriteCells = Get-Command Write-ConsoleBufferRowCells -ErrorAction SilentlyContinue
+    if (-not $fnNewCells -or -not $fnWriteCells) { return $false }
+
+    $width = Get-SafeWriteLineWidth -Row $Row
+    $left = Pad-DisplayText $LeftText $LogoColumnWidth
+    $leftWidth = Get-DisplayWidth $left
+
+    if ($BrandInnerWidth -gt 0) {
+        $rightMax = $BrandInnerWidth - $leftWidth - $Gap
+    }
+    else {
+        $rightMax = $width - $leftWidth - $Gap
+    }
+    if ($rightMax -lt 0) { $rightMax = 0 }
+
+    $visibleRight = Get-VisibleText $RightText
+    $truncatedVisible = Truncate-DisplayText $visibleRight $rightMax
+    if ($visibleRight -ne $RightText -and $truncatedVisible -eq $visibleRight) {
+        $rightOutput = $RightText
+    }
+    elseif ($truncatedVisible -ne $visibleRight) {
+        $rightOutput = $truncatedVisible
+    }
+    else {
+        $rightOutput = $RightText
+    }
+    $rightWidth = Get-DisplayWidth $truncatedVisible
+
+    $segments = New-Object 'System.Collections.Generic.List[object]'
+    if ($BrandInnerWidth -gt 0) {
+        [void]$segments.Add(@{ Text = ' '; Color = [System.ConsoleColor]::Gray })
+    }
+    [void]$segments.Add(@{ Text = $left; Color = $LeftColor })
+    if ($Gap -gt 0) {
+        [void]$segments.Add(@{ Text = (' ' * $Gap); Color = [System.ConsoleColor]::Gray })
+    }
+    [void]$segments.Add(@{ Text = $rightOutput; Color = $RightColor })
+
+    if ($BrandInnerWidth -gt 0) {
+        $innerUsed = $leftWidth + $Gap + $rightWidth
+        $innerPad = $BrandInnerWidth - $innerUsed
+        if ($innerPad -gt 0) {
+            [void]$segments.Add(@{ Text = (' ' * $innerPad); Color = [System.ConsoleColor]::Gray })
+        }
+        $used = 1 + $BrandInnerWidth
+    }
+    else {
+        $used = $leftWidth + $Gap + $rightWidth
+    }
+
+    $padTo = if ($BrandInnerWidth -gt 0) {
+        Get-BrandContentWriteWidth -BrandInnerWidth $BrandInnerWidth
+    }
+    else {
+        $width
+    }
+    if ($used -lt $padTo) {
+        [void]$segments.Add(@{ Text = (' ' * ($padTo - $used)); Color = [System.ConsoleColor]::Gray })
+    }
+
+    try {
+        $background = Get-ConsoleSurfaceBackground
+        $cells = & $fnNewCells -Width $width -Segments @($segments.ToArray()) -Background $background `
+            -DefaultForeground ([System.ConsoleColor]::Gray)
+        & $fnWriteCells -Row $Row -Cells $cells
+        Set-ConsoleCursorAfterRowWrite -Row $Row
+        return $true
+    }
+    catch {
+        return $false
+    }
 }
 
 function Format-HeaderSeparator {
@@ -507,6 +613,18 @@ function Prepare-ConsoleRowWrite {
     if (Test-ConsoleBottomRow -Row $Row) {
         try { [Console]::SetCursorPosition(0, 0) } catch {}
     }
+}
+
+function Clear-ConsoleRow {
+    param([int]$Row)
+
+    $width = Get-SafeWriteLineWidth -Row $Row
+    if ($width -le 0) { return }
+
+    Prepare-ConsoleRowWrite -Row $Row
+    try { [Console]::SetCursorPosition(0, $Row) } catch { return }
+    Write-Host (' ' * $width) -NoNewline
+    Set-ConsoleCursorAfterRowWrite -Row $Row
 }
 
 function Set-ConsoleCursorAfterRowWrite {
@@ -1660,31 +1778,6 @@ function Update-PaginatedMenuFooter {
             $actionSegments = @($actionSegments[0..($actionColCount - 1)])
         }
 
-        $flashTopSegments = @($FlashMessage)
-        while ($flashTopSegments.Count -lt $navColCount) {
-            $flashTopSegments += ''
-        }
-        if ($flashTopSegments.Count -gt $navColCount) {
-            $flashTopSegments = @($flashTopSegments[0..($navColCount - 1)])
-        }
-
-        if ($FlashMessage) {
-            if ((Test-UseConsoleBufferDraw) -and $script:ConsoleDrawBatchDepth -gt 0 -and (Test-ConsoleBufferDrawAvailable)) {
-                try {
-                    Write-MenuBarLineBuffer -HintRow $HintRow -StatusRow $StatusRow -InnerWidth $lineWidth `
-                        -TopSegments $flashTopSegments -BottomSegments $actionSegments `
-                        -ColumnCount $navColCount -TopColor ([System.ConsoleColor]::Yellow)
-                    return
-                }
-                catch { }
-            }
-            Write-MenuBarLine -Row $HintRow -InnerWidth $lineWidth `
-                -Segments $flashTopSegments -ColumnCount $navColCount `
-                -Color ([System.ConsoleColor]::Yellow)
-            Write-MenuBarLine -Row $StatusRow -InnerWidth $lineWidth -ColumnCount $actionColCount -Segments $actionSegments
-            return
-        }
-
         if ($CompactNavStatus) {
             $keys = Get-MiaoI18nKeys
             $spaceLabelKey = if ($MultiSelectNav) { 'common.toggle' } else { 'common.confirm' }
@@ -2229,7 +2322,9 @@ function Show-PaginatedMenu {
         [scriptblock]$GetListRowSpec = $null,
         [switch]$AllowBack,
         [switch]$CompactNavStatus,
-        [switch]$AllowSpaceConfirm
+        [switch]$AllowSpaceConfirm,
+        [string]$InitialContentLine = '',
+        [string]$InitialFlashMessage = ''
     )
 
     if (-not $PSBoundParameters.ContainsKey('HideColHeader')) {
@@ -2283,8 +2378,12 @@ function Show-PaginatedMenu {
     $pageIndex = 0
     $selectedIndex = if ($Items.Count -eq 0) { -1 } else { 0 }
     $numberBuffer = ''
-    $flashMessage = ''
+    $flashMessage = [string]$InitialFlashMessage
     $listScrollOffset = 0
+
+    if ($ToolkitShell) {
+        Set-ToolkitShellBodyContentLine -Shell $ToolkitShell -ContentLine $InitialContentLine
+    }
 
     function Apply-MenuNumberBuffer {
         param([string]$Buffer)
@@ -2339,12 +2438,17 @@ function Show-PaginatedMenu {
             return
         }
 
+        if ($FooterLayout -eq 'Split') {
+            Write-ToolkitShellMessageRow -Shell $ToolkitShell -Message $FlashMessage
+        }
+
         Update-PaginatedMenuFooter -HintRow $layout.HintRow -StatusRow $layout.StatusRow `
             -PageIndex $pageIndex -PageCount $pageCount -ItemCount $Items.Count `
             -SelectedIndex $selectedIndex -NumberBuffer $numberBuffer -CountLabel $CountLabel `
             -FooterExtraHints $FooterExtraHints -FooterLayout $FooterLayout `
             -MenuSplitActionSegments $MenuSplitActionSegments `
-            -BrandInnerWidth $layout.BrandInnerWidth -FlashMessage $FlashMessage `
+            -BrandInnerWidth $layout.BrandInnerWidth `
+            -FlashMessage $(if ($FooterLayout -eq 'Split') { '' } else { $FlashMessage }) `
             -CompactNavStatus:$CompactNavStatus
     }
 

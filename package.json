@@ -1,0 +1,8 @@
+{
+    "private": true,
+    "name": "miao-toolkit",
+    "version": "0.0.0",
+    "volta": {
+        "node": "25.7.0"
+    }
+}

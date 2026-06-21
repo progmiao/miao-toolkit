@@ -25,4 +25,15 @@ if ([string]::IsNullOrWhiteSpace($title)) {
     throw 'Get-ToolSectionTitle returned empty'
 }
 
+$command = Get-ToolCommandName -Tool $tool
+$depTitle = Get-ToolDepOperationSectionTitle -Tool $tool -Intent install
+$depUninstallTitle = Get-ToolDepOperationSectionTitle -Tool $tool -Intent uninstall
+
+if ($depTitle -ne "$command 安装依赖") {
+    throw "Get-ToolDepOperationSectionTitle install should be [$command 安装依赖], got: [$depTitle]"
+}
+if ($depUninstallTitle -ne "$command 卸载依赖") {
+    throw "Get-ToolDepOperationSectionTitle uninstall should be [$command 卸载依赖], got: [$depUninstallTitle]"
+}
+
 Write-Host 'test-section-title: OK'

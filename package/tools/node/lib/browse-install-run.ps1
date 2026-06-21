@@ -1,4 +1,6 @@
-# node — 浏览并安装：批量安装进度与日志视图
+﻿# node — 浏览并安装：批量安装进度与日志视图
+
+. (Join-Path $PSScriptRoot 'volta-conpty.ps1')
 
 function Get-NodeBrowseInstallCoreLib {
     if ($script:NodeBrowseInstallCoreLib) {
@@ -21,10 +23,14 @@ function Ensure-NodeBrowseInstallShellUi {
             'ui\shell\Exit.ps1'
             'ui\shell\Footer.ps1'
             'ui\shell\DepOperationView.ps1'
+            'domain\Invoke-ToolDepPackage.ps1'
         )) {
         $path = Join-Path $coreLib $rel
         $name = [IO.Path]::GetFileNameWithoutExtension($rel)
-        if ($name -eq 'DepOperationView') {
+        if ($name -eq 'Invoke-ToolDepPackage') {
+            if (Get-Command Get-WingetStreamLineCleanText -ErrorAction SilentlyContinue) { continue }
+        }
+        elseif ($name -eq 'DepOperationView') {
             if (Get-Command Draw-ToolkitDepOperationView -ErrorAction SilentlyContinue) { continue }
         }
         elseif ($name -eq 'Footer') {
@@ -37,6 +43,11 @@ function Ensure-NodeBrowseInstallShellUi {
             if (Get-Command Set-ToolkitShellToolbarLocked -ErrorAction SilentlyContinue) { continue }
         }
         . $path
+    }
+
+    $batchOpPath = Join-Path $coreLib 'ui\shell\ToolkitDepBatchOperation.ps1'
+    if (-not (Get-Command Initialize-ToolkitDepBatchOperationView -ErrorAction SilentlyContinue)) {
+        . $batchOpPath
     }
 }
 
@@ -79,13 +90,39 @@ function Write-NodeBrowseInstallLogLine {
         'hint' { $lineColor = [System.ConsoleColor]::DarkGray }
     }
 
-    $timestamp = if ($WithTimestamp) { (Get-Date).ToString('HH:mm:ss') } else { '' }
-    $Log.Lines.Add([pscustomobject]@{
-        Timestamp = $timestamp
-        Text      = [string]$Text
-        Kind      = $Kind
-        Color     = $lineColor
-    }) | Out-Null
+    $brandInnerWidth = [int]$Log.BrandInnerWidth
+    $timeWidth = 8
+    if (Get-Command Get-ToolkitDepLogWrapWidth -ErrorAction SilentlyContinue) {
+        $wrapWidth = if ($Kind -ne 'separator' -and $brandInnerWidth -gt 0) {
+            Get-ToolkitDepLogWrapWidth -Kind $Kind -BrandInnerWidth $brandInnerWidth -TimeWidth $timeWidth
+        }
+        else { 0 }
+    }
+    else {
+        $wrapWidth = if ($Kind -notin @('separator', 'spacer') -and $brandInnerWidth -gt 0) {
+            [Math]::Max(8, $brandInnerWidth - $timeWidth - 2)
+        }
+        else { 0 }
+    }
+
+    $textLines = @([string]$Text)
+    if ($wrapWidth -gt 0 -and -not [string]::IsNullOrEmpty($Text)) {
+        if (Get-Command Split-DisplayTextToLines -ErrorAction SilentlyContinue) {
+            $textLines = @(Split-DisplayTextToLines -Text $Text -MaxWidth $wrapWidth)
+        }
+    }
+
+    $isFirst = $true
+    foreach ($textLine in $textLines) {
+        $timestamp = if ($WithTimestamp -and $isFirst) { (Get-Date).ToString('HH:mm:ss') } else { '' }
+        $Log.Lines.Add([pscustomobject]@{
+            Timestamp = $timestamp
+            Text      = [string]$textLine
+            Kind      = $Kind
+            Color     = $lineColor
+        }) | Out-Null
+        $isFirst = $false
+    }
 
     $maxLines = 500
     while ($Log.Lines.Count -gt $maxLines) {
@@ -100,6 +137,10 @@ function Write-NodeBrowseInstallLogLine {
 }
 
 function New-NodeBrowseInstallLoadingState {
+    if (Get-Command New-ToolkitDepOperationLoadingState -ErrorAction SilentlyContinue) {
+        return New-ToolkitDepOperationLoadingState
+    }
+
     return @{
         SpinnerFrames    = @('|', '/', '-', '\')
         SpinnerIndex     = 0
@@ -117,26 +158,58 @@ function Update-NodeBrowseInstallLoadingStatus {
 
     if (-not $Ui.ItemInFlight) { return }
 
-    $LoadingState['SpinnerIndex'] = [int]$LoadingState['SpinnerIndex'] + 1
-    $frames = $LoadingState['SpinnerFrames']
-    $spinner = $frames[[int]$LoadingState['SpinnerIndex'] % $frames.Count]
-    $elapsed = 0
-    if ($Ui.ExecuteStartTick -gt 0) {
-        $elapsed = [int][Math]::Floor(([Environment]::TickCount - $Ui.ExecuteStartTick) / 1000.0)
+    $phase = [string]$LoadingState['InstallPhase']
+    if ([string]::IsNullOrWhiteSpace($phase) -and $Ui.TaskPhase) {
+        $phase = [string]$Ui.TaskPhase
+    }
+    if ([string]::IsNullOrWhiteSpace($phase) -and $Ui.InstallPhase) {
+        $phase = [string]$Ui.InstallPhase
     }
 
-    $key = if ($LoadingState['OutputSeen']) {
-        'node.browse.installStatusWorking'
+    $key = switch ($phase) {
+        'downloading' { 'node.browse.installStatusDownloading' }
+        'unpacking' { 'node.browse.installStatusInstalling' }
+        default {
+            if ($LoadingState['OutputSeen']) {
+                'node.browse.installStatusWorking'
+            }
+            else {
+                'node.browse.installStatusStarting'
+            }
+        }
     }
-    else {
-        'node.browse.installStatusStarting'
-    }
-    $Ui.StatusText = Get-NodeBrowseI18n -Key $key -Vars @{
-        spinner = $spinner
-        elapsed = [string]$elapsed
+
+    $mainText = Get-NodeBrowseI18n -Key $key -Vars @{
+        spinner = '{spinner}'
         version = $Version
     }
-    $Ui.StatusPlain = $false
+    Update-ToolkitDepOperationSpinnerStatus -Ui $Ui -LoadingState $LoadingState -MainText $mainText
+}
+
+function Sync-NodeBrowseInstallLoadingPhase {
+    param(
+        $LoadingState,
+        $Ui,
+        [string]$Phase,
+        [hashtable]$OutputState = $null,
+        $Watch = $null
+    )
+
+    $resolved = [string]$Phase
+    if ([string]::IsNullOrWhiteSpace($resolved) -and $OutputState -and $OutputState.VoltaPhase) {
+        $resolved = [string]$OutputState.VoltaPhase
+    }
+    if ([string]::IsNullOrWhiteSpace($resolved) -and $Watch -and $Watch.Phase) {
+        $resolved = [string]$Watch.Phase
+    }
+    if ([string]::IsNullOrWhiteSpace($resolved)) { return }
+
+    $LoadingState['InstallPhase'] = $resolved
+    $LoadingState['TaskPhase'] = $resolved
+    if ($Ui) {
+        $Ui.InstallPhase = $resolved
+        $Ui.TaskPhase = $resolved
+    }
 }
 
 function Start-NodeVoltaInstallProcess {
@@ -144,11 +217,16 @@ function Start-NodeVoltaInstallProcess {
 
     $voltaCmd = Get-Command volta -ErrorAction Stop
     $target = "node@$Version"
+    $commandLine = "volta install --verbose `"$target`""
+    $arguments = "install --verbose `"$target`""
+
+    # Volta re-spawns itself on Windows; ConPTY only captures the parent shell and
+    # never receives indicatif progress output. Use redirect + --verbose instead.
     $queue = [System.Collections.Concurrent.ConcurrentQueue[string]]::new()
 
     $psi = New-Object System.Diagnostics.ProcessStartInfo
     $psi.FileName = $voltaCmd.Source
-    $psi.Arguments = "install `"$target`""
+    $psi.Arguments = $arguments
     $psi.RedirectStandardOutput = $true
     $psi.RedirectStandardError = $true
     $psi.UseShellExecute = $false
@@ -178,46 +256,24 @@ function Start-NodeVoltaInstallProcess {
     $proc.BeginErrorReadLine()
 
     return @{
+        Mode          = 'redirect'
         Process       = $proc
         Queue         = $queue
         Subscriptions = @($stdoutSub, $stderrSub)
-        CommandLine   = "volta install `"$target`""
+        CommandLine   = $commandLine
     }
 }
 
 function Complete-NodeVoltaInstallProcess {
     param($State)
 
-    foreach ($sub in @($State.Subscriptions)) {
-        if ($sub) {
-            Unregister-Event -SourceIdentifier $sub.Name -ErrorAction SilentlyContinue
-        }
-    }
-
-    $exitCode = 1
-    if ($State.Process) {
-        try {
-            if (-not $State.Process.HasExited) {
-                $State.Process.WaitForExit(2000)
-            }
-            $exitCode = [int]$State.Process.ExitCode
-        }
-        catch { }
-    }
-    return $exitCode
+    return (Complete-NodeVoltaInstallProcessState -State $State)
 }
 
 function Stop-NodeVoltaInstallProcess {
     param($State)
 
-    try {
-        if ($State.Process -and -not $State.Process.HasExited) {
-            $State.Process.Kill()
-            $State.Process.WaitForExit(2000)
-        }
-    }
-    catch { }
-    return (Complete-NodeVoltaInstallProcess -State $State)
+    return (Stop-NodeVoltaInstallProcessState -State $State)
 }
 
 function Drain-NodeVoltaInstallQueue {
@@ -225,23 +281,36 @@ function Drain-NodeVoltaInstallQueue {
         $State,
         $Log,
         $LoadingState,
-        [scriptblock]$Redraw
+        $Redraw,
+        $Ui = $null,
+        [hashtable]$OutputState = $null
     )
 
+    if (-not $State -or -not $State.Queue) { return $false }
+
     $line = $null
-    $added = 0
+    $changed = $false
     while ($State.Queue.TryDequeue([ref]$line)) {
         if ([string]::IsNullOrWhiteSpace($line)) { continue }
-        $LoadingState['OutputSeen'] = $true
-        $LoadingState['LastOutputTick'] = [Environment]::TickCount
-        Write-NodeBrowseInstallLogLine -Log $Log -Text $line
-        $added++
+
+        if ($null -ne $Ui -and $null -ne $OutputState) {
+            $null = Update-NodeVoltaInstallOutputLine -Line $line -Ui $Ui -LoadingState $LoadingState `
+                -OutputState $OutputState -Log $Log -Redraw $Redraw
+        }
+        else {
+            $LoadingState['OutputSeen'] = $true
+            $LoadingState['LastOutputTick'] = [Environment]::TickCount
+            if ($null -ne $LoadingState -and $null -ne $LoadingState['OutputLines']) {
+                $LoadingState['OutputLines'].Add([string]$line) | Out-Null
+            }
+            Write-NodeBrowseInstallLogLine -Log $Log -Text $line
+            Invoke-NodeVoltaInstallRedraw -Redraw $Redraw
+        }
+
+        $changed = $true
         $line = $null
     }
-    if ($added -gt 0) {
-        & $Redraw
-    }
-    return ($added -gt 0)
+    return $changed
 }
 
 function Wait-NodeVoltaInstallProcess {
@@ -253,26 +322,43 @@ function Wait-NodeVoltaInstallProcess {
         [hashtable]$Shell,
         $Log,
         [int]$LogViewportRows,
-        [scriptblock]$OnExitKey,
+        $OnExitKey,
         [hashtable]$ScrollState,
         $FnLogInput,
-        [scriptblock]$Redraw,
-        [ref]$Cancelled
+        $Redraw
     )
 
     $pollState = @{
-        LastLoadingTick = 0
-        LoadingInterval = 200
+        LastFrameTick   = 0
+        FrameIntervalMs = 80
+        LastWatchTick   = 0
+        WatchInterval   = 150
     }
+    $outputState = @{
+        LoggedSuccess     = $false
+        VoltaPhase        = ''
+        MinUnpackPercent  = 0
+    }
+    $progressWatch = New-VoltaNodeInstallProgressWatch -Version $Version -StartTick $Ui.ExecuteStartTick
 
-    while (-not $State.Process.HasExited) {
-        Drain-NodeVoltaInstallQueue -State $State -Log $Log -LoadingState $LoadingState -Redraw $Redraw
+    while (-not (Test-NodeVoltaInstallProcessExited -State $State)) {
+        Drain-NodeVoltaInstallQueue -State $State -Log $Log -LoadingState $LoadingState -Redraw $Redraw `
+            -Ui $Ui -OutputState $outputState
 
         $now = [Environment]::TickCount
-        if (($now - $pollState.LastLoadingTick) -ge $pollState.LoadingInterval) {
+        if (($now - $pollState.LastWatchTick) -ge $pollState.WatchInterval) {
+            Update-NodeVoltaInstallProgressFromWatch -Ui $Ui -Watch $progressWatch -Redraw $Redraw `
+                -Version $Version -NowTick $now -LoadingState $LoadingState | Out-Null
+            $pollState.LastWatchTick = $now
+        }
+
+        Sync-NodeBrowseInstallLoadingPhase -LoadingState $LoadingState -Ui $Ui `
+            -OutputState $outputState -Watch $progressWatch
+
+        if (($now - $pollState.LastFrameTick) -ge $pollState.FrameIntervalMs) {
             Update-NodeBrowseInstallLoadingStatus -Ui $Ui -LoadingState $LoadingState -Version $Version
-            & $Redraw
-            $pollState.LastLoadingTick = $now
+            Invoke-NodeVoltaInstallRedraw -Redraw $Redraw
+            $pollState.LastFrameTick = $now
         }
 
         if (Test-ToolkitShellToolbarLocked -Shell $Shell) {
@@ -282,141 +368,89 @@ function Wait-NodeVoltaInstallProcess {
         $inputResult = & $FnLogInput -Shell $Shell -Log $Log -ViewportRows $LogViewportRows `
             -OnExitKey $OnExitKey -ScrollState $ScrollState
         if ($inputResult -eq 'scroll') {
-            & $Redraw
+            Invoke-NodeVoltaInstallRedraw -Redraw $Redraw
         }
 
         Start-Sleep -Milliseconds 30
     }
 
-    $State.Process.WaitForExit()
-    Start-Sleep -Milliseconds 80
-    Drain-NodeVoltaInstallQueue -State $State -Log $Log -LoadingState $LoadingState -Redraw $Redraw
+    if ($State.Mode -eq 'redirect' -and $State.Process) {
+        $State.Process.WaitForExit()
+        Start-Sleep -Milliseconds 80
+    }
+    Drain-NodeVoltaInstallQueue -State $State -Log $Log -LoadingState $LoadingState -Redraw $Redraw `
+        -Ui $Ui -OutputState $outputState
+    Update-NodeVoltaInstallProgressFromWatch -Ui $Ui -Watch $progressWatch -Redraw $Redraw `
+        -Version $Version -LoadingState $LoadingState | Out-Null
+    Sync-NodeBrowseInstallLoadingPhase -LoadingState $LoadingState -Ui $Ui `
+        -OutputState $outputState -Watch $progressWatch
+    if ([int]$Ui.ItemSubPercent -lt 100) {
+        Set-NodeVoltaInstallProgressPercent -Ui $Ui -Percent 100 -Version $Version | Out-Null
+        Update-NodeBrowseInstallLoadingStatus -Ui $Ui -LoadingState $LoadingState -Version $Version
+        Invoke-NodeVoltaInstallRedraw -Redraw $Redraw
+    }
     return (Complete-NodeVoltaInstallProcess -State $State)
 }
 
 function Run-NodeBrowseInstallOperation {
     param(
         [hashtable]$Shell,
-        [array]$Items
+        [array]$Items,
+        [string]$SectionTitle = ''
     )
 
     Ensure-NodeBrowseInstallShellUi
 
-    $versions = @($Items | ForEach-Object {
-        if ($_.Version) { [string]$_.Version }
-        elseif ($_.Source -and $_.Source.Version) { [string]$_.Source.Version }
+    $versions = @((Ensure-StringArray -Value @($Items | ForEach-Object {
+        if ($_.Version) { Normalize-NodeVersionLabel -Version ([string]$_.Version) }
+        elseif ($_.Source -and $_.Source.Version) { Normalize-NodeVersionLabel -Version ([string]$_.Source.Version) }
         else { '' }
-    } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+    } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })))
     $total = $versions.Count
     if ($total -le 0) {
         return $null
     }
 
-    $toolbar = New-ShellSystemToolbarConfig -HideSystem -HideHelp
-    $renderFooter = New-ShellSystemToolbarFooterRenderer -Shell $Shell -ToolbarConfig $toolbar
-    Register-ToolkitShellFooter -Shell $Shell -Renderer $renderFooter
-
-    $sectionTitle = Get-NodeBrowseInstallProgressSectionTitle
-    Initialize-ToolkitShellBodyView -Shell $Shell -SectionTitle $sectionTitle -FooterTemplate SystemToolbarOnly
-
-    $layout = $Shell.Layout
-    $logLayout = Get-ToolkitDepOperationLogLayout -Layout $layout
-    $logSeparatorRow = [int]$logLayout.SeparatorRow
-    $logContentViewportRows = [int]$logLayout.ContentViewportRows
-
-    $contentMetrics = if ($Shell.Layout.ContentMetrics) { $Shell.Layout.ContentMetrics } else {
-        Sync-ToolkitShellContentMetrics -Shell $Shell
+    $sectionTitle = if (-not [string]::IsNullOrWhiteSpace($SectionTitle)) {
+        $SectionTitle
     }
-    $barWidth = [int]$contentMetrics.InnerWidth
-    $log = New-NodeBrowseInstallLog -ViewportRows $logContentViewportRows -BrandInnerWidth $barWidth
-
-    for ($clearRow = $logSeparatorRow; $clearRow -le $layout.ListEndRow; $clearRow++) {
-        Write-FixedLine $clearRow '' -Color DarkGray
+    else {
+        $script:NodeActionSectionTitle
     }
+    $ctx = Initialize-ToolkitDepBatchOperationView -Shell $Shell -SectionTitle $sectionTitle `
+        -ProgressTotal $total -ReadyStatusText (Get-NodeBrowseI18n -Key 'node.browse.installStatusReady')
 
-    $ui = @{
-        ProgressCurrent  = 0
-        ItemInFlight     = $false
-        ItemSubPercent   = -1
-        ProgressName     = ''
-        StatusText       = (Get-NodeBrowseI18n -Key 'node.browse.installStatusReady')
-        StatusPlain      = $false
-        StatusSegments   = $null
-        ExecuteStartTick = 0
-    }
-
-    $fnEnterBatch = Resolve-DepOperationFn 'Enter-ConsoleDrawBatch'
-    $fnCompleteBatch = Resolve-DepOperationFn 'Complete-ConsoleDrawBatch'
-    $fnDrainStaleInput = Resolve-DepOperationFn 'Drain-ConsoleStaleToolbarInput'
-    $fnReadExitIfActive = Resolve-DepOperationFn 'Read-ShellExitIfActive'
-    $fnLogInput = Resolve-DepOperationFn 'Invoke-ToolkitDepLogInputIfAvailable'
-    $fnRegisterExitExtension = Resolve-DepOperationFn 'Register-ShellExitExtension'
-    $fnClearExitExtension = Resolve-DepOperationFn 'Clear-ShellExitExtension'
-    $fnProcessEscInput = Resolve-DepOperationFn 'Process-ShellEscInputIfAvailable'
-
-    $useBufferDraw = $false
-    if ($env:MIAO_BUFFER_DRAW -eq '1') {
-        try { $useBufferDraw = ($null -ne $Host.UI.RawUI) } catch {}
-    }
-
-    $fnDrawLogViewport = Resolve-DepOperationFn 'Draw-ToolkitDepOperationLogViewport'
-    $fnPeekKey = Resolve-DepOperationFn 'Get-ConsoleVirtualKeyPeek'
-    $fnWriteExitFooter = Get-Command Write-ShellExitFooter -CommandType Function -ErrorAction Stop
-
-    $RedrawView = {
-        $itemSubPercent = if ($ui.ItemInFlight) { [int]$ui.ItemSubPercent } else { -1 }
-        $statusSegments = if ($ui.StatusSegments) { @($ui.StatusSegments) } else { $null }
-        if ($useBufferDraw) { & $fnEnterBatch }
-        Draw-ToolkitDepOperationView -Shell $Shell -Log $log -ProgressCurrent $ui.ProgressCurrent `
-            -ProgressTotal $total -ProgressName $ui.ProgressName -StatusText $ui.StatusText `
-            -LogViewportRows 0 -LogStartRow $logSeparatorRow `
-            -ProgressItemSubPercent $itemSubPercent -StatusPlain:([bool]$ui.StatusPlain) `
-            -StatusSegments $statusSegments
-        & $fnDrawLogViewport -Shell $Shell -Log $log `
-            -LogSeparatorRow $logSeparatorRow -LogContentViewportRows $logContentViewportRows
-        if ($Shell.ExitMode) {
-            & $fnWriteExitFooter -Shell $Shell
-        }
-        else {
-            & $renderFooter
-        }
-        if ($useBufferDraw) {
-            $null = & $fnCompleteBatch -ToolkitShell $Shell
-        }
-    }.GetNewClosure()
-
-    $exitConfirmArmed = $false
-    $onExitConfirmed = { $exitConfirmArmed = $true }.GetNewClosure()
-    & $fnRegisterExitExtension -Shell $Shell -OnExitConfirmed $onExitConfirmed
-
-    $onExitKey = {
-        $null = & $fnProcessEscInput -Shell $Shell
-    }.GetNewClosure()
-
-    $uiPollState = @{
-        LastScrollTick      = 0
-        MinScrollIntervalMs = 55
-    }
+    $log = $ctx.Log
+    $ui = $ctx.Ui
+    $RedrawView = $ctx.RedrawView
+    $onExitKey = $ctx.OnExitKey
+    $uiPollState = $ctx.PollState
+    $logSeparatorRow = $ctx.LogSeparatorRow
+    $logContentViewportRows = $ctx.LogContentViewportRows
 
     $successCount = 0
     $failedCount = 0
     $cancelled = $false
 
     try {
-        & $fnDrainStaleInput
+        & $ctx.FnDrainStaleInput
         if (Get-Command Clear-ConsoleInputBuffer -ErrorAction SilentlyContinue) {
             Clear-ConsoleInputBuffer
         }
 
         Set-ToolkitShellToolbarLocked -Shell $Shell -Locked $true
+        Start-ToolkitDepOperationBatch -Ui $ui
         & $RedrawView
 
         for ($i = 0; $i -lt $total; $i++) {
             if ($cancelled) { break }
 
-            $ver = $versions[$i]
+            $ver = [string]$versions[$i]
             $target = "node@$ver"
             $loadingState = New-NodeBrowseInstallLoadingState
+            $loadingState['InstallPhase'] = 'starting'
+            $ui.ItemSubPercent = 0
+            $ui.InstallPhase = 'starting'
 
             if ($ui.ProgressCurrent -gt 0) {
                 Write-NodeBrowseInstallLogLine -Log $log -Text '' -Kind 'separator'
@@ -439,23 +473,53 @@ function Run-NodeBrowseInstallOperation {
                 version = $ver
             }) -Kind 'heading' -WithTimestamp
 
+            try {
+                if (-not (Test-VoltaNodeInventoryZipReady -Version $ver)) {
+                    $loadingState['InstallPhase'] = 'downloading'
+                    $ui.InstallPhase = 'downloading'
+                    Invoke-VoltaNodeInventoryDownload -Version $ver -Ui $ui -Redraw $RedrawView -Log $log `
+                        -LoadingState $loadingState
+                }
+                else {
+                    Set-NodeVoltaInstallProgressPercent -Ui $ui -Percent 65 -Version $ver -Phase 'downloading' | Out-Null
+                    $loadingState['InstallPhase'] = 'downloading'
+                    $ui.InstallPhase = 'downloading'
+                    Update-NodeBrowseInstallLoadingStatus -Ui $ui -LoadingState $loadingState -Version $ver
+                    & $RedrawView
+                }
+            }
+            catch {
+                $failedCount++
+                Write-NodeBrowseInstallLogLine -Log $log -Text (Get-NodeBrowseI18n -Key 'node.browse.installLogDownloadFailed' -Vars @{
+                    version = $ver
+                    detail  = [string]$_.Exception.Message
+                }) -Kind 'error' -WithTimestamp
+                $ui.ItemInFlight = $false
+                $ui.ItemSubPercent = -1
+                $ui.ProgressCurrent = $i + 1
+                & $RedrawView
+                continue
+            }
+
             $procState = Start-NodeVoltaInstallProcess -Version $ver
-            Write-NodeBrowseInstallLogLine -Log $log -Text $procState.CommandLine
+            Write-NodeBrowseInstallLogLine -Log $log -Text $procState.CommandLine -WithTimestamp
             & $RedrawView
 
-            $cancelRef = [ref]$false
-            $exitCode = Wait-NodeVoltaInstallProcess -State $procState -Ui $ui -LoadingState $loadingState `
+            $exitCode = @(Wait-NodeVoltaInstallProcess -State $procState -Ui $ui -LoadingState $loadingState `
                 -Version $ver -Shell $Shell -Log $log -LogViewportRows $logContentViewportRows `
-                -OnExitKey $onExitKey -ScrollState $uiPollState -FnLogInput $fnLogInput `
-                -Redraw $RedrawView -Cancelled $cancelRef
+                -OnExitKey $onExitKey -ScrollState $uiPollState -FnLogInput $ctx.FnLogInput `
+                -Redraw $RedrawView)[-1]
+            $exitCode = [int]$exitCode
+
+            if ($exitCode -eq 0) {
+                $ui.ItemSubPercent = 100
+                Update-NodeBrowseInstallLoadingStatus -Ui $ui -LoadingState $loadingState -Version $ver
+                & $RedrawView
+            }
 
             $ui.ItemInFlight = $false
-            if ($cancelRef.Value) {
-                $cancelled = $true
-                Write-NodeBrowseInstallLogLine -Log $log -Text (Get-NodeBrowseI18n -Key 'node.browse.installCancelled') `
-                    -Kind 'error' -WithTimestamp
-                break
-            }
+            $ui.ItemSubPercent = -1
+            $ui.InstallPhase = ''
 
             if ($exitCode -eq 0) {
                 $successCount++
@@ -476,60 +540,13 @@ function Run-NodeBrowseInstallOperation {
         }
 
         if (-not $cancelled) {
-            $ui.ProgressCurrent = $total
-            $ui.StatusPlain = $true
-            $ui.StatusText = ''
-            $ui.StatusSegments = Get-ToolkitDepBatchSummarySegments -Intent install `
-                -TotalCount $total -SuccessCount $successCount -FailedCount $failedCount
+            Set-ToolkitDepOperationBatchCompleteUi -Ui $ui -Intent install -TotalCount $total `
+                -SuccessCount $successCount -FailedCount $failedCount -ProgressCurrent $total
         }
 
-        $log.AutoScroll = $false
-        Set-ToolkitShellToolbarLocked -Shell $Shell -Locked $false
-        & $RedrawView
-        & $fnDrainStaleInput
-
-        while ($true) {
-            $exitResult = & $fnReadExitIfActive -Shell $Shell
-            if ($null -ne $exitResult) {
-                if ($exitResult -eq 'exitConfirmed') {
-                    return (Get-ShellNavMarker -Action 'quit')
-                }
-                & $RedrawView
-                continue
-            }
-
-            if (Test-ConsoleKeyAvailable) {
-                $peek = & $fnPeekKey
-                if ($peek -in @('UpArrow', 'DownArrow', 'Escape')) {
-                    $scrollInput = & $fnLogInput -Shell $Shell -Log $log -ViewportRows $logContentViewportRows `
-                        -OnExitKey $onExitKey -ScrollState $uiPollState
-                    if ($scrollInput -in @('scroll', 'exit')) {
-                        & $RedrawView
-                    }
-                    continue
-                }
-
-                if (-not (Test-ToolkitShellToolbarLocked -Shell $Shell)) {
-                    Prepare-ToolkitShellBodyDraw -Shell $Shell
-                    $key = [Console]::ReadKey($true)
-                    Set-CursorVisible $false
-                    if ($key.KeyChar -match '^[qQ]$') {
-                        $Shell.Layout['BodyDirty'] = $true
-                        return $null
-                    }
-                    if ($key.Key -eq 'Escape') {
-                        $null = & $onExitKey
-                        & $RedrawView
-                    }
-                    continue
-                }
-            }
-
-            Start-Sleep -Milliseconds 20
-        }
+        return Invoke-ToolkitDepBatchOperationWaitLoop -Context $ctx
     }
     finally {
-        Set-ToolkitShellToolbarLocked -Shell $Shell -Locked $false
-        & $fnClearExitExtension -Shell $Shell
+        Clear-ToolkitDepBatchOperationView -Context $ctx
     }
 }

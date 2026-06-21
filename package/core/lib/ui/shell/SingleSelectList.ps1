@@ -533,7 +533,9 @@ function Invoke-ShellSingleSelectList {
         [Parameter(Mandatory)]
         [hashtable]$ToolbarConfig,
         [string]$CountLabel = '',
-        [switch]$SkipBodyInit
+        [switch]$SkipBodyInit,
+        [string]$InitialContentLine = '',
+        [string]$InitialFlashMessage = ''
     )
 
     if ([string]::IsNullOrWhiteSpace($CountLabel)) {
@@ -567,9 +569,14 @@ function Invoke-ShellSingleSelectList {
     $normalized = @(Normalize-ShellListRows -Rows $Rows -ColumnLayout $ColumnLayout)
 
     if (-not $SkipBodyInit) {
+        Set-ToolkitShellBodyContentLine -Shell $Shell -ContentLine $InitialContentLine
         Initialize-ToolkitShellBodyView -Shell $Shell `
             -SectionTitle $SectionTitle `
             -FooterTemplate ListWithToolbar
+    }
+    else {
+        Set-ToolkitShellBodyContentLine -Shell $Shell -ContentLine $InitialContentLine
+        Render-ToolkitShellContentRow -Shell $Shell
     }
 
     $header = New-ToolkitMenuHeader -HideSectionTitle
@@ -640,8 +647,10 @@ function Invoke-ShellSingleSelectList {
         -LetterKeys $letterKeys `
         -ToolkitShell $Shell `
         -AllowBack:($ToolbarConfig.AllowBack) `
-        -CompactNavStatus:($ColumnLayout.Preset -eq 'ToolList') `
-        -AllowSpaceConfirm:($ColumnLayout.Preset -eq 'ToolList')
+        -CompactNavStatus `
+        -AllowSpaceConfirm `
+        -InitialContentLine $InitialContentLine `
+        -InitialFlashMessage $InitialFlashMessage
 
     return Resolve-ShellSingleSelectListPick -Picked $picked
 }

@@ -12,9 +12,7 @@ function Write-ToolkitShellSectionTitle {
     $barWidth = Get-ToolkitShellLayoutBarInnerWidth -Shell $Shell
     Write-BrandSectionCapLine -Row $Shell.Layout.SectionTitleRow -Title $Title -BrandInnerWidth $barWidth
 
-    if ($Shell.Layout.SectionGapRow -ge 0) {
-        Write-FixedLine $Shell.Layout.SectionGapRow '' -Color DarkGray
-    }
+    Render-ToolkitShellContentRow -Shell $Shell
 }
 
 function Render-ShellTitle {

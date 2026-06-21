@@ -58,7 +58,7 @@ function Invoke-LangPage {
 
     if ((Get-CurrentLocale) -ne $picked.command) {
         Set-UserLocale $picked.command
-        Update-ToolkitShellBrandHeader -Shell $Shell
+        $Shell['HeaderLocale'] = (Get-CurrentLocale)
         Clear-ShellSingleSelectListCache -Shell $Shell -CacheKey 'Lang'
         Clear-ShellSingleSelectListCache -Shell $Shell -CacheKey 'Home'
         Clear-ShellSingleSelectListCache -Shell $Shell -CacheKey 'Sys'

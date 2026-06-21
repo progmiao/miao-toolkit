@@ -135,6 +135,15 @@ function Get-WingetDepStreamLinePercent {
         }
     }
 
+    if ($trim -match '[\u2588\u2590-\u2592\u2593]') {
+        $filled = ([regex]::Matches($trim, '\u2588')).Count
+        $partial = ([regex]::Matches($trim, '[\u2590-\u2592\u2593]')).Count
+        $totalUnits = $filled + $partial
+        if ($totalUnits -gt 0) {
+            return [Math]::Max(0, [Math]::Min(100, [int][Math]::Round($filled * 100.0 / $totalUnits)))
+        }
+    }
+
     return -1
 }
 
@@ -230,8 +239,8 @@ function Get-WingetDepStreamLinePhase {
     if (Test-WingetStreamLineIsSpinnerOnly -Line $trim) { return 'spinner' }
     if (Test-WingetDepStreamLineIsProgressVisual -Line $trim) { return 'progress' }
     if ($trim -match '^Found\s+\S') { return 'found' }
-    if ($trim -match '^Starting package install') { return 'startInstall' }
-    if ($trim -match '^Starting package uninstall') { return 'startUninstall' }
+    if ($trim -match '^Starting package install|^正在(?:启动|执行|运行)程序包安装') { return 'startInstall' }
+    if ($trim -match '^Starting package uninstall|^正在(?:启动|执行)程序包卸载') { return 'startUninstall' }
     if ($trim -match '^Waiting for another') { return 'waitOther' }
     if ($trim -match '^Downloading') { return 'download' }
     if ($trim -match '^Verifying') { return 'verify' }
@@ -253,7 +262,8 @@ function Get-WingetDepStreamLinePhase {
     }
     if (Test-WingetDepZhStreamPhrase $trim 'install') { return 'install' }
     if (Test-WingetDepZhStreamPhrase $trim 'uninstall') { return 'uninstall' }
-    if ($trim -match '\.msi\b|\.exe\b') { return 'installerPackage' }
+    if ($trim -match '(?i)^https?://') { return 'info' }
+    if ($trim -match '(?i)(?:[A-Za-z]:\\|\\\\)[^\s]*\.(?:msi|exe)\b') { return 'installerPackage' }
     if ((Get-WingetDepStreamLinePercent -Line $trim) -ge 0) { return 'progress' }
     if (Test-WingetStreamLineIsImportant -Line $trim) { return 'result' }
     if (Test-WingetStreamLineUseful -Line $trim) { return 'info' }
@@ -294,6 +304,19 @@ function Test-WingetDepStreamLineIsDeclined {
     }
 
     return $false
+}
+
+function Get-WingetDepStreamLineDeclineKind {
+    param([string]$Line)
+
+    if (-not (Test-WingetDepStreamLineIsDeclined -Line $Line)) { return $null }
+
+    $trim = Get-WingetStreamLineCleanText -Line $Line
+    if ($trim -match 'access\s+denied|拒绝访问|requires elevation|需要提升|UAC|用户拒绝|The operation was canceled by the user') {
+        return 'uac'
+    }
+
+    return 'user'
 }
 
 function Test-WingetDepStreamLineIsEphemeral {
@@ -347,12 +370,53 @@ function Complete-WingetStreamLineBuffer {
     return @($text)
 }
 
+function Test-WingetDepStreamLineIsFileLockRemoveError {
+    param([string]$Line)
+
+    $trim = Get-WingetStreamLineCleanText -Line $Line
+    if ([string]::IsNullOrWhiteSpace($trim)) { return $false }
+
+    if ($trim -match '(?i)^remove:') {
+        if ($trim -match '(?i)being used by another process|另一个进程|正在使用|cannot access the file|无法访问') {
+            return $true
+        }
+    }
+
+    return $false
+}
+
+function Test-WingetDepStreamLineIsNonStallActivity {
+    param([string]$Line)
+
+    $trim = Get-WingetStreamLineCleanText -Line $Line
+    if ([string]::IsNullOrWhiteSpace($trim)) { return $false }
+    if (Test-WingetStreamLineIsSpinnerOnly -Line $trim) { return $true }
+    if (Test-WingetDepStreamLineIsProgressVisual -Line $trim) { return $true }
+    if (Test-WingetDepStreamLineIsFileLockRemoveError -Line $trim) { return $false }
+    return $true
+}
+
+function Test-WingetDepResultIsTempFileLockFailure {
+    param($Result)
+
+    if (-not $Result) { return $false }
+    foreach ($line in @($Result.Lines)) {
+        if (Test-WingetDepStreamLineIsFileLockRemoveError -Line ([string]$line)) {
+            return $true
+        }
+    }
+    return $false
+}
+
 function Test-WingetStreamLineIsImportant {
     param([string]$Line)
 
     if ([string]::IsNullOrWhiteSpace($Line)) { return $false }
     $trim = [string]$Line.Trim()
     if ($trim -match '找不到适用的安装程序|No applicable installer|已成功安装|Successfully installed|卸载成功|已成功卸载|Successfully uninstalled|安装失败|Install failed|卸载失败|Uninstall failed|失败|error|错误') {
+        return $true
+    }
+    if (Test-WingetDepStreamLineIsFileLockRemoveError -Line $trim) {
         return $true
     }
     return $false
@@ -402,19 +466,316 @@ function Get-WingetDepResultSummaryLine {
 
 $script:WingetDepStallWarnMs = 12000
 $script:WingetDepStallFailMs = 90000
-$script:WingetDepProcessExitWaitMs = 600000
+$script:WingetDepInstallerPromptWarnMs = 30000
+$script:WingetDepInstallerPromptFailMs = 300000
+$script:WingetDepFileLockMaxRetries = 3
+$script:WingetDepProcessExitWaitMs = 300000
+$script:WingetDepNetworkPreflightTimeoutSec = 15
+
+function Get-WingetDepPolicyConstants {
+    return @{
+        StallWarnMs                 = [int]$script:WingetDepStallWarnMs
+        StallFailMs                 = [int]$script:WingetDepStallFailMs
+        InstallerPromptWarnMs       = [int]$script:WingetDepInstallerPromptWarnMs
+        InstallerPromptFailMs       = [int]$script:WingetDepInstallerPromptFailMs
+        FileLockMaxRetries          = [int]$script:WingetDepFileLockMaxRetries
+        ProcessExitWaitMs           = [int]$script:WingetDepProcessExitWaitMs
+        NetworkPreflightTimeoutSec  = [int]$script:WingetDepNetworkPreflightTimeoutSec
+    }
+}
+
+function Get-ToolDepInstallConfigProperty {
+    param(
+        $Package,
+        [string[]]$Names
+    )
+
+    if (-not $Package -or -not $Package.install) { return $null }
+
+    $install = $Package.install
+    foreach ($name in @($Names)) {
+        if ($install -is [hashtable]) {
+            if ($install.ContainsKey($name) -and $null -ne $install[$name]) {
+                return $install[$name]
+            }
+        }
+        elseif ($install.PSObject.Properties[$name] -and $null -ne $install.$name) {
+            return $install.$name
+        }
+    }
+
+    return $null
+}
+
+function Test-ToolDepWingetInstallInteractiveRequired {
+    param($Package)
+
+    $flag = Get-ToolDepInstallConfigProperty -Package $Package -Names @(
+        'installInteractiveRequired'
+        'wingetInteractiveRequired'
+    )
+    if ($null -eq $flag) { return $false }
+    return [bool]$flag
+}
+
+function Resolve-ToolDepWingetSilentMode {
+    param(
+        $Package,
+        [ValidateSet('install', 'upgrade', 'uninstall')]
+        [string]$Verb
+    )
+
+    if ($Verb -eq 'uninstall') { return 'interactive' }
+
+    if (Test-ToolDepWingetInstallInteractiveRequired -Package $Package) {
+        return 'interactive'
+    }
+
+    $explicit = Get-ToolDepInstallConfigProperty -Package $Package -Names @('wingetSilent')
+    if ($null -ne $explicit) {
+        if ([bool]$explicit) { return 'silent' }
+        return 'interactive'
+    }
+
+    return 'silent'
+}
+
+function Parse-WingetShowInstallerDownloadUrls {
+    param([string]$Text)
+
+    if ([string]::IsNullOrWhiteSpace($Text)) { return @() }
+
+    $urls = New-Object 'System.Collections.Generic.List[string]'
+    foreach ($line in @($Text -split "`r?`n")) {
+        $trim = [string]$line.Trim()
+        if ([string]::IsNullOrWhiteSpace($trim)) { continue }
+        if ($trim -match '(?i)(?:Installer\s+(?:Url|URL)|安装程序\s+URL)\s*[:：]\s*(\S+)') {
+            [void]$urls.Add([string]$Matches[1].Trim())
+        }
+    }
+
+    return @($urls | Select-Object -Unique)
+}
+
+function Get-WingetPackageInstallerDownloadUrls {
+    param([string]$PackageId)
+
+    if ([string]::IsNullOrWhiteSpace($PackageId)) { return @() }
+    if (-not (Get-Command winget -ErrorAction SilentlyContinue)) { return @() }
+
+    try {
+        $output = & winget show --id $PackageId -e --disable-interactivity --accept-source-agreements 2>&1 |
+            Out-String
+        if ([string]::IsNullOrWhiteSpace($output)) { return @() }
+        return @(Parse-WingetShowInstallerDownloadUrls -Text $output)
+    }
+    catch {
+        return @()
+    }
+}
+
+function Test-ToolDepNetworkEndpointReachable {
+    param(
+        [string]$Url,
+        [int]$TimeoutSec = $script:WingetDepNetworkPreflightTimeoutSec
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Url)) {
+        return @{ Ok = $false; Reason = 'empty url' }
+    }
+
+    $timeoutSec = [Math]::Max(3, $TimeoutSec)
+    $attempts = @(
+        @{ Method = 'Head'; Headers = $null }
+        @{ Method = 'Get'; Headers = @{ Range = 'bytes=0-0' } }
+    )
+
+    $lastReason = 'unreachable'
+    foreach ($attempt in @($attempts)) {
+        try {
+            $params = @{
+                Uri             = $Url
+                Method          = [string]$attempt.Method
+                TimeoutSec      = $timeoutSec
+                UseBasicParsing = $true
+            }
+            if ($attempt.Headers) {
+                $params.Headers = $attempt.Headers
+            }
+            $response = Invoke-WebRequest @params
+            $code = [int]$response.StatusCode
+            if ($code -ge 200 -and $code -lt 400) {
+                return @{ Ok = $true; StatusCode = $code }
+            }
+            $lastReason = "HTTP $code"
+        }
+        catch {
+            $lastReason = [string]$_.Exception.Message
+            if ($lastReason -match '404|403|401|500|502|503|504|timed out|timeout|无法连接|connection|Name or service not known|No such host') {
+                break
+            }
+        }
+    }
+
+    return @{ Ok = $false; Reason = $lastReason }
+}
+
+function Test-ToolDepPackageNetworkPreflight {
+    param(
+        $Package,
+        [ValidateSet('Install', 'Upgrade', 'Repair', 'Uninstall')]
+        [string]$ExecuteAction,
+        [scriptblock]$OnPulse = $null
+    )
+
+    if ($ExecuteAction -notin @('Install', 'Upgrade', 'Repair')) {
+        return @{ Ok = $true; Skipped = $true }
+    }
+
+    $packageId = if ($Package.install) { [string]$Package.install.packageId } else { '' }
+    if ([string]::IsNullOrWhiteSpace($packageId)) {
+        return @{ Ok = $true; Skipped = $true }
+    }
+
+    if ($OnPulse) { & $OnPulse }
+
+    $urls = @(Get-WingetPackageInstallerDownloadUrls -PackageId $packageId)
+    if ($urls.Count -eq 0) {
+        return @{ Ok = $true; Skipped = $true }
+    }
+
+    $policy = Get-WingetDepPolicyConstants
+    $timeoutSec = [int]$policy.NetworkPreflightTimeoutSec
+    foreach ($url in @($urls)) {
+        if ($OnPulse) { & $OnPulse }
+        $probe = Test-ToolDepNetworkEndpointReachable -Url $url -TimeoutSec $timeoutSec
+        if (-not $probe.Ok) {
+            return @{
+                Ok     = $false
+                Url    = $url
+                Reason = [string]$probe.Reason
+                Urls   = @($urls)
+            }
+        }
+    }
+
+    return @{ Ok = $true; Urls = @($urls) }
+}
+
+function Test-WingetDepResultNeedsInteractiveRetry {
+    param(
+        $Result,
+        [ValidateSet('Install', 'Upgrade', 'Repair', 'Uninstall')]
+        [string]$ExecuteAction
+    )
+
+    if ($ExecuteAction -notin @('Install', 'Upgrade', 'Repair')) { return $false }
+    if (-not $Result -or -not $Result.UsedSilent) { return $false }
+    if ($Result.Success -or $Result.Cancelled -or $Result.Aborted -or $Result.TimedOut) { return $false }
+    if ($Result.AlreadyLatest) { return $false }
+    if (Test-WingetDepResultIsTempFileLockFailure -Result $Result) { return $false }
+
+    foreach ($line in @($Result.Lines)) {
+        if (Get-WingetDepStreamLineDeclineKind -Line ([string]$line)) {
+            return $false
+        }
+    }
+
+    return $true
+}
+
+function Get-WingetDepStaleTempPaths {
+    $paths = [System.Collections.Generic.List[string]]::new()
+
+    foreach ($candidate in @(
+            (Join-Path $env:LOCALAPPDATA 'Microsoft\WinGet\Temp')
+            (Join-Path $env:LOCALAPPDATA 'Temp\WinGet')
+        )) {
+        if (-not [string]::IsNullOrWhiteSpace($candidate) -and (Test-Path -LiteralPath $candidate)) {
+            [void]$paths.Add($candidate)
+        }
+    }
+
+    $packagesRoot = Join-Path $env:LOCALAPPDATA 'Packages'
+    if (Test-Path -LiteralPath $packagesRoot) {
+        foreach ($pkg in @(Get-ChildItem -LiteralPath $packagesRoot -Directory `
+                -Filter 'Microsoft.DesktopAppInstaller_*' -ErrorAction SilentlyContinue)) {
+            $temp = Join-Path $pkg.FullName 'LocalState\Temp'
+            if (Test-Path -LiteralPath $temp) {
+                [void]$paths.Add($temp)
+            }
+        }
+    }
+
+    return @($paths | Select-Object -Unique)
+}
+
+function Wait-WingetDepProcessesIdle {
+    param(
+        [int]$TimeoutMs = 15000,
+        [scriptblock]$OnPulse = $null
+    )
+
+    $deadline = [Environment]::TickCount + [Math]::Max(1000, $TimeoutMs)
+    while ([Environment]::TickCount -lt $deadline) {
+        if ($OnPulse) { & $OnPulse }
+        $running = @(Get-Process -Name 'winget' -ErrorAction SilentlyContinue)
+        if ($running.Count -eq 0) { return $true }
+        Start-Sleep -Milliseconds 400
+    }
+
+    return $false
+}
+
+function Clear-WingetDepStaleTempPaths {
+    param([array]$Paths = $null)
+
+    $targets = if ($Paths) { @($Paths) } else { Get-WingetDepStaleTempPaths }
+    foreach ($path in $targets) {
+        if ([string]::IsNullOrWhiteSpace($path) -or -not (Test-Path -LiteralPath $path)) { continue }
+        try {
+            Remove-Item -LiteralPath $path -Recurse -Force -ErrorAction Stop
+        }
+        catch {
+            try {
+                Get-ChildItem -LiteralPath $path -Force -ErrorAction Stop | ForEach-Object {
+                    Remove-Item -LiteralPath $_.FullName -Recurse -Force -ErrorAction SilentlyContinue
+                }
+            }
+            catch {}
+        }
+    }
+}
+
+function Repair-WingetDepFileLockEnvironment {
+    param(
+        [int]$Attempt = 1,
+        [scriptblock]$OnPulse = $null
+    )
+
+    $waitSec = [Math]::Min(8, [Math]::Max(2, 2 * [Math]::Max(1, $Attempt)))
+    $deadline = [Environment]::TickCount + ($waitSec * 1000)
+    while ([Environment]::TickCount -lt $deadline) {
+        if ($OnPulse) { & $OnPulse }
+        Start-Sleep -Milliseconds 50
+    }
+    $null = Wait-WingetDepProcessesIdle -TimeoutMs 15000 -OnPulse $OnPulse
+    Clear-WingetDepStaleTempPaths
+}
 
 function Build-ToolDepWingetArgumentList {
     param(
         [ValidateSet('install', 'upgrade', 'uninstall')]
         [string]$Verb,
         [string]$PackageId,
-        $Package = $null
+        $Package = $null,
+        [ValidateSet('default', 'silent', 'interactive')]
+        [string]$SilentMode = 'default'
     )
 
-    $args = @($Verb, '--id', $PackageId, '-e', '--disable-interactivity')
+    $args = @($Verb, '--id', $PackageId, '-e')
 
-    $useSilent = $true
+    $useSilent = $false
     $scope = $null
     if ($Package -and $Package.install) {
         $install = $Package.install
@@ -422,21 +783,21 @@ function Build-ToolDepWingetArgumentList {
             if ($install.ContainsKey('scope') -and -not [string]::IsNullOrWhiteSpace([string]$install['scope'])) {
                 $scope = [string]$install['scope']
             }
-            if ($install.ContainsKey('wingetSilent') -and $null -ne $install['wingetSilent']) {
-                $useSilent = [bool]$install['wingetSilent']
-            }
         }
         else {
             if ($install.PSObject.Properties['scope'] -and -not [string]::IsNullOrWhiteSpace([string]$install.scope)) {
                 $scope = [string]$install.scope
             }
-            if ($install.PSObject.Properties['wingetSilent'] -and $null -ne $install.wingetSilent) {
-                $useSilent = [bool]$install.wingetSilent
-            }
         }
     }
 
     if ($Verb -in @('install', 'upgrade')) {
+        $resolvedSilent = switch ($SilentMode) {
+            'silent' { 'silent' }
+            'interactive' { 'interactive' }
+            default { Resolve-ToolDepWingetSilentMode -Package $Package -Verb $Verb }
+        }
+        $useSilent = ($resolvedSilent -eq 'silent')
         $args += @(
             '--accept-package-agreements'
             '--accept-source-agreements'
@@ -451,11 +812,24 @@ function Build-ToolDepWingetArgumentList {
     return $args
 }
 
+function Test-ToolDepWingetInstallUsesSilent {
+    param(
+        $Package,
+        [ValidateSet('install', 'upgrade', 'uninstall')]
+        [string]$Verb = 'install'
+    )
+
+    if ($Verb -eq 'uninstall') { return $false }
+    return ((Resolve-ToolDepWingetSilentMode -Package $Package -Verb $Verb) -eq 'silent')
+}
+
 function Get-ToolDepWingetCommandLine {
     param(
         $Package,
         [ValidateSet('Install', 'Upgrade', 'Repair', 'Uninstall')]
-        [string]$ExecuteAction
+        [string]$ExecuteAction,
+        [ValidateSet('default', 'silent', 'interactive')]
+        [string]$SilentMode = 'default'
     )
 
     $packageId = if ($Package.install) { [string]$Package.install.packageId } else { '' }
@@ -469,7 +843,8 @@ function Get-ToolDepWingetCommandLine {
         default { 'install' }
     }
 
-    $args = @(Build-ToolDepWingetArgumentList -Verb $verb -PackageId $packageId -Package $Package)
+    $args = @(Build-ToolDepWingetArgumentList -Verb $verb -PackageId $packageId -Package $Package `
+        -SilentMode $SilentMode)
     return "winget $($args -join ' ')"
 }
 
@@ -477,10 +852,12 @@ function Invoke-WingetDepProcess {
     param(
         [string[]]$ArgumentList,
         [scriptblock]$ShouldCancel = $null,
+        [scriptblock]$ShouldAbort = $null,
         [scriptblock]$OnExitConfirmKey = $null,
         [scriptblock]$OnOutputLine = $null,
         [scriptblock]$OnHeartbeat = $null,
         [scriptblock]$OnUiPoll = $null,
+        [scriptblock]$OnChromePulse = $null,
         [scriptblock]$OnStallNotify = $null,
         [scriptblock]$ResolveStallPolicy = $null,
         [int]$StallWarnMs = $script:WingetDepStallWarnMs,
@@ -511,7 +888,9 @@ function Invoke-WingetDepProcess {
     $stderrSubscription = $null
 
     $cancelled = $false
+    $aborted = $false
     $timedOut = $false
+    $timedOutReason = ''
     $streamTiming = @{
         LastOutputTick    = [Environment]::TickCount
         StartTick         = [Environment]::TickCount
@@ -519,6 +898,10 @@ function Invoke-WingetDepProcess {
     }
 
     $pumpWingetDepUi = {
+        if ($OnChromePulse) {
+            & $OnChromePulse
+        }
+
         if ($OnUiPoll) {
             & $OnUiPoll
         }
@@ -544,9 +927,10 @@ function Invoke-WingetDepProcess {
         if (-not $Lines -or $Lines.Count -eq 0) { return }
         foreach ($line in $Lines) {
             if ([string]::IsNullOrWhiteSpace($line)) { continue }
-            # Spinner/progress lines mean winget is alive; only blank output is true idle.
-            $streamTiming.LastOutputTick = [Environment]::TickCount
-            return
+            if (Test-WingetDepStreamLineIsNonStallActivity -Line $line) {
+                $streamTiming.LastOutputTick = [Environment]::TickCount
+                return
+            }
         }
     }.GetNewClosure()
 
@@ -585,6 +969,11 @@ function Invoke-WingetDepProcess {
             try { $process.Kill() } catch {}
             break
         }
+        if ($ShouldAbort -and (& $ShouldAbort)) {
+            $aborted = $true
+            try { $process.Kill() } catch {}
+            break
+        }
 
         & $pumpWingetDepUi
         & $drainWingetAsyncStreams
@@ -601,6 +990,14 @@ function Invoke-WingetDepProcess {
             if ($null -ne $policy) {
                 if ($policy.ContainsKey('Warn') -and -not [bool]$policy.Warn) { $stallWarnMs = 0 }
                 if ($policy.ContainsKey('FailMs')) { $stallFailMs = [int]$policy.FailMs }
+                if ($policy.ContainsKey('AbsoluteFail') -and [bool]$policy.AbsoluteFail) {
+                    if ($policy.ContainsKey('TimedOutReason')) {
+                        $timedOutReason = [string]$policy.TimedOutReason
+                    }
+                    $timedOut = $true
+                    try { $process.Kill() } catch {}
+                    break
+                }
             }
         }
         if ($stallFailMs -gt 0 -and $idleMs -ge $stallFailMs) {
@@ -650,12 +1047,31 @@ function Invoke-WingetDepProcess {
         return @{
             Success       = $false
             Cancelled     = $true
+            Aborted       = $false
             TimedOut      = $false
             ExitCode      = -1
-            Lines         = @()
+            Lines         = @($allLines)
             Command       = "winget $($ArgumentList -join ' ')"
             Streamed      = ($null -ne $OnOutputLine)
             AlreadyLatest = $false
+        }
+    }
+
+    if ($aborted) {
+        $exitCode = -1
+        if ($process.HasExited) {
+            try { $exitCode = [int]$process.ExitCode } catch { $exitCode = -2 }
+        }
+        return @{
+            Success        = $false
+            Cancelled      = $false
+            Aborted        = $true
+            TimedOut       = $false
+            ExitCode       = $exitCode
+            Lines          = @($allLines)
+            Command        = "winget $($ArgumentList -join ' ')"
+            Streamed       = ($null -ne $OnOutputLine)
+            AlreadyLatest  = $false
         }
     }
 
@@ -683,10 +1099,12 @@ function Invoke-WingetDepProcess {
     $uninstallSucceeded = (-not $cancelled -and -not $timedOut) -and (Test-WingetDepResultReportsUninstallSuccess $resultSnapshot)
 
     return @{
-        Success       = (-not $cancelled -and -not $timedOut -and (($exitCode -eq 0) -or $alreadyLatest -or $uninstallSucceeded))
-        Cancelled     = $cancelled
-        TimedOut      = $timedOut
-        ExitCode      = $exitCode
+        Success        = (-not $cancelled -and -not $timedOut -and -not $aborted -and (($exitCode -eq 0) -or $alreadyLatest -or $uninstallSucceeded))
+        Cancelled      = $cancelled
+        Aborted        = $false
+        TimedOut       = $timedOut
+        TimedOutReason = $timedOutReason
+        ExitCode       = $exitCode
         Lines         = @($allLines)
         Command       = "winget $($ArgumentList -join ' ')"
         Streamed      = ($null -ne $OnOutputLine)
@@ -698,38 +1116,52 @@ function Invoke-ToolDepWingetInstall {
     param(
         [string]$PackageId,
         $Package = $null,
+        [ValidateSet('default', 'silent', 'interactive')]
+        [string]$SilentMode = 'default',
         [scriptblock]$ShouldCancel = $null,
+        [scriptblock]$ShouldAbort = $null,
         [scriptblock]$OnExitConfirmKey = $null,
         [scriptblock]$OnOutputLine = $null,
         [scriptblock]$OnHeartbeat = $null,
         [scriptblock]$OnUiPoll = $null,
+        [scriptblock]$OnChromePulse = $null,
         [scriptblock]$OnStallNotify = $null,
         [scriptblock]$ResolveStallPolicy = $null
     )
 
-    return Invoke-WingetDepProcess -ArgumentList @(Build-ToolDepWingetArgumentList -Verb install `
-        -PackageId $PackageId -Package $Package) -ShouldCancel $ShouldCancel `
+    $argumentList = @(Build-ToolDepWingetArgumentList -Verb install -PackageId $PackageId -Package $Package `
+        -SilentMode $SilentMode)
+    $result = Invoke-WingetDepProcess -ArgumentList $argumentList -ShouldCancel $ShouldCancel -ShouldAbort $ShouldAbort `
         -OnExitConfirmKey $OnExitConfirmKey -OnOutputLine $OnOutputLine -OnHeartbeat $OnHeartbeat `
-        -OnUiPoll $OnUiPoll -OnStallNotify $OnStallNotify -ResolveStallPolicy $ResolveStallPolicy
+        -OnUiPoll $OnUiPoll -OnChromePulse $OnChromePulse -OnStallNotify $OnStallNotify -ResolveStallPolicy $ResolveStallPolicy
+    $result.UsedSilent = ($argumentList -contains '--silent')
+    return $result
 }
 
 function Invoke-ToolDepWingetUpgrade {
     param(
         [string]$PackageId,
         $Package = $null,
+        [ValidateSet('default', 'silent', 'interactive')]
+        [string]$SilentMode = 'default',
         [scriptblock]$ShouldCancel = $null,
+        [scriptblock]$ShouldAbort = $null,
         [scriptblock]$OnExitConfirmKey = $null,
         [scriptblock]$OnOutputLine = $null,
         [scriptblock]$OnHeartbeat = $null,
         [scriptblock]$OnUiPoll = $null,
+        [scriptblock]$OnChromePulse = $null,
         [scriptblock]$OnStallNotify = $null,
         [scriptblock]$ResolveStallPolicy = $null
     )
 
-    return Invoke-WingetDepProcess -ArgumentList @(Build-ToolDepWingetArgumentList -Verb upgrade `
-        -PackageId $PackageId -Package $Package) -ShouldCancel $ShouldCancel `
+    $argumentList = @(Build-ToolDepWingetArgumentList -Verb upgrade -PackageId $PackageId -Package $Package `
+        -SilentMode $SilentMode)
+    $result = Invoke-WingetDepProcess -ArgumentList $argumentList -ShouldCancel $ShouldCancel -ShouldAbort $ShouldAbort `
         -OnExitConfirmKey $OnExitConfirmKey -OnOutputLine $OnOutputLine -OnHeartbeat $OnHeartbeat `
-        -OnUiPoll $OnUiPoll -OnStallNotify $OnStallNotify -ResolveStallPolicy $ResolveStallPolicy
+        -OnUiPoll $OnUiPoll -OnChromePulse $OnChromePulse -OnStallNotify $OnStallNotify -ResolveStallPolicy $ResolveStallPolicy
+    $result.UsedSilent = ($argumentList -contains '--silent')
+    return $result
 }
 
 function Invoke-ToolDepWingetUninstall {
@@ -737,18 +1169,20 @@ function Invoke-ToolDepWingetUninstall {
         [string]$PackageId,
         $Package = $null,
         [scriptblock]$ShouldCancel = $null,
+        [scriptblock]$ShouldAbort = $null,
         [scriptblock]$OnExitConfirmKey = $null,
         [scriptblock]$OnOutputLine = $null,
         [scriptblock]$OnHeartbeat = $null,
         [scriptblock]$OnUiPoll = $null,
+        [scriptblock]$OnChromePulse = $null,
         [scriptblock]$OnStallNotify = $null,
         [scriptblock]$ResolveStallPolicy = $null
     )
 
     return Invoke-WingetDepProcess -ArgumentList @(Build-ToolDepWingetArgumentList -Verb uninstall `
-        -PackageId $PackageId -Package $Package) -ShouldCancel $ShouldCancel `
+        -PackageId $PackageId -Package $Package) -ShouldCancel $ShouldCancel -ShouldAbort $ShouldAbort `
         -OnExitConfirmKey $OnExitConfirmKey -OnOutputLine $OnOutputLine -OnHeartbeat $OnHeartbeat `
-        -OnUiPoll $OnUiPoll -OnStallNotify $OnStallNotify -ResolveStallPolicy $ResolveStallPolicy
+        -OnUiPoll $OnUiPoll -OnChromePulse $OnChromePulse -OnStallNotify $OnStallNotify -ResolveStallPolicy $ResolveStallPolicy
 }
 
 function Invoke-ToolDepPackageExecute {
@@ -756,11 +1190,15 @@ function Invoke-ToolDepPackageExecute {
         $Package,
         [ValidateSet('Install', 'Upgrade', 'Repair', 'Uninstall')]
         [string]$ExecuteAction,
+        [ValidateSet('default', 'silent', 'interactive')]
+        [string]$SilentMode = 'default',
         [scriptblock]$ShouldCancel = $null,
+        [scriptblock]$ShouldAbort = $null,
         [scriptblock]$OnExitConfirmKey = $null,
         [scriptblock]$OnOutputLine = $null,
         [scriptblock]$OnHeartbeat = $null,
         [scriptblock]$OnUiPoll = $null,
+        [scriptblock]$OnChromePulse = $null,
         [scriptblock]$OnStallNotify = $null,
         [scriptblock]$ResolveStallPolicy = $null
     )
@@ -776,26 +1214,32 @@ function Invoke-ToolDepPackageExecute {
         }
     }
 
+    $invokeParams = @{
+        PackageId            = $packageId
+        Package              = $Package
+        ShouldCancel         = $ShouldCancel
+        ShouldAbort          = $ShouldAbort
+        OnExitConfirmKey     = $OnExitConfirmKey
+        OnOutputLine         = $OnOutputLine
+        OnHeartbeat          = $OnHeartbeat
+        OnUiPoll             = $OnUiPoll
+        OnChromePulse        = $OnChromePulse
+        OnStallNotify        = $OnStallNotify
+        ResolveStallPolicy   = $ResolveStallPolicy
+    }
+
     switch ($ExecuteAction) {
         'Install' {
-            return Invoke-ToolDepWingetInstall -PackageId $packageId -Package $Package -ShouldCancel $ShouldCancel `
-                -OnExitConfirmKey $OnExitConfirmKey -OnOutputLine $OnOutputLine -OnHeartbeat $OnHeartbeat `
-                -OnUiPoll $OnUiPoll -OnStallNotify $OnStallNotify -ResolveStallPolicy $ResolveStallPolicy
+            return Invoke-ToolDepWingetInstall @invokeParams -SilentMode $SilentMode
         }
         'Repair' {
-            return Invoke-ToolDepWingetInstall -PackageId $packageId -Package $Package -ShouldCancel $ShouldCancel `
-                -OnExitConfirmKey $OnExitConfirmKey -OnOutputLine $OnOutputLine -OnHeartbeat $OnHeartbeat `
-                -OnUiPoll $OnUiPoll -OnStallNotify $OnStallNotify -ResolveStallPolicy $ResolveStallPolicy
+            return Invoke-ToolDepWingetInstall @invokeParams -SilentMode $SilentMode
         }
         'Upgrade' {
-            return Invoke-ToolDepWingetUpgrade -PackageId $packageId -Package $Package -ShouldCancel $ShouldCancel `
-                -OnExitConfirmKey $OnExitConfirmKey -OnOutputLine $OnOutputLine -OnHeartbeat $OnHeartbeat `
-                -OnUiPoll $OnUiPoll -OnStallNotify $OnStallNotify -ResolveStallPolicy $ResolveStallPolicy
+            return Invoke-ToolDepWingetUpgrade @invokeParams -SilentMode $SilentMode
         }
         'Uninstall' {
-            return Invoke-ToolDepWingetUninstall -PackageId $packageId -Package $Package -ShouldCancel $ShouldCancel `
-                -OnExitConfirmKey $OnExitConfirmKey -OnOutputLine $OnOutputLine -OnHeartbeat $OnHeartbeat `
-                -OnUiPoll $OnUiPoll -OnStallNotify $OnStallNotify -ResolveStallPolicy $ResolveStallPolicy
+            return Invoke-ToolDepWingetUninstall @invokeParams
         }
     }
 

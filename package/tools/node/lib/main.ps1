@@ -84,7 +84,8 @@ function Invoke-NodeAction {
         return 1
     }
 
-    $result = . $scriptPath -ToolkitShell $ToolkitShell -PageSize $PageSize -ViewHeight $ViewHeight -LtsOnly:$LtsOnly
+    $result = . $scriptPath -ToolkitShell $ToolkitShell -Action $Action -PageSize $PageSize `
+        -ViewHeight $ViewHeight -LtsOnly:$LtsOnly
     if (Test-ShellNavMarker $result 'quit') {
         return $result
     }
@@ -124,7 +125,7 @@ while ($true) {
         -SectionTitle $sectionTitle `
         -Rows (ConvertTo-ToolMenuListRows -ToolRoot $ToolRoot -MenuItems $menuItems) `
         -CacheKey 'Node' `
-        -ColumnLayout (New-ShellListColumnLayout -Preset MenuList) `
+        -ColumnLayout (New-ShellListColumnLayout -Preset ToolList) `
         -ToolbarConfig $toolbar
 
     if (-not $picked) {
@@ -135,8 +136,7 @@ while ($true) {
     }
 
     if (Test-ToolDependencyMenuAction $picked) {
-        $depResult = Invoke-ToolDependencyMenuAction -Tool $tool -Action $picked -Shell $ToolkitShell `
-            -SectionTitle $sectionTitle
+        $depResult = Invoke-ToolDependencyMenuAction -Tool $tool -Action $picked -Shell $ToolkitShell
         if (Test-ShellNavMarker $depResult) {
             return $depResult
         }

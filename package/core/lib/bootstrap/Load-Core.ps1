@@ -25,6 +25,7 @@ foreach ($name in @(
         'Layout.ps1'
         'Header.ps1'
         'Title.ps1'
+        'ContentRow.ps1'
         'Draw.ps1'
         'Exit.ps1'
         'Footer.ps1'

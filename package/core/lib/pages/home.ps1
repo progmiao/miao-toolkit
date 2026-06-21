@@ -26,8 +26,8 @@ function Invoke-HomePage {
         $currentLocale = Get-CurrentLocale
         $layoutWidth = Get-ToolkitShellLayoutBarInnerWidth -Shell $Shell
         if (-not $Shell.HeaderLocale -or $Shell.HeaderLocale -ne $currentLocale) {
-            Update-ToolkitShellBrandHeader -Shell $Shell
             Clear-ShellSingleSelectListCache -Shell $Shell -CacheKey 'Home'
+            $Shell['HeaderLocale'] = $currentLocale
             $null = Sync-ToolkitSessionInitState -Shell $Shell -Refresh
         }
         elseif ([int]$Shell.HomeListLayoutWidth -ne $layoutWidth) {

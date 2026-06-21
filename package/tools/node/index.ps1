@@ -80,7 +80,8 @@ if ($mode) {
         exit 1
     }
     $scriptPath = Resolve-ActionScript $action.script
-    & $scriptPath @PSBoundParameters
+    & $scriptPath -ToolkitShell $ToolkitShell -Action $action -PageSize $PageSize `
+        -ViewHeight $ViewHeight -LtsOnly:$LtsOnly
     exit $LASTEXITCODE
 }
 

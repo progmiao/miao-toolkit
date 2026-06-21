@@ -241,7 +241,7 @@ function Test-WingetDepResultIsUserCancelled {
     $code = $Result.ExitCode
     if ($null -ne $code) {
         $intCode = [int]$code
-        if ($intCode -in @(-1978335212, -1978335186, -1978335231)) {
+        if ($intCode -in @(-1978335212, -1978335186, -1978335231, -1978335189, -1978335188)) {
             return $true
         }
         if (Test-WingetDepExitCodeIsInstallerUserAbort -ExitCode $intCode) {

@@ -35,8 +35,32 @@ if (Test-WingetDepStreamLineIsEphemeral 'Found Volta [Volta.Volta] Version 2.0.2
 $args = @(Build-ToolDepWingetArgumentList -Verb install -PackageId 'Volta.Volta' -Package @{
     install = @{ packageId = 'Volta.Volta' }
 })
-if ($args -notcontains '--silent' -or $args -contains '--scope') {
-    throw 'default install args should be silent without forced scope'
+if ($args -notcontains '--silent' -or $args -contains '--disable-interactivity') {
+    throw 'default install args should use silent-first and not force disable-interactivity'
+}
+if ($args -notcontains '--accept-package-agreements' -or $args -notcontains '--accept-source-agreements') {
+    throw 'install should auto-accept winget agreements'
+}
+
+$interactivePkg = @(Build-ToolDepWingetArgumentList -Verb install -PackageId 'Example.App' -Package @{
+    install = @{ packageId = 'Example.App'; wingetSilent = $false }
+})
+if ($interactivePkg -contains '--silent') {
+    throw 'wingetSilent=false should skip --silent'
+}
+
+$requiredInteractive = @(Build-ToolDepWingetArgumentList -Verb install -PackageId 'Example.App' -Package @{
+    install = @{ packageId = 'Example.App'; installInteractiveRequired = $true }
+})
+if ($requiredInteractive -contains '--silent') {
+    throw 'installInteractiveRequired should skip --silent'
+}
+
+$silentPkg = @(Build-ToolDepWingetArgumentList -Verb install -PackageId 'Example.App' -Package @{
+    install = @{ packageId = 'Example.App'; wingetSilent = $true }
+})
+if ($silentPkg -notcontains '--silent' -or $silentPkg -notcontains '--accept-package-agreements') {
+    throw 'wingetSilent=true should add --silent and agreement flags'
 }
 
 $scoped = @(Build-ToolDepWingetArgumentList -Verb install -PackageId 'Volta.Volta' -Package @{
@@ -84,10 +108,22 @@ if ((Get-WingetDepStreamLinePhase -Line 'Successfully verified installer hash') 
 if ((Get-WingetDepStreamLinePhase -Line 'Starting package install') -ne 'startInstall') {
     throw 'startInstall phase not detected for English winget line'
 }
+$urlPhase = Get-WingetDepStreamLinePhase -Line 'https://github.com/volta-cli/volta/releases/download/v2.0.2/volta-2.0.2.msi'
+if ($urlPhase -eq 'installerPackage') {
+    throw 'remote .msi URL should not classify as installer package path'
+}
+$policy = Get-WingetDepPolicyConstants
+if ([int]$policy.InstallerPromptFailMs -lt 60000) {
+    throw 'installer prompt fail ms should be at least one minute'
+}
 
 $block = [string][char]0x2588
 $shade = [string][char]0x2592
 $barOnly = "  $($block * 7)$($shade * 6)"
+$pBar = Get-WingetDepStreamLinePercent -Line $barOnly
+if ($pBar -lt 45 -or $pBar -gt 60) {
+    throw "expected ~50 percent from block bar, got $pBar"
+}
 $barMb = "  $($block * 24)$($shade * 6)  4.32 MB"
 $barDone = "  $($block * 30)  5.32 MB / 5.32 MB"
 if (-not (Test-WingetDepStreamLineIsProgressVisual -Line $barOnly)) {
@@ -101,6 +137,22 @@ if (-not (Test-WingetDepStreamLineIsEphemeral -Line $barDone)) {
 }
 if ((Get-WingetDepStreamLinePhase -Line $barMb) -ne 'progress') {
     throw 'progress visual should classify as progress phase'
+}
+
+if ((Get-WingetDepStreamLineDeclineKind -Line 'Install failed with exit code: 1602') -ne 'user') {
+    throw 'installer user abort should classify as user decline'
+}
+if ((Get-WingetDepStreamLineDeclineKind -Line 'The operation was canceled by the user') -ne 'uac') {
+    throw 'UAC cancel line should classify as uac decline'
+}
+
+$sampleShow = @"
+Installer Url: https://github.com/volta-cli/volta/releases/download/v2.0.2/volta.msi
+安装程序 URL: https://example.com/pkg.exe
+"@
+$parsedUrls = @(Parse-WingetShowInstallerDownloadUrls -Text $sampleShow)
+if ($parsedUrls.Count -ne 2) {
+    throw "expected two parsed installer urls, got $($parsedUrls.Count)"
 }
 
 $brandW = 48

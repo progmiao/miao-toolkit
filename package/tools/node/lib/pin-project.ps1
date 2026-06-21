@@ -1,6 +1,9 @@
-﻿# node — 为项目指定 Node 版本（volta pin node@x）
+﻿# node — 为项目指定 Node 版本（全量列表 + 标准单选）
 
 param(
+    [hashtable]$ToolkitShell = $null,
+    $Action = $null,
+
     [int]$PageSize = 0,
     [int]$ViewHeight = 0,
     [switch]$LtsOnly
@@ -10,100 +13,205 @@ $ErrorActionPreference = 'Stop'
 
 $toolRoot = Split-Path $PSScriptRoot -Parent
 $coreLib = Join-Path $toolRoot '..\..\core\lib'
-. (Join-Path $coreLib 'config\Paths.ps1')
-. (Join-Path $coreLib 'config\ListLayout.ps1')
-. (Join-Path $coreLib 'config\UserConfig.ps1')
-. (Join-Path $coreLib 'config\I18n.ps1')
-. (Join-Path $coreLib 'ui\console\Console-Menu.ps1')
+
+. (Join-Path $PSScriptRoot 'node-installed-select.ps1')
+Import-NodeInstalledSelectCore -CoreLib $coreLib
+. (Join-Path $PSScriptRoot 'node-action-title.ps1')
+Import-NodeActionTitleCore -CoreLib $coreLib
 . (Join-Path $PSScriptRoot 'volta-node.ps1')
+. (Join-Path $PSScriptRoot 'node-pin-select.ps1')
+Initialize-NodeVoltaToolRoot -ToolRoot $toolRoot
 Initialize-PathsFromToolRoot -ToolRoot $toolRoot
+
+$nodeToolAction = Resolve-NodeToolAction -ToolRoot $toolRoot -Action $Action -ScriptLeaf 'pin-project.ps1'
+$nodeActionSectionTitle = Get-NodeActionSectionTitle -ToolRoot $toolRoot -Action $nodeToolAction `
+    -ScriptLeaf 'pin-project.ps1'
+$script:NodeActionSectionTitle = $nodeActionSectionTitle
+
+$script:NodeBrowseInstallDotSourceOnly = $true
+. (Join-Path $PSScriptRoot 'browse-install.ps1')
+$script:NodeBrowseInstallDotSourceOnly = $false
 
 $paging = Resolve-MenuPagingDefaults -PageSize $PageSize -ViewHeight $ViewHeight
 $PageSize = $paging.PageSize
 $ViewHeight = $paging.ViewHeight
 
-$configPath = Join-Path $toolRoot 'index.json'
-$toolConfig = Get-Content -Raw -Path $configPath -Encoding UTF8 | ConvertFrom-Json
-
-$packageJson = Join-Path (Get-Location) 'package.json'
-if (-not (Test-Path $packageJson)) {
-    Write-MessageBlock -Title '需要项目目录' -Lines @(
-        '请在包含 package.json 的项目根目录执行此功能。'
-    ) -TitleColor Red
-    exit 1
+$standaloneShell = $false
+if (-not $ToolkitShell) {
+    $ToolkitShell = Initialize-ToolkitShell
+    $standaloneShell = $true
 }
 
-Assert-VoltaAvailable
+Sync-MiaoLocaleFromShell -Shell $ToolkitShell
 
-$voltaInfo = Get-VoltaNodeVersionInfo
-$activeVersion = Get-ActiveNodeVersion
-$items = [System.Collections.Generic.List[object]]::new()
-$seen = @{}
+function Invoke-NodePinProjectPage {
+    param([hashtable]$Shell)
 
-foreach ($ver in $voltaInfo.Map.Keys) {
-    if (-not $seen[$ver]) {
-        $items.Add((New-NodeVersionMenuItem -Version $ver))
-        $seen[$ver] = $true
+    $null = Ensure-ToolkitShellLayoutBrandInnerWidth -Shell $Shell
+    $sectionTitle = $nodeActionSectionTitle
+
+    if (-not (Get-Command volta -ErrorAction SilentlyContinue)) {
+        Show-NodeInstalledSelectMessagePage -Shell $Shell -SectionTitle $sectionTitle `
+            -Message (Get-NodePinI18n -ToolRoot $toolRoot -Key 'node.pin.voltaMissing') `
+            -Color ([System.ConsoleColor]::Red) -DelayMs 1200
+        return (Get-ShellNavMarker -Action 'back')
     }
-}
 
-try {
-    foreach ($r in (Get-RemoteNodeVersions -LtsOnly:$LtsOnly)) {
-        if (-not $seen[$r.Version]) {
-            $items.Add($r)
-            $seen[$r.Version] = $true
+    $pinContext = Resolve-NodeProjectPinContext
+    if ($pinContext.HasProject -and -not (Test-NodeProjectPackageJsonReadable -PackageJsonPath $pinContext.PackageJsonPath)) {
+        Show-NodeInstalledSelectMessagePage -Shell $Shell -SectionTitle $sectionTitle `
+            -Message (Get-NodePinI18n -ToolRoot $toolRoot -Key 'node.pin.packageJsonInvalid') `
+            -Color ([System.ConsoleColor]::Red) -DelayMs 1400
+        return 1
+    }
+
+    $fetch = Start-NodeBrowseRemoteVersionsFetch -LtsOnly:$LtsOnly
+    $loadResult = Wait-NodeBrowseRemoteVersionsLoad -Shell $Shell -SectionTitle $sectionTitle -Fetch $fetch
+    if ($loadResult.Nav) {
+        return $loadResult.Nav
+    }
+
+    try {
+        if ($loadResult.Error) {
+            throw $loadResult.Error
+        }
+        $remote = @($loadResult.Remote)
+    }
+    catch {
+        Initialize-ToolkitShellBodyView -Shell $Shell -SectionTitle $sectionTitle -FooterTemplate SystemToolbarOnly
+        $layout = $Shell.Layout
+        Write-FixedLine $layout.ListStartRow (Get-NodePinI18n -ToolRoot $toolRoot -Key 'node.pin.loadFailed') -Color Red
+        Write-FixedLine ($layout.ListStartRow + 1) $_.Exception.Message -Color DarkGray
+        Start-Sleep -Milliseconds 1500
+        return (Get-ShellNavMarker -Action 'back')
+    }
+
+    $progress = if ($loadResult.Progress) {
+        $loadResult.Progress
+    }
+    else {
+        @{ Percent = 55; SpinnerIndex = 0 }
+    }
+
+    $preparedList = Prepare-NodePinListContent -Shell $Shell -Progress $progress -Remote $remote `
+        -PinnedVersion $pinContext.PinnedVersion
+    $baseVersions = $preparedList.BaseVersions
+    $usePreparedList = $true
+    $flashMessage = ''
+    $contentLine = Format-NodePinContentLineMessage -ToolRoot $toolRoot -PinContext $pinContext `
+        -VoltaInfo $preparedList.VoltaInfo
+    $pendingInstallVersion = ''
+
+    while ($true) {
+        $pinContext = Resolve-NodeProjectPinContext
+
+        if ($usePreparedList) {
+            $voltaInfo = $preparedList.VoltaInfo
+            $rows = $preparedList.Rows
+            $columnLayout = $preparedList.ColumnLayout
+            $sorted = $preparedList.Sorted
+            $usePreparedList = $false
+        }
+        else {
+            $voltaInfo = Get-VoltaNodeVersionInfo
+            $merged = Build-NodePinMergedItems -BaseVersions $baseVersions -VoltaInfo $voltaInfo `
+                -PinnedVersion $pinContext.PinnedVersion
+            $sorted = Sort-NodeVersionItems -Items $merged
+            $widths = Resolve-NodeInstalledVersionColumnWidths -Shell $Shell
+            $rows = Build-NodePinRows -Items $sorted -InstalledMap $voltaInfo.Map `
+                -DefaultVersion $voltaInfo.Default -ActiveVersion (Get-ActiveNodeVersion) `
+                -PinnedVersion $pinContext.PinnedVersion
+            $columnLayout = New-ShellListColumnLayout -Widths @($widths.Version, $widths.Tags)
+            Clear-ShellSingleSelectListCache -Shell $Shell -CacheKey 'NodePin'
+        }
+
+        if ($sorted.Count -eq 0) {
+            Initialize-ToolkitShellBodyView -Shell $Shell -SectionTitle $sectionTitle -FooterTemplate SystemToolbarOnly
+            $layout = $Shell.Layout
+            Write-FixedLine $layout.ListStartRow (Get-NodePinI18n -ToolRoot $toolRoot -Key 'node.pin.noVersions') -Color Yellow
+            Start-Sleep -Milliseconds 900
+            return (Get-ShellNavMarker -Action 'back')
+        }
+
+        if ($progress.Percent -lt 100) {
+            Update-NodeBrowseInstallLoadingProgress -Shell $Shell -Progress $progress -TargetPercent 100
+        }
+
+        $contentLine = Format-NodePinContentLineMessage -ToolRoot $toolRoot -PinContext $pinContext `
+            -VoltaInfo $voltaInfo
+
+        $picked = Invoke-NodePinVersionSingleSelectPage -Shell $Shell -ToolRoot $toolRoot `
+            -Rows $rows -ColumnLayout $columnLayout -InitialContentLine $contentLine `
+            -InitialFlashMessage $flashMessage -SectionTitle $nodeActionSectionTitle
+        $flashMessage = ''
+
+        if (Test-ShellNavMarker $picked) {
+            return $picked
+        }
+        if ($null -eq $picked) {
+            return (Get-ShellNavMarker -Action 'back')
+        }
+
+        $ver = Resolve-NodeInstalledVersionFromPick -Picked $picked
+        if ([string]::IsNullOrWhiteSpace($ver)) {
+            continue
+        }
+
+        $installedBefore = Test-NodeVersionInstalled -Version $ver -InstalledMap $voltaInfo.Map
+        if (-not $installedBefore) {
+            $pendingInstallVersion = $ver
+            $sourceItem = Resolve-NodePinPickSourceItem -Picked $picked
+            $installResult = Run-NodeBrowseInstallOperation -Shell $Shell -Items @($sourceItem) `
+                -SectionTitle $nodeActionSectionTitle
+            if (Test-ShellNavMarker $installResult) {
+                return $installResult
+            }
+
+            $pinContext = Resolve-NodeProjectPinContext
+            $voltaAfter = Get-VoltaNodeVersionInfo
+            $pinned = Normalize-NodeVersionLabel -Version ([string]$pinContext.PinnedVersion)
+            $pending = Normalize-NodeVersionLabel -Version $pendingInstallVersion
+            if ($pinned -and $pending -eq $pinned `
+                -and (Test-NodeVersionInstalled -Version $pending -InstalledMap $voltaAfter.Map)) {
+                $flashMessage = Get-NodePinI18n -ToolRoot $toolRoot -Key 'node.pin.installEffective' `
+                    -Vars @{ version = $pending }
+            }
+            $pendingInstallVersion = ''
+            continue
+        }
+
+        $pinContext = Resolve-NodeProjectPinContext
+        $pinned = Normalize-NodeVersionLabel -Version ([string]$pinContext.PinnedVersion)
+        if ($pinned -and $ver -eq $pinned) {
+            $flashMessage = Get-NodePinI18n -ToolRoot $toolRoot -Key 'node.pin.noChange' -Vars @{ version = $ver }
+            continue
+        }
+
+        if (-not $pinContext.HasProject) {
+            $null = New-NodeProjectPackageJson -Directory $pinContext.CreateDirectory
+            $pinContext = Resolve-NodeProjectPinContext
+        }
+
+        Push-Location $pinContext.WorkingDirectory
+        try {
+            & volta pin "node@$ver"
+            $code = $LASTEXITCODE
+        }
+        finally {
+            Pop-Location
+        }
+
+        if ($code -eq 0) {
+            $flashMessage = Get-NodePinI18n -ToolRoot $toolRoot -Key 'node.pin.success' -Vars @{ version = $ver }
+        }
+        else {
+            $flashMessage = Get-NodePinI18n -ToolRoot $toolRoot -Key 'node.pin.failed'
         }
     }
 }
-catch {
-    if ($items.Count -eq 0) {
-        Write-MessageBlock -Title '加载失败' -Lines @($_.Exception.Message) -TitleColor Red
-        exit 1
-    }
+
+$result = Invoke-NodePinProjectPage -Shell $ToolkitShell
+if ($standaloneShell) {
+    exit $(if ($null -eq $result) { 0 } elseif ($result -is [int]) { $result } else { 0 })
 }
-
-$sorted = Sort-NodeVersionItems -Items @($items.ToArray())
-if ($sorted.Count -eq 0) {
-    Write-MessageBlock -Title '无可用版本' -TitleColor Yellow
-    exit 0
-}
-
-$header = New-ToolMenuHeader -ToolConfig $toolConfig -SectionTitle '为项目指定 · 选择版本'
-$header.Description = 'Enter 确认后执行: volta pin node@版本（未安装时 Volta 将按需拉取）'
-
-$selected = Show-PaginatedMenu -Header $header -Items $sorted -CountLabel '个版本' `
-    -HideColHeader `
-    -GetItemLabel {
-        param($Item, [int]$Index)
-        Format-NodeVersionMenuLabel -Item $Item -InstalledMap $voltaInfo.Map `
-            -DefaultVersion $voltaInfo.Default -ActiveVersion $activeVersion
-    }
-
-if (-not $selected) {
-    Write-MessageBlock -Title '已取消' -TitleColor Yellow
-    exit 0
-}
-
-$ver = $selected.Version
-$needsInstall = -not $voltaInfo.Map.ContainsKey($ver)
-$lines = @("项目: $(Split-Path $packageJson -Leaf)", "执行: volta pin node@$ver")
-if ($needsInstall) {
-    $lines += '该版本尚未安装，Volta 可能在首次使用时自动下载。'
-}
-
-Write-MessageBlock -Title '为项目指定' -Lines $lines -TitleColor Green
-& volta pin "node@$ver"
-$code = $LASTEXITCODE
-
-$after = @()
-if ($code -eq 0) {
-    $after += '已为当前项目锁定 Node 版本。'
-}
-else {
-    $after += '指定未成功，请查看上方 Volta 输出。'
-}
-
-Write-MessageBlock -Title $(if ($code -eq 0) { '完成' } else { '提示' }) -Lines $after `
-    -TitleColor $(if ($code -eq 0) { 'Green' } else { 'Yellow' })
-
-exit $code
+return $result

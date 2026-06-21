@@ -73,7 +73,7 @@ function Invoke-SysPage {
     while ($true) {
         $currentLocale = Get-CurrentLocale
         if (-not $Shell.HeaderLocale -or $Shell.HeaderLocale -ne $currentLocale) {
-            Update-ToolkitShellBrandHeader -Shell $Shell
+            $Shell['HeaderLocale'] = $currentLocale
             Clear-ShellSingleSelectListCache -Shell $Shell -CacheKey 'Sys'
         }
 

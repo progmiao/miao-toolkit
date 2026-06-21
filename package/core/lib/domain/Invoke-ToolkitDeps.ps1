@@ -646,17 +646,18 @@ function Invoke-ToolDependencyMenuAction {
     }
 
     $intent = [string]$Action.command
+    $depTitle = Get-ToolDepOperationSectionTitle -Tool $Tool -Intent $intent
     $ok = $false
 
     switch ($intent) {
         'install' {
-            $ok = Invoke-ToolInstall -Tool $Tool -Shell $Shell -SectionTitle $SectionTitle
+            $ok = Invoke-ToolInstall -Tool $Tool -Shell $Shell -SectionTitle $depTitle
         }
         'update' {
-            $ok = Invoke-ToolUpdate -Tool $Tool -Shell $Shell -SectionTitle $SectionTitle
+            $ok = Invoke-ToolUpdate -Tool $Tool -Shell $Shell -SectionTitle $depTitle
         }
         'uninstall' {
-            $ok = Invoke-ToolUninstall -Tool $Tool -Shell $Shell -SectionTitle $SectionTitle
+            $ok = Invoke-ToolUninstall -Tool $Tool -Shell $Shell -SectionTitle $depTitle
         }
         default {
             return 1

@@ -1,4 +1,4 @@
-# node — 浏览并卸载：批量卸载进度与日志视图
+﻿# node — 浏览并卸载：批量卸载进度与日志视图
 
 function Get-NodeBrowseUninstallCoreLib {
     if ($script:NodeBrowseUninstallCoreLib) {
@@ -38,6 +38,139 @@ function Ensure-NodeBrowseUninstallShellUi {
         }
         . $path
     }
+
+    $batchOpPath = Join-Path $coreLib 'ui\shell\ToolkitDepBatchOperation.ps1'
+    if (-not (Get-Command Initialize-ToolkitDepBatchOperationView -ErrorAction SilentlyContinue)) {
+        . $batchOpPath
+    }
+}
+
+function Update-NodeBrowseUninstallProgressFrame {
+    param(
+        $Ui,
+        $LoadingState,
+        [string]$Version,
+        [ValidateSet('uninstall', 'promote', 'cleanup', 'verify')]
+        [string]$Phase = 'uninstall',
+        [int]$MaxPercent = 40,
+        [string]$StatusKey = ''
+    )
+
+    if ($null -eq $Ui -or -not $Ui.ItemInFlight) { return }
+
+    if ([string]::IsNullOrWhiteSpace($StatusKey)) {
+        if ($Phase -eq 'promote') {
+            $StatusKey = if ($LoadingState['OutputSeen']) {
+                'node.uninstall.promoteStatusWorking'
+            }
+            else {
+                'node.uninstall.promoteStatusStarting'
+            }
+        }
+        elseif ($Phase -eq 'cleanup') {
+            $StatusKey = 'node.uninstall.cleanupStatus'
+        }
+        elseif ($Phase -eq 'verify') {
+            $StatusKey = 'node.uninstall.verifyStatus'
+        }
+        else {
+            $StatusKey = if ($LoadingState['OutputSeen']) {
+                'node.uninstall.uninstallStatusWorking'
+            }
+            else {
+                'node.uninstall.uninstallStatusStarting'
+            }
+        }
+    }
+
+    $mainText = Get-NodeBrowseUninstallI18n -Key $StatusKey -Vars @{
+        spinner = '{spinner}'
+        version = $Version
+    }
+    Update-ToolkitDepOperationSpinnerStatus -Ui $Ui -LoadingState $LoadingState -MainText $mainText
+
+    if ([int]$Ui.ExecuteStartTick -gt 0 -and $MaxPercent -gt 0) {
+        $elapsedMs = [Math]::Max(0, [Environment]::TickCount - [int]$Ui.ExecuteStartTick)
+        $percent = [Math]::Min($MaxPercent, [int][Math]::Floor($elapsedMs / 100.0))
+        if ($percent -lt 1) { $percent = 1 }
+        if ([int]$Ui.ItemSubPercent -lt $percent) {
+            $Ui.ItemSubPercent = $percent
+        }
+    }
+}
+
+function Set-NodeBrowseUninstallItemProgress {
+    param(
+        $Ui,
+        $LoadingState,
+        [string]$Version,
+        [int]$Percent,
+        [ValidateSet('uninstall', 'promote', 'cleanup', 'verify')]
+        [string]$Phase = 'uninstall',
+        [scriptblock]$Redraw
+    )
+
+    if ($null -eq $Ui -or -not $Ui.ItemInFlight) { return }
+
+    Update-NodeBrowseUninstallProgressFrame -Ui $Ui -LoadingState $LoadingState -Version $Version `
+        -Phase $Phase -MaxPercent 0
+    if ($Percent -gt [int]$Ui.ItemSubPercent) {
+        $Ui.ItemSubPercent = $Percent
+    }
+    if ($Redraw) {
+        & $Redraw
+    }
+}
+
+function Complete-NodeBrowseUninstallProgressAnimation {
+    param(
+        $Ui,
+        $LoadingState,
+        [string]$Version,
+        [ValidateSet('uninstall', 'promote')]
+        [string]$Phase = 'uninstall',
+        [scriptblock]$Redraw,
+        [int]$MinDurationMs = 900,
+        [int]$FromPercent = 0,
+        [int]$TargetPercent = 100
+    )
+
+    if ($null -eq $Ui -or -not $Ui.ItemInFlight) { return }
+
+    if ([int]$Ui.ItemSubPercent -lt $FromPercent) {
+        $Ui.ItemSubPercent = $FromPercent
+    }
+
+    $startTick = [Environment]::TickCount
+
+    while ($true) {
+        $elapsedMs = [Math]::Max(0, [Environment]::TickCount - $startTick)
+        $maxPercent = if ($elapsedMs -lt $MinDurationMs) {
+            [Math]::Max($FromPercent, $TargetPercent - 10)
+        }
+        else {
+            $TargetPercent
+        }
+        Update-NodeBrowseUninstallProgressFrame -Ui $Ui -LoadingState $LoadingState -Version $Version `
+            -Phase $Phase -MaxPercent $maxPercent
+
+        if ($elapsedMs -ge $MinDurationMs) {
+            if ([int]$Ui.ItemSubPercent -lt $TargetPercent) {
+                $Ui.ItemSubPercent = [Math]::Min($TargetPercent, [int]$Ui.ItemSubPercent + 8)
+            }
+            else {
+                break
+            }
+        }
+
+        & $Redraw
+        Start-Sleep -Milliseconds 80
+    }
+
+    $Ui.ItemSubPercent = $TargetPercent
+    Update-NodeBrowseUninstallProgressFrame -Ui $Ui -LoadingState $LoadingState -Version $Version `
+        -Phase $Phase -MaxPercent $TargetPercent
+    & $Redraw
 }
 
 function Update-NodeBrowseUninstallLoadingStatus {
@@ -49,51 +182,44 @@ function Update-NodeBrowseUninstallLoadingStatus {
         [string]$Phase = 'uninstall'
     )
 
-    if (-not $Ui.ItemInFlight) { return }
+    Update-NodeBrowseUninstallProgressFrame -Ui $Ui -LoadingState $LoadingState -Version $Version -Phase $Phase
+}
 
-    $LoadingState['SpinnerIndex'] = [int]$LoadingState['SpinnerIndex'] + 1
-    $frames = $LoadingState['SpinnerFrames']
-    $spinner = $frames[[int]$LoadingState['SpinnerIndex'] % $frames.Count]
-    $elapsed = 0
-    if ($Ui.ExecuteStartTick -gt 0) {
-        $elapsed = [int][Math]::Floor(([Environment]::TickCount - $Ui.ExecuteStartTick) / 1000.0)
-    }
+function Update-NodeBrowseUninstallProgressFromElapsed {
+    param(
+        $Ui,
+        [string]$Version,
+        [ValidateSet('uninstall', 'promote')]
+        [string]$Phase = 'uninstall'
+    )
 
-    if ($Phase -eq 'promote') {
-        $key = if ($LoadingState['OutputSeen']) {
-            'node.uninstall.promoteStatusWorking'
-        }
-        else {
-            'node.uninstall.promoteStatusStarting'
-        }
-    }
-    else {
-        $key = if ($LoadingState['OutputSeen']) {
-            'node.uninstall.uninstallStatusWorking'
-        }
-        else {
-            'node.uninstall.uninstallStatusStarting'
-        }
-    }
+    if ($null -eq $Ui -or -not $Ui.ItemInFlight) { return $false }
+    if ([int]$Ui.ExecuteStartTick -le 0) { return $false }
 
-    $Ui.StatusText = Get-NodeBrowseUninstallI18n -Key $key -Vars @{
-        spinner = $spinner
-        elapsed = [string]$elapsed
-        version = $Version
-    }
-    $Ui.StatusPlain = $false
+    $elapsedMs = [Math]::Max(0, [Environment]::TickCount - [int]$Ui.ExecuteStartTick)
+    $percent = [Math]::Min(90, [int][Math]::Floor($elapsedMs / 100.0))
+    if ($percent -lt 1) { $percent = 1 }
+    if ([int]$Ui.ItemSubPercent -ge $percent) { return $false }
+
+    $Ui.ItemSubPercent = $percent
+    return $true
 }
 
 function Start-NodeVoltaUninstallProcess {
     param([string]$Version)
 
+    $norm = Normalize-NodeVersionLabel -Version $Version
+    if ([string]::IsNullOrWhiteSpace($norm)) {
+        throw 'Node version is required for uninstall'
+    }
+
     $voltaCmd = Get-Command volta -ErrorAction Stop
-    $target = "node@$Version"
+    $target = "node@$norm"
     $queue = [System.Collections.Concurrent.ConcurrentQueue[string]]::new()
 
     $psi = New-Object System.Diagnostics.ProcessStartInfo
     $psi.FileName = $voltaCmd.Source
-    $psi.Arguments = "uninstall `"$target`""
+    $psi.Arguments = "uninstall --verbose `"$target`""
     $psi.RedirectStandardOutput = $true
     $psi.RedirectStandardError = $true
     $psi.UseShellExecute = $false
@@ -123,10 +249,11 @@ function Start-NodeVoltaUninstallProcess {
     $proc.BeginErrorReadLine()
 
     return @{
+        Mode          = 'redirect'
         Process       = $proc
         Queue         = $queue
         Subscriptions = @($stdoutSub, $stderrSub)
-        CommandLine   = "volta uninstall `"$target`""
+        CommandLine   = "volta uninstall --verbose `"$target`""
     }
 }
 
@@ -144,24 +271,16 @@ function Wait-NodeVoltaUninstallProcess {
         $FnLogInput,
         [scriptblock]$Redraw,
         [ValidateSet('uninstall', 'promote')]
-        [string]$Phase = 'uninstall'
+        [string]$Phase = 'uninstall',
+        [int]$ProcessMaxPercent = 40
     )
 
-    $pollState = @{
-        LastLoadingTick = 0
-        LoadingInterval = 200
-    }
-
-    while (-not $State.Process.HasExited) {
+    while (-not (Test-NodeVoltaInstallProcessExited -State $State)) {
         Drain-NodeVoltaInstallQueue -State $State -Log $Log -LoadingState $LoadingState -Redraw $Redraw
 
-        $now = [Environment]::TickCount
-        if (($now - $pollState.LastLoadingTick) -ge $pollState.LoadingInterval) {
-            Update-NodeBrowseUninstallLoadingStatus -Ui $Ui -LoadingState $LoadingState `
-                -Version $Version -Phase $Phase
-            & $Redraw
-            $pollState.LastLoadingTick = $now
-        }
+        Update-NodeBrowseUninstallProgressFrame -Ui $Ui -LoadingState $LoadingState -Version $Version `
+            -Phase $Phase -MaxPercent $ProcessMaxPercent
+        & $Redraw
 
         if (Test-ToolkitShellToolbarLocked -Shell $Shell) {
             Drain-ShellLockedToolbarKeys -Shell $Shell -AllowLogScroll
@@ -173,13 +292,53 @@ function Wait-NodeVoltaUninstallProcess {
             & $Redraw
         }
 
-        Start-Sleep -Milliseconds 30
+        Start-Sleep -Milliseconds 80
     }
 
-    $State.Process.WaitForExit()
-    Start-Sleep -Milliseconds 80
-    Drain-NodeVoltaInstallQueue -State $State -Log $Log -LoadingState $LoadingState -Redraw $Redraw
-    return (Complete-NodeVoltaInstallProcess -State $State)
+    if ($State.Mode -eq 'redirect' -and $State.Process) {
+        $State.Process.WaitForExit()
+        Start-Sleep -Milliseconds 80
+    }
+    Drain-NodeVoltaInstallQueue -State $State -Log $Log -LoadingState $LoadingState -Redraw $Redraw `
+        -Ui $Ui -OutputState @{ LoggedSuccess = $false; MinUnpackPercent = 0 }
+
+    if ([int]$Ui.ItemSubPercent -lt $ProcessMaxPercent) {
+        $Ui.ItemSubPercent = $ProcessMaxPercent
+    }
+    Update-NodeBrowseUninstallProgressFrame -Ui $Ui -LoadingState $LoadingState -Version $Version `
+        -Phase $Phase -MaxPercent $ProcessMaxPercent
+    & $Redraw
+
+    return @((Complete-NodeVoltaInstallProcess -State $State))[-1]
+}
+
+function Invoke-NodeBrowseManualUninstallStep {
+    param(
+        $Ui,
+        $Log,
+        [string]$Version,
+        $LoadingState,
+        [scriptblock]$Redraw
+    )
+
+    Write-NodeBrowseInstallLogLine -Log $Log -Text (Get-NodeBrowseUninstallI18n -Key 'node.uninstall.logManualUninstallStart' -Vars @{
+        version = $Version
+    }) -Kind 'heading' -WithTimestamp
+    Update-NodeBrowseUninstallProgressFrame -Ui $Ui -LoadingState $LoadingState -Version $Version -Phase 'uninstall'
+    & $Redraw
+
+    $startTick = [Environment]::TickCount
+    while ([Environment]::TickCount - $startTick -lt 400) {
+        Update-NodeBrowseUninstallProgressFrame -Ui $Ui -LoadingState $LoadingState -Version $Version `
+            -Phase 'uninstall' -MaxPercent 40
+        & $Redraw
+        Start-Sleep -Milliseconds 80
+    }
+    if ([int]$Ui.ItemSubPercent -lt 40) {
+        $Ui.ItemSubPercent = 40
+    }
+    & $Redraw
+    return 0
 }
 
 function Invoke-NodeVoltaProcessStep {
@@ -195,154 +354,240 @@ function Invoke-NodeVoltaProcessStep {
         [scriptblock]$OnExitKey,
         [hashtable]$ScrollState,
         $FnLogInput,
-        [scriptblock]$Redraw
+        [scriptblock]$Redraw,
+        $LoadingState = $null,
+        [switch]$ManageInFlight,
+        [int]$ProcessMaxPercent = 40
     )
 
-    $loadingState = New-NodeBrowseInstallLoadingState
-    $ui.ItemInFlight = $true
-    $ui.ExecuteStartTick = [Environment]::TickCount
-    $loadingState['LastOutputTick'] = $ui.ExecuteStartTick
-    Update-NodeBrowseUninstallLoadingStatus -Ui $Ui -LoadingState $loadingState -Version $Version -Phase $Phase
+    if (-not $LoadingState) {
+        $loadingState = New-NodeBrowseInstallLoadingState
+    }
+    else {
+        $loadingState = $LoadingState
+    }
+
+    $outputLines = $LoadingState['OutputLines']
+    if ($null -eq $outputLines) {
+        $outputLines = New-Object 'System.Collections.Generic.List[string]'
+        $loadingState['OutputLines'] = $outputLines
+    }
+
+    if ($ManageInFlight) {
+        $ui.ItemInFlight = $true
+        $ui.ItemSubPercent = 0
+        $ui.ExecuteStartTick = [Environment]::TickCount
+        $loadingState['LastOutputTick'] = $ui.ExecuteStartTick
+    }
+
+    Update-NodeBrowseUninstallProgressFrame -Ui $Ui -LoadingState $loadingState -Version $Version -Phase $Phase
     & $Redraw
 
     $procState = & $StartProcess -Version $Version
-    Write-NodeBrowseInstallLogLine -Log $Log -Text $procState.CommandLine
+    Write-NodeBrowseInstallLogLine -Log $Log -Text $procState.CommandLine -WithTimestamp
     & $Redraw
 
-    return (Wait-NodeVoltaUninstallProcess -State $procState -Ui $Ui -LoadingState $loadingState `
-        -Version $Version -Shell $Shell -Log $Log -LogViewportRows $LogViewportRows `
+    $processMax = if ($Phase -eq 'promote') { 90 } else { $ProcessMaxPercent }
+
+    return @{
+        ExitCode    = @((Wait-NodeVoltaUninstallProcess -State $procState -Ui $Ui -LoadingState $loadingState `
+            -Version $Version -Shell $Shell -Log $Log -LogViewportRows $LogViewportRows `
+            -OnExitKey $OnExitKey -ScrollState $ScrollState -FnLogInput $FnLogInput `
+            -Redraw $Redraw -Phase $Phase -ProcessMaxPercent $processMax))[-1]
+        OutputLines = @($outputLines.ToArray())
+        LoadingState = $loadingState
+    }
+}
+
+function Write-NodeBrowseUninstallArtifactCleanupLog {
+    param(
+        $Log,
+        [string]$Version,
+        [hashtable]$Cleanup,
+        [string]$StartKey,
+        [string]$RemovedKey,
+        [string]$FailedKey
+    )
+
+    Write-NodeBrowseInstallLogLine -Log $Log -Text (Get-NodeBrowseUninstallI18n -Key $StartKey -Vars @{
+        version = $Version
+    }) -Kind 'heading' -WithTimestamp
+
+    foreach ($path in @($Cleanup.Removed)) {
+        Write-NodeBrowseInstallLogLine -Log $Log -Text (Get-NodeBrowseUninstallI18n -Key $RemovedKey -Vars @{
+            path = $path
+        }) -Kind 'success'
+    }
+    foreach ($fail in @($Cleanup.Failed)) {
+        Write-NodeBrowseInstallLogLine -Log $Log -Text (Get-NodeBrowseUninstallI18n -Key $FailedKey -Vars @{
+            path  = $fail.Path
+            error = $fail.Error
+        }) -Kind 'error'
+    }
+}
+
+function Invoke-NodeVoltaPostBatchDefaultRestore {
+    param(
+        $Ui,
+        $Log,
+        [hashtable]$Shell,
+        [int]$LogViewportRows,
+        [string]$InitialDefault,
+        [array]$SuccessfullyUninstalledVersions,
+        [hashtable]$OperationPlan,
+        [scriptblock]$OnExitKey,
+        [hashtable]$ScrollState,
+        $FnLogInput,
+        [scriptblock]$Redraw
+    )
+
+    if (-not $OperationPlan.DefaultRestorePlanned) { return }
+
+    if (-not (Test-VoltaDefaultVersionWasUninstalled -InitialDefault $InitialDefault `
+            -SuccessfullyUninstalledVersions $SuccessfullyUninstalledVersions)) {
+        return
+    }
+
+    $finalInfo = Get-VoltaNodeVersionInfo
+    $replacement = Get-VoltaNodeDefaultRestoreCandidate -InstalledMap $finalInfo.Map
+    if ([string]::IsNullOrWhiteSpace($replacement)) { return }
+
+    $stepIndex = [int]$OperationPlan.UninstallCount + 1
+    $defaultName = Get-NodeBrowseUninstallI18n -Key 'node.uninstall.defaultRestoreItemName' -Vars @{
+        version = $replacement
+    }
+    $loadingState = New-NodeBrowseInstallLoadingState
+    $ui.ItemInFlight = $true
+    $ui.ItemSubPercent = 0
+    $ui.ExecuteStartTick = [Environment]::TickCount
+    $ui.ProgressName = $defaultName
+    $loadingState['LastOutputTick'] = $ui.ExecuteStartTick
+    Update-NodeBrowseUninstallProgressFrame -Ui $Ui -LoadingState $loadingState -Version $replacement -Phase 'promote'
+    & $Redraw
+
+    if (-not (Test-VoltaNodeDefaultNeedsIntervention -InstalledMap $finalInfo.Map `
+            -CurrentDefault $finalInfo.Default)) {
+        Write-NodeBrowseInstallLogLine -Log $Log -Text '' -Kind 'separator'
+        Write-NodeBrowseInstallLogLine -Log $Log -Text (Get-NodeBrowseUninstallI18n -Key 'node.uninstall.logDefaultRestoreVoltaOk' -Vars @{
+            version = $replacement
+        }) -Kind 'hint' -WithTimestamp
+        Complete-NodeBrowseUninstallProgressAnimation -Ui $Ui -LoadingState $loadingState -Version $replacement `
+            -Phase 'promote' -Redraw $Redraw -MinDurationMs 500 -FromPercent 0 -TargetPercent 100
+        $ui.ProgressCurrent = $stepIndex
+        $ui.ItemInFlight = $false
+        $ui.ItemSubPercent = -1
+        & $Redraw
+        return
+    }
+
+    Write-NodeBrowseInstallLogLine -Log $Log -Text '' -Kind 'separator'
+    Write-NodeBrowseInstallLogLine -Log $Log -Text (Get-NodeBrowseUninstallI18n -Key 'node.uninstall.logDefaultRestoreStart' -Vars @{
+        version = $replacement
+    }) -Kind 'heading' -WithTimestamp
+    & $Redraw
+
+    $promoteResult = Invoke-NodeVoltaProcessStep -Ui $Ui -Log $Log -Shell $Shell `
+        -LogViewportRows $LogViewportRows -Version $replacement `
+        -Phase 'promote' -StartProcess ${function:Start-NodeVoltaInstallProcess} `
         -OnExitKey $OnExitKey -ScrollState $ScrollState -FnLogInput $FnLogInput `
-        -Redraw $Redraw -Phase $Phase)
+        -Redraw $Redraw -LoadingState $loadingState
+    $promoteExit = [int]$promoteResult.ExitCode
+
+    if ($promoteExit -eq 0) {
+        Complete-NodeBrowseUninstallProgressAnimation -Ui $Ui -LoadingState $loadingState -Version $replacement `
+            -Phase 'promote' -Redraw $Redraw -MinDurationMs 400 -FromPercent 90 -TargetPercent 100
+        Write-NodeBrowseInstallLogLine -Log $Log -Text (Get-NodeBrowseUninstallI18n -Key 'node.uninstall.logDefaultRestoreSuccess' -Vars @{
+            version = $replacement
+        }) -Kind 'success' -WithTimestamp
+    }
+    else {
+        if ([int]$Ui.ItemSubPercent -lt 90) {
+            $Ui.ItemSubPercent = 90
+        }
+        Write-NodeBrowseInstallLogLine -Log $Log -Text (Get-NodeBrowseUninstallI18n -Key 'node.uninstall.logDefaultRestoreFailed' -Vars @{
+            version = $replacement
+            code    = [string]$promoteExit
+        }) -Kind 'error' -WithTimestamp
+    }
+
+    $ui.ProgressCurrent = $stepIndex
+    $ui.ItemInFlight = $false
+    $ui.ItemSubPercent = -1
+    & $Redraw
 }
 
 function Run-NodeBrowseUninstallOperation {
     param(
         [hashtable]$Shell,
-        [array]$Items
+        [array]$Items,
+        [string]$SectionTitle = ''
     )
 
     Ensure-NodeBrowseUninstallShellUi
 
-    $versions = @($Items | ForEach-Object {
-        if ($_.Version) { Normalize-NodeVersionLabel -Version ([string]$_.Version) }
-        elseif ($_.Source -and $_.Source.Version) { Normalize-NodeVersionLabel -Version ([string]$_.Source.Version) }
-        else { '' }
-    } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
-    $total = $versions.Count
-    if ($total -le 0) {
+    $initialInfo = Get-VoltaNodeVersionInfo
+    $ordered = @((Order-NodeVersionsForUninstall -VersionsToUninstall (
+        Get-NodeBrowseUninstallPlanVersions -Items $Items -InstalledMap $initialInfo.Map
+    ) -DefaultVersion $initialInfo.Default))
+    $operationPlan = Get-NodeBrowseUninstallOperationPlan -InitialDefault $initialInfo.Default `
+        -InstalledMap $initialInfo.Map -OrderedVersions $ordered
+    $totalSteps = [int]$operationPlan.TotalSteps
+    $uninstallCount = [int]$operationPlan.UninstallCount
+    if ($uninstallCount -le 0) {
         return $null
     }
 
-    $initialInfo = Get-VoltaNodeVersionInfo
-    $ordered = Order-NodeVersionsForUninstall -VersionsToUninstall $versions -DefaultVersion $initialInfo.Default
-
-    $toolbar = New-ShellSystemToolbarConfig -HideSystem -HideHelp
-    $renderFooter = New-ShellSystemToolbarFooterRenderer -Shell $Shell -ToolbarConfig $toolbar
-    Register-ToolkitShellFooter -Shell $Shell -Renderer $renderFooter
-
-    $sectionTitle = Get-NodeBrowseUninstallProgressSectionTitle
-    Initialize-ToolkitShellBodyView -Shell $Shell -SectionTitle $sectionTitle -FooterTemplate SystemToolbarOnly
-
-    $layout = $Shell.Layout
-    $logLayout = Get-ToolkitDepOperationLogLayout -Layout $layout
-    $logSeparatorRow = [int]$logLayout.SeparatorRow
-    $logContentViewportRows = [int]$logLayout.ContentViewportRows
-
-    $contentMetrics = if ($Shell.Layout.ContentMetrics) { $Shell.Layout.ContentMetrics } else {
-        Sync-ToolkitShellContentMetrics -Shell $Shell
+    $sectionTitle = if (-not [string]::IsNullOrWhiteSpace($SectionTitle)) {
+        $SectionTitle
     }
-    $barWidth = [int]$contentMetrics.InnerWidth
-    $log = New-NodeBrowseInstallLog -ViewportRows $logContentViewportRows -BrandInnerWidth $barWidth
-
-    for ($clearRow = $logSeparatorRow; $clearRow -le $layout.ListEndRow; $clearRow++) {
-        Write-FixedLine $clearRow '' -Color DarkGray
+    else {
+        $script:NodeActionSectionTitle
     }
+    $ctx = Initialize-ToolkitDepBatchOperationView -Shell $Shell -SectionTitle $sectionTitle `
+        -ProgressTotal $totalSteps -ReadyStatusText (Get-NodeBrowseUninstallI18n -Key 'node.uninstall.statusReady')
 
-    $ui = @{
-        ProgressCurrent  = 0
-        ItemInFlight     = $false
-        ItemSubPercent   = -1
-        ProgressName     = ''
-        StatusText       = (Get-NodeBrowseUninstallI18n -Key 'node.uninstall.statusReady')
-        StatusPlain      = $false
-        StatusSegments   = $null
-        ExecuteStartTick = 0
-    }
-
-    $fnEnterBatch = Resolve-DepOperationFn 'Enter-ConsoleDrawBatch'
-    $fnCompleteBatch = Resolve-DepOperationFn 'Complete-ConsoleDrawBatch'
-    $fnDrainStaleInput = Resolve-DepOperationFn 'Drain-ConsoleStaleToolbarInput'
-    $fnReadExitIfActive = Resolve-DepOperationFn 'Read-ShellExitIfActive'
-    $fnLogInput = Resolve-DepOperationFn 'Invoke-ToolkitDepLogInputIfAvailable'
-    $fnRegisterExitExtension = Resolve-DepOperationFn 'Register-ShellExitExtension'
-    $fnClearExitExtension = Resolve-DepOperationFn 'Clear-ShellExitExtension'
-    $fnProcessEscInput = Resolve-DepOperationFn 'Process-ShellEscInputIfAvailable'
-
-    $useBufferDraw = $false
-    if ($env:MIAO_BUFFER_DRAW -eq '1') {
-        try { $useBufferDraw = ($null -ne $Host.UI.RawUI) } catch {}
-    }
-
-    $fnDrawLogViewport = Resolve-DepOperationFn 'Draw-ToolkitDepOperationLogViewport'
-    $fnPeekKey = Resolve-DepOperationFn 'Get-ConsoleVirtualKeyPeek'
-    $fnWriteExitFooter = Get-Command Write-ShellExitFooter -CommandType Function -ErrorAction Stop
-
-    $RedrawView = {
-        $itemSubPercent = if ($ui.ItemInFlight) { [int]$ui.ItemSubPercent } else { -1 }
-        $statusSegments = if ($ui.StatusSegments) { @($ui.StatusSegments) } else { $null }
-        if ($useBufferDraw) { & $fnEnterBatch }
-        Draw-ToolkitDepOperationView -Shell $Shell -Log $log -ProgressCurrent $ui.ProgressCurrent `
-            -ProgressTotal $total -ProgressName $ui.ProgressName -StatusText $ui.StatusText `
-            -LogViewportRows 0 -LogStartRow $logSeparatorRow `
-            -ProgressItemSubPercent $itemSubPercent -StatusPlain:([bool]$ui.StatusPlain) `
-            -StatusSegments $statusSegments
-        & $fnDrawLogViewport -Shell $Shell -Log $log `
-            -LogSeparatorRow $logSeparatorRow -LogContentViewportRows $logContentViewportRows
-        if ($Shell.ExitMode) {
-            & $fnWriteExitFooter -Shell $Shell
-        }
-        else {
-            & $renderFooter
-        }
-        if ($useBufferDraw) {
-            $null = & $fnCompleteBatch -ToolkitShell $Shell
-        }
-    }.GetNewClosure()
-
-    $onExitConfirmed = { }.GetNewClosure()
-    & $fnRegisterExitExtension -Shell $Shell -OnExitConfirmed $onExitConfirmed
-
-    $onExitKey = {
-        $null = & $fnProcessEscInput -Shell $Shell
-    }.GetNewClosure()
-
-    $uiPollState = @{
-        LastScrollTick      = 0
-        MinScrollIntervalMs = 55
-    }
+    $log = $ctx.Log
+    $ui = $ctx.Ui
+    $RedrawView = $ctx.RedrawView
+    $onExitKey = $ctx.OnExitKey
+    $uiPollState = $ctx.PollState
+    $logContentViewportRows = $ctx.LogContentViewportRows
+    $fnLogInput = $ctx.FnLogInput
 
     $successCount = 0
     $failedCount = 0
     $cancelled = $false
+    $initialDefault = $initialInfo.Default
+    $successfullyUninstalled = @()
 
     try {
-        & $fnDrainStaleInput
+        & $ctx.FnDrainStaleInput
         if (Get-Command Clear-ConsoleInputBuffer -ErrorAction SilentlyContinue) {
             Clear-ConsoleInputBuffer
         }
 
         Set-ToolkitShellToolbarLocked -Shell $Shell -Locked $true
+        Start-ToolkitDepOperationBatch -Ui $ui
+        Write-NodeBrowseInstallLogLine -Log $log -Text (Get-NodeBrowseUninstallI18n -Key 'node.uninstall.logBatchSelected' -Vars @{
+            versions = ($ordered -join ', ')
+            total    = $totalSteps
+        }) -Kind 'heading' -WithTimestamp
         & $RedrawView
 
-        for ($i = 0; $i -lt $total; $i++) {
+        for ($i = 0; $i -lt $uninstallCount; $i++) {
             if ($cancelled) { break }
 
-            $ver = $ordered[$i]
+            $ver = Normalize-NodeVersionLabel -Version ([string]$ordered[$i])
+            if ([string]::IsNullOrWhiteSpace($ver)) {
+                $failedCount++
+                Write-NodeBrowseInstallLogLine -Log $log -Text (Get-NodeBrowseUninstallI18n -Key 'node.uninstall.logInvalidVersion' -Vars @{
+                    index = ($i + 1)
+                }) -Kind 'error' -WithTimestamp
+                $ui.ProgressCurrent = $i + 1
+                & $RedrawView
+                continue
+            }
             $target = "node@$ver"
-            $voltaInfo = Get-VoltaNodeVersionInfo
-            $defaultNorm = Normalize-NodeVersionLabel -Version $voltaInfo.Default
-            $verNorm = Normalize-NodeVersionLabel -Version $ver
-            $isDefault = ($defaultNorm -and $verNorm -eq $defaultNorm)
 
             if ($ui.ProgressCurrent -gt 0) {
                 Write-NodeBrowseInstallLogLine -Log $log -Text '' -Kind 'separator'
@@ -350,57 +595,48 @@ function Run-NodeBrowseUninstallOperation {
             $sectionText = Get-I18n -Key 'page.depOperation.logSectionPackage' -Vars @{
                 name  = $target
                 index = ($i + 1)
-                total = $total
+                total = $totalSteps
             }
             Write-NodeBrowseInstallLogLine -Log $log -Text $sectionText -Kind 'section' -WithTimestamp
 
+            $loadingState = New-NodeBrowseInstallLoadingState
             $ui.ProgressName = $target
+            $ui.ItemInFlight = $true
+            $ui.ItemSubPercent = 0
+            $ui.ExecuteStartTick = [Environment]::TickCount
+            $loadingState['LastOutputTick'] = $ui.ExecuteStartTick
+            Update-NodeBrowseUninstallProgressFrame -Ui $ui -LoadingState $loadingState -Version $ver -Phase 'uninstall'
             Write-NodeBrowseInstallLogLine -Log $log -Text (Get-NodeBrowseUninstallI18n -Key 'node.uninstall.logStart' -Vars @{
                 version = $ver
             }) -Kind 'heading' -WithTimestamp
             & $RedrawView
 
-            if ($isDefault) {
-                $replacement = Get-NodeDefaultReplacementVersion -InstalledMap $voltaInfo.Map -ExcludeVersion $ver
-                if ($replacement) {
-                    Write-NodeBrowseInstallLogLine -Log $log -Text (Get-NodeBrowseUninstallI18n -Key 'node.uninstall.logPromoteDefault' -Vars @{
-                        version     = $ver
-                        replacement = $replacement
-                    }) -Kind 'hint' -WithTimestamp
-                    & $RedrawView
-
-                    $promoteExit = Invoke-NodeVoltaProcessStep -Ui $ui -Log $log -Shell $Shell `
-                        -LogViewportRows $logContentViewportRows -Version $replacement `
-                        -Phase 'promote' -StartProcess ${function:Start-NodeVoltaInstallProcess} `
-                        -OnExitKey $onExitKey -ScrollState $uiPollState -FnLogInput $fnLogInput `
-                        -Redraw $RedrawView
-
-                    if ($promoteExit -ne 0) {
-                        Write-NodeBrowseInstallLogLine -Log $log -Text (Get-NodeBrowseUninstallI18n -Key 'node.uninstall.logPromoteFailed' -Vars @{
-                            replacement = $replacement
-                            code        = [string]$promoteExit
-                        }) -Kind 'error' -WithTimestamp
-                    }
-                    else {
-                        Write-NodeBrowseInstallLogLine -Log $log -Text (Get-NodeBrowseUninstallI18n -Key 'node.uninstall.logPromoteSuccess' -Vars @{
-                            replacement = $replacement
-                        }) -Kind 'success' -WithTimestamp
-                    }
-                    & $RedrawView
-                }
-                else {
-                    Write-NodeBrowseInstallLogLine -Log $log -Text (Get-NodeBrowseUninstallI18n -Key 'node.uninstall.logNoReplacement' -Vars @{
+            $uninstallExit = 0
+            $voltaCliUsed = $false
+            if (Get-VoltaNodeCliUninstallSupported) {
+                $voltaCliUsed = $true
+                $stepResult = Invoke-NodeVoltaProcessStep -Ui $ui -Log $log -Shell $Shell `
+                    -LogViewportRows $logContentViewportRows -Version $ver -Phase 'uninstall' `
+                    -StartProcess ${function:Start-NodeVoltaUninstallProcess} -OnExitKey $onExitKey `
+                    -ScrollState $uiPollState -FnLogInput $fnLogInput -Redraw $RedrawView `
+                    -LoadingState $loadingState
+                $uninstallExit = [int]$stepResult.ExitCode
+                if (Test-VoltaNodeUninstallExitIgnorable -ExitCode $uninstallExit -OutputLines $stepResult.OutputLines) {
+                    Set-VoltaNodeCliUninstallUnsupported
+                    Write-NodeBrowseInstallLogLine -Log $log -Text (Get-NodeBrowseUninstallI18n -Key 'node.uninstall.logVoltaCliUnsupported' -Vars @{
                         version = $ver
+                        code    = [string]$uninstallExit
                     }) -Kind 'hint' -WithTimestamp
                     & $RedrawView
                 }
             }
+            else {
+                $uninstallExit = Invoke-NodeBrowseManualUninstallStep -Ui $ui -Log $log -Version $ver `
+                    -LoadingState $loadingState -Redraw $RedrawView
+            }
 
-            $uninstallExit = Invoke-NodeVoltaProcessStep -Ui $ui -Log $log -Shell $Shell `
-                -LogViewportRows $logContentViewportRows -Version $ver -Phase 'uninstall' `
-                -StartProcess ${function:Start-NodeVoltaUninstallProcess} -OnExitKey $onExitKey `
-                -ScrollState $uiPollState -FnLogInput $fnLogInput -Redraw $RedrawView
-            $ui.ItemInFlight = $false
+            Set-NodeBrowseUninstallItemProgress -Ui $ui -LoadingState $loadingState -Version $ver `
+                -Percent 45 -Phase 'cleanup' -Redraw $RedrawView
 
             Write-NodeBrowseInstallLogLine -Log $log -Text (Get-NodeBrowseUninstallI18n -Key 'node.uninstall.logCleanupStart' -Vars @{
                 version = $ver
@@ -415,6 +651,9 @@ function Run-NodeBrowseUninstallOperation {
                     root = $cleanup.Root
                 }) -Kind 'hint'
             }
+            Set-NodeBrowseUninstallItemProgress -Ui $ui -LoadingState $loadingState -Version $ver `
+                -Percent 55 -Phase 'cleanup' -Redraw $RedrawView
+
             if ($cleanup.Paths.Count -eq 0) {
                 Write-NodeBrowseInstallLogLine -Log $log -Text (Get-NodeBrowseUninstallI18n -Key 'node.uninstall.logCleanupNone' -Vars @{
                     version = $ver
@@ -437,11 +676,44 @@ function Run-NodeBrowseUninstallOperation {
                 }) -Kind 'error'
             }
 
+            Set-NodeBrowseUninstallItemProgress -Ui $ui -LoadingState $loadingState -Version $ver `
+                -Percent 70 -Phase 'cleanup' -Redraw $RedrawView
+
+            $invCleanup = Remove-VoltaNodeVersionInventoryFiles -Version $ver
+            Write-NodeBrowseUninstallArtifactCleanupLog -Log $log -Version $ver -Cleanup $invCleanup `
+                -StartKey 'node.uninstall.logInventoryCleanupStart' `
+                -RemovedKey 'node.uninstall.logInventoryRemoved' `
+                -FailedKey 'node.uninstall.logInventoryFailed'
+            if ($invCleanup.Paths.Count -eq 0) {
+                Write-NodeBrowseInstallLogLine -Log $log -Text (Get-NodeBrowseUninstallI18n -Key 'node.uninstall.logInventoryCleanupNone' -Vars @{
+                    version = $ver
+                }) -Kind 'hint'
+            }
+
+            $tmpCleanup = Remove-VoltaNodeVersionTmpArtifacts -Version $ver
+            foreach ($path in @($tmpCleanup.Removed)) {
+                Write-NodeBrowseInstallLogLine -Log $log -Text (Get-NodeBrowseUninstallI18n -Key 'node.uninstall.logTmpCleanupRemoved' -Vars @{
+                    path = $path
+                }) -Kind 'success'
+            }
+            foreach ($fail in @($tmpCleanup.Failed)) {
+                Write-NodeBrowseInstallLogLine -Log $log -Text (Get-NodeBrowseUninstallI18n -Key 'node.uninstall.logCleanupFailed' -Vars @{
+                    path  = $fail.Path
+                    error = $fail.Error
+                }) -Kind 'error'
+            }
+
+            Set-NodeBrowseUninstallItemProgress -Ui $ui -LoadingState $loadingState -Version $ver `
+                -Percent 85 -Phase 'verify' -Redraw $RedrawView
+
             $absent = Test-VoltaNodeVersionAbsent -Version $ver
             $remainingPaths = Get-VoltaNodeVersionImagePaths -Version $ver
-            $success = $absent -and ($remainingPaths.Count -eq 0)
+            $remainingInventory = Get-VoltaNodeVersionInventoryPaths -Version $ver
+            $remainingTmp = Get-VoltaNodeVersionTmpArtifactPaths -Version $ver
+            $artifactsAbsent = Test-VoltaNodeVersionLocalArtifactsAbsent -Version $ver
+            $success = $absent -and $artifactsAbsent
 
-            if ($uninstallExit -ne 0 -and $success) {
+            if ($success -and $voltaCliUsed -and $uninstallExit -ne 0) {
                 Write-NodeBrowseInstallLogLine -Log $log -Text (Get-NodeBrowseUninstallI18n -Key 'node.uninstall.logVoltaExitIgnored' -Vars @{
                     version = $ver
                     code    = [string]$uninstallExit
@@ -450,12 +722,21 @@ function Run-NodeBrowseUninstallOperation {
 
             if ($success) {
                 $successCount++
+                $successfullyUninstalled += $ver
                 Write-NodeBrowseInstallLogLine -Log $log -Text (Get-NodeBrowseUninstallI18n -Key 'node.uninstall.logSuccess' -Vars @{
                     version = $ver
                 }) -Kind 'success' -WithTimestamp
+                Set-NodeBrowseUninstallItemProgress -Ui $ui -LoadingState $loadingState -Version $ver `
+                    -Percent 100 -Phase 'verify' -Redraw $RedrawView
             }
             else {
                 $failedCount++
+                if ($voltaCliUsed -and $uninstallExit -ne 0 -and -not $success) {
+                    Write-NodeBrowseInstallLogLine -Log $log -Text (Get-NodeBrowseUninstallI18n -Key 'node.uninstall.logFailed' -Vars @{
+                        version = $ver
+                        code    = [string]$uninstallExit
+                    }) -Kind 'error' -WithTimestamp
+                }
                 if (-not $absent) {
                     Write-NodeBrowseInstallLogLine -Log $log -Text (Get-NodeBrowseUninstallI18n -Key 'node.uninstall.logVerifyListed' -Vars @{
                         version = $ver
@@ -467,67 +748,43 @@ function Run-NodeBrowseUninstallOperation {
                         paths   = ($remainingPaths -join '; ')
                     }) -Kind 'error' -WithTimestamp
                 }
+                if ($remainingInventory.Count -gt 0) {
+                    Write-NodeBrowseInstallLogLine -Log $log -Text (Get-NodeBrowseUninstallI18n -Key 'node.uninstall.logVerifyInventoryRemain' -Vars @{
+                        version = $ver
+                        paths   = ($remainingInventory -join '; ')
+                    }) -Kind 'error' -WithTimestamp
+                }
+                if ($remainingTmp.Count -gt 0) {
+                    Write-NodeBrowseInstallLogLine -Log $log -Text (Get-NodeBrowseUninstallI18n -Key 'node.uninstall.logVerifyTmpRemain' -Vars @{
+                        version = $ver
+                        paths   = ($remainingTmp -join '; ')
+                    }) -Kind 'error' -WithTimestamp
+                }
+                Set-NodeBrowseUninstallItemProgress -Ui $ui -LoadingState $loadingState -Version $ver `
+                    -Percent 90 -Phase 'verify' -Redraw $RedrawView
             }
 
             $ui.ProgressCurrent = $i + 1
+            $ui.ItemInFlight = $false
+            $ui.ItemSubPercent = -1
             & $RedrawView
         }
 
         if (-not $cancelled) {
-            $ui.ProgressCurrent = $total
-            $ui.StatusPlain = $true
-            $ui.StatusText = ''
-            $ui.StatusSegments = Get-ToolkitDepBatchSummarySegments -Intent uninstall `
-                -TotalCount $total -SuccessCount $successCount -FailedCount $failedCount
+            Invoke-NodeVoltaPostBatchDefaultRestore -Ui $ui -Log $log -Shell $Shell `
+                -LogViewportRows $logContentViewportRows -InitialDefault $initialDefault `
+                -SuccessfullyUninstalledVersions $successfullyUninstalled -OperationPlan $operationPlan `
+                -OnExitKey $onExitKey -ScrollState $uiPollState -FnLogInput $fnLogInput -Redraw $RedrawView
         }
 
-        $log.AutoScroll = $false
-        Set-ToolkitShellToolbarLocked -Shell $Shell -Locked $false
-        & $RedrawView
-        & $fnDrainStaleInput
-
-        while ($true) {
-            $exitResult = & $fnReadExitIfActive -Shell $Shell
-            if ($null -ne $exitResult) {
-                if ($exitResult -eq 'exitConfirmed') {
-                    return (Get-ShellNavMarker -Action 'quit')
-                }
-                & $RedrawView
-                continue
-            }
-
-            if (Test-ConsoleKeyAvailable) {
-                $peek = & $fnPeekKey
-                if ($peek -in @('UpArrow', 'DownArrow', 'Escape')) {
-                    $scrollInput = & $fnLogInput -Shell $Shell -Log $log -ViewportRows $logContentViewportRows `
-                        -OnExitKey $onExitKey -ScrollState $uiPollState
-                    if ($scrollInput -in @('scroll', 'exit')) {
-                        & $RedrawView
-                    }
-                    continue
-                }
-
-                if (-not (Test-ToolkitShellToolbarLocked -Shell $Shell)) {
-                    Prepare-ToolkitShellBodyDraw -Shell $Shell
-                    $key = [Console]::ReadKey($true)
-                    Set-CursorVisible $false
-                    if ($key.KeyChar -match '^[qQ]$') {
-                        $Shell.Layout['BodyDirty'] = $true
-                        return $null
-                    }
-                    if ($key.Key -eq 'Escape') {
-                        $null = & $onExitKey
-                        & $RedrawView
-                    }
-                    continue
-                }
-            }
-
-            Start-Sleep -Milliseconds 20
+        if (-not $cancelled) {
+            Set-ToolkitDepOperationBatchCompleteUi -Ui $ui -Intent uninstall -TotalCount $uninstallCount `
+                -SuccessCount $successCount -FailedCount $failedCount -ProgressCurrent $totalSteps
         }
+
+        return Invoke-ToolkitDepBatchOperationWaitLoop -Context $ctx
     }
     finally {
-        Set-ToolkitShellToolbarLocked -Shell $Shell -Locked $false
-        & $fnClearExitExtension -Shell $Shell
+        Clear-ToolkitDepBatchOperationView -Context $ctx
     }
 }

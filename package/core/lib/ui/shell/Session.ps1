@@ -279,7 +279,6 @@ function Start-ToolkitShellSession {
                         $null = Sync-ToolkitSessionInitState -Shell $shell -Refresh
                         Pop-ShellViewStack -ViewStack $viewStack | Out-Null
                         $shell.Layout['BodyDirty'] = $true
-                        Update-ToolkitShellBrandHeader -Shell $shell
                         continue
                     }
                     if (Test-ShellNavMarker $nav 'quit') {

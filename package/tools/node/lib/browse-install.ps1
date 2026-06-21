@@ -2,6 +2,7 @@
 
 param(
     [hashtable]$ToolkitShell = $null,
+    $Action = $null,
 
     [int]$PageSize = 0,
     [int]$ViewHeight = 0,
@@ -40,7 +41,10 @@ function Import-NodeBrowseInstallCore {
 }
 
 Import-NodeBrowseInstallCore
+. (Join-Path $PSScriptRoot 'node-action-title.ps1')
+Import-NodeActionTitleCore -CoreLib $coreLib
 . (Join-Path $PSScriptRoot 'volta-node.ps1')
+Set-NodeVoltaToolRoot -ToolRoot $toolRoot
 . (Join-Path $PSScriptRoot 'browse-install-run.ps1')
 Initialize-PathsFromToolRoot -ToolRoot $toolRoot
 
@@ -56,6 +60,13 @@ if (-not $ToolkitShell) {
 
 Sync-MiaoLocaleFromShell -Shell $ToolkitShell
 
+if (-not $script:NodeBrowseInstallDotSourceOnly) {
+    $nodeToolAction = Resolve-NodeToolAction -ToolRoot $toolRoot -Action $Action -ScriptLeaf 'browse-install.ps1'
+    $nodeActionSectionTitle = Get-NodeActionSectionTitle -ToolRoot $toolRoot -Action $nodeToolAction `
+        -ScriptLeaf 'browse-install.ps1'
+    $script:NodeActionSectionTitle = $nodeActionSectionTitle
+}
+
 function Get-NodeBrowseI18n {
     param(
         [string]$Key,
@@ -63,16 +74,6 @@ function Get-NodeBrowseI18n {
     )
 
     return Get-ToolI18n -ToolRoot $toolRoot -Key $Key -Vars $Vars
-}
-
-function Get-NodeBrowseInstallSectionTitle {
-    return (Resolve-ToolI18nLabel -ToolRoot $toolRoot -Key 'node.browse.sectionTitle' `
-        -Fallback '安装Node.js')
-}
-
-function Get-NodeBrowseInstallProgressSectionTitle {
-    return (Resolve-ToolI18nLabel -ToolRoot $toolRoot -Key 'node.browse.installPageTitle' `
-        -Fallback 'Node.js 安装')
 }
 
 function Get-NodeBrowseInstallVersionLabel {
@@ -487,7 +488,7 @@ function Invoke-NodeBrowseInstallPage {
     $null = Ensure-ToolkitShellLayoutBrandInnerWidth -Shell $Shell
 
     if (-not (Get-Command volta -ErrorAction SilentlyContinue)) {
-        Initialize-ToolkitShellBodyView -Shell $Shell -SectionTitle (Get-NodeBrowseInstallSectionTitle) `
+        Initialize-ToolkitShellBodyView -Shell $Shell -SectionTitle $nodeActionSectionTitle `
             -FooterTemplate SystemToolbarOnly
         $layout = $Shell.Layout
         Write-FixedLine $layout.ListStartRow (Get-NodeBrowseI18n -Key 'node.browse.voltaMissing') -Color Red
@@ -495,7 +496,7 @@ function Invoke-NodeBrowseInstallPage {
         return (Get-ShellNavMarker -Action 'back')
     }
 
-    $sectionTitle = Get-NodeBrowseInstallSectionTitle
+    $sectionTitle = $nodeActionSectionTitle
     $fetch = Start-NodeBrowseRemoteVersionsFetch -LtsOnly:$LtsOnly
     $loadResult = Wait-NodeBrowseRemoteVersionsLoad -Shell $Shell -SectionTitle $sectionTitle -Fetch $fetch
     if ($loadResult.Nav) {
@@ -583,15 +584,18 @@ function Invoke-NodeBrowseInstallPage {
             return (Get-ShellNavMarker -Action 'back')
         }
 
-        $installResult = Run-NodeBrowseInstallOperation -Shell $Shell -Items $picked
+        $installResult = Run-NodeBrowseInstallOperation -Shell $Shell -Items $picked `
+            -SectionTitle $nodeActionSectionTitle
         if (Test-ShellNavMarker $installResult) {
             return $installResult
         }
     }
 }
 
-$result = Invoke-NodeBrowseInstallPage -Shell $ToolkitShell
-if ($standaloneShell) {
-    exit 0
+if (-not $script:NodeBrowseInstallDotSourceOnly) {
+    $result = Invoke-NodeBrowseInstallPage -Shell $ToolkitShell
+    if ($standaloneShell) {
+        exit 0
+    }
+    return $result
 }
-return $result

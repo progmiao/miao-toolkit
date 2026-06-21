@@ -342,6 +342,26 @@ function Get-ToolSectionTitle {
     return [string]$Tool.id
 }
 
+function Get-ToolDepOperationSectionTitle {
+    param(
+        $Tool,
+        [ValidateSet('install', 'update', 'uninstall')]
+        [string]$Intent
+    )
+
+    $command = Get-ToolCommandName -Tool $Tool
+    if ([string]::IsNullOrWhiteSpace($command)) {
+        $command = [string]$Tool.id
+    }
+    $actionKey = switch ($Intent) {
+        'install' { 'page.toolDeps.installLabel' }
+        'update' { 'page.toolDeps.updateLabel' }
+        'uninstall' { 'page.toolDeps.uninstallLabel' }
+    }
+
+    return "$command $(Get-I18n -Key $actionKey)"
+}
+
 function Start-ToolkitDepOperation {
     param(
         $Tool,
@@ -357,7 +377,7 @@ function Start-ToolkitDepOperation {
 
     if (-not (Test-WingetCliAvailable)) {
         if ($Shell) {
-            $title = if ($SectionTitle) { $SectionTitle } else { [string]$Tool.id }
+            $title = Get-ToolDepOperationSectionTitle -Tool $Tool -Intent $Intent
             $null = Invoke-ToolkitDepOperationView -Shell $Shell -SectionTitle $title -Tool $Tool `
                 -Intent $Intent -PreflightErrorKey 'page.depOperation.wingetMissing'
             return $false
@@ -367,7 +387,7 @@ function Start-ToolkitDepOperation {
     }
 
     if ($Shell) {
-        $title = if ($SectionTitle) { $SectionTitle } else { (Get-ToolSectionTitle -Tool $Tool) }
+        $title = if ($SectionTitle) { $SectionTitle } else { (Get-ToolDepOperationSectionTitle -Tool $Tool -Intent $Intent) }
         return Invoke-ToolkitDepOperationView -Shell $Shell -SectionTitle $title -Tool $Tool `
             -Intent $Intent -AutoContinue:$AutoContinue -SharedLog $SharedLog
     }
@@ -396,7 +416,7 @@ function Start-ToolkitDepBatchOperation {
         if ($toolIndex -gt 1) {
             Add-ToolkitDepLogSeparator -Log $batchLog
         }
-        $title = if ($SectionTitle) { $SectionTitle } else { (Get-ToolSectionTitle -Tool $tool) }
+        $title = if ($SectionTitle) { $SectionTitle } else { (Get-ToolDepOperationSectionTitle -Tool $tool -Intent $Intent) }
         $isLast = ($toolIndex -eq $toolTotal)
         $ok = Start-ToolkitDepOperation -Tool $tool -Intent $Intent -Shell $Shell `
             -SectionTitle $title -AutoContinue:(-not $isLast) -SharedLog $batchLog

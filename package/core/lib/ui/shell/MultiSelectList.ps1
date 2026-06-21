@@ -707,31 +707,51 @@ function Show-ShellMultiSelectListMenu {
                     }
                     'UpArrow' {
                         $numberBuffer = ''
-                        if ($selectedIndex -gt 0) {
+                        $pageStart = $pageIndex * $PageSize
+                        $itemsOnPage = [Math]::Min($PageSize, $Items.Count - $pageStart)
+                        $local = $selectedIndex - $pageStart
+
+                        if ($local -gt 0) {
                             $selectedIndex--
-                            $newPage = [Math]::Floor($selectedIndex / [double]$PageSize)
-                            if ($newPage -ne $pageIndex) {
-                                $pageIndex = $newPage
-                                $listScrollOffset = 0
-                            }
-                            & $fnSetListScroll -ScrollOffset ([ref]$listScrollOffset) `
-                                -SelectedIndex $selectedIndex -PageIndex $pageIndex -PageSize $PageSize `
-                                -ItemCount $Items.Count -ViewportHeight $layout.ListViewportHeight
                         }
+                        elseif ($pageIndex -gt 0) {
+                            $pageIndex--
+                            $prevStart = $pageIndex * $PageSize
+                            $prevItemsOnPage = [Math]::Min($PageSize, $Items.Count - $prevStart)
+                            $selectedIndex = $prevStart + $prevItemsOnPage - 1
+                            $listScrollOffset = 0
+                        }
+                        elseif ($Items.Count -gt 1) {
+                            $pageIndex = $pageCount - 1
+                            $selectedIndex = $Items.Count - 1
+                            $listScrollOffset = 0
+                        }
+                        & $fnSetListScroll -ScrollOffset ([ref]$listScrollOffset) `
+                            -SelectedIndex $selectedIndex -PageIndex $pageIndex -PageSize $PageSize `
+                            -ItemCount $Items.Count -ViewportHeight $layout.ListViewportHeight
                     }
                     'DownArrow' {
                         $numberBuffer = ''
-                        if ($selectedIndex -lt ($Items.Count - 1)) {
+                        $pageStart = $pageIndex * $PageSize
+                        $itemsOnPage = [Math]::Min($PageSize, $Items.Count - $pageStart)
+                        $local = $selectedIndex - $pageStart
+
+                        if ($local -lt ($itemsOnPage - 1)) {
                             $selectedIndex++
-                            $newPage = [Math]::Floor($selectedIndex / [double]$PageSize)
-                            if ($newPage -ne $pageIndex) {
-                                $pageIndex = $newPage
-                                $listScrollOffset = 0
-                            }
-                            & $fnSetListScroll -ScrollOffset ([ref]$listScrollOffset) `
-                                -SelectedIndex $selectedIndex -PageIndex $pageIndex -PageSize $PageSize `
-                                -ItemCount $Items.Count -ViewportHeight $layout.ListViewportHeight
                         }
+                        elseif ($pageIndex -lt ($pageCount - 1)) {
+                            $pageIndex++
+                            $selectedIndex = $pageIndex * $PageSize
+                            $listScrollOffset = 0
+                        }
+                        elseif ($Items.Count -gt 1) {
+                            $pageIndex = 0
+                            $selectedIndex = 0
+                            $listScrollOffset = 0
+                        }
+                        & $fnSetListScroll -ScrollOffset ([ref]$listScrollOffset) `
+                            -SelectedIndex $selectedIndex -PageIndex $pageIndex -PageSize $PageSize `
+                            -ItemCount $Items.Count -ViewportHeight $layout.ListViewportHeight
                     }
                     'Spacebar' {
                         if ($selectedIndex -ge 0 -and $selectedIndex -lt $Items.Count) {

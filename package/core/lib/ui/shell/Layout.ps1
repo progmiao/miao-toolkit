@@ -332,16 +332,19 @@ function Update-ToolkitShellViewLayout {
     if ($WithSectionTitle) {
         $layout['SectionTitleRow'] = $metrics.SectionTitleRow
         $layout['SectionGapRow'] = $metrics.SectionGapRow
+        $layout['ContentRow'] = $metrics.SectionGapRow
     }
     else {
         $layout['SectionTitleRow'] = -1
         $layout['SectionGapRow'] = -1
+        $layout['ContentRow'] = -1
     }
 
     $layout['ListStartRow'] = $metrics.ListStartRow
     $layout['ListEndRow'] = $metrics.ListEndRow
     $layout['ListViewportHeight'] = $metrics.ListViewportRows
     $layout['GapRow'] = $metrics.GapRow
+    $layout['MessageRow'] = $metrics.GapRow
     $layout['HintRow'] = $metrics.HintRow
     $layout['StatusRow'] = $metrics.StatusRow
     $layout['ToolbarRow'] = $metrics.ToolbarRow
@@ -365,7 +368,9 @@ function Get-ToolkitShellLayoutSnapshot {
 
     return @{
         ListEndRow = $Layout.ListEndRow
+        ContentRow = $Layout.ContentRow
         GapRow     = $Layout.GapRow
+        MessageRow = $Layout.MessageRow
         HintRow    = $Layout.HintRow
         StatusRow  = $Layout.StatusRow
         ToolbarRow = $Layout.ToolbarRow
@@ -376,6 +381,7 @@ function Clear-ToolkitShellBelowFooter {
     param([hashtable]$Shell)
 
     if (-not $Shell -or -not $Shell.Layout) { return }
+    if ($Shell.SuppressBelowFooterClear) { return }
     if ($Shell.Layout.LayoutMode -eq 'Compressed' -or $Shell.Layout.PinFooterToBottom) {
         return
     }
@@ -410,7 +416,7 @@ function Clear-ToolkitShellOrphanRows {
         }
     }
 
-    foreach ($rowKey in @('GapRow', 'HintRow', 'StatusRow', 'ToolbarRow')) {
+    foreach ($rowKey in @('ContentRow', 'GapRow', 'MessageRow', 'HintRow', 'StatusRow', 'ToolbarRow')) {
         $prevRow = $PreviousLayout[$rowKey]
         if ($null -eq $prevRow -or $prevRow -lt 0) { continue }
 

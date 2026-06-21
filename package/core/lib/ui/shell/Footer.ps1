@@ -1,5 +1,54 @@
 ﻿# Shell 底栏：ListWithToolbar（列表双行）/ SystemToolbarOnly（单行系统工具栏）
 
+function Get-ToolkitShellMessageRow {
+    param([hashtable]$Shell)
+
+    if (-not $Shell -or -not $Shell.Layout) { return -1 }
+    $layout = $Shell.Layout
+    if ($null -ne $layout.MessageRow -and [int]$layout.MessageRow -ge 0) {
+        return [int]$layout.MessageRow
+    }
+    if ($null -ne $layout.GapRow -and [int]$layout.GapRow -ge 0) {
+        return [int]$layout.GapRow
+    }
+    return -1
+}
+
+function Write-ToolkitShellMessageRow {
+    param(
+        [hashtable]$Shell = $null,
+        [int]$MessageRow = -1,
+        [string]$Message = ''
+    )
+
+    if ($MessageRow -lt 0 -and $Shell) {
+        $MessageRow = Get-ToolkitShellMessageRow -Shell $Shell
+    }
+    if ($MessageRow -lt 0) { return }
+
+    if (-not [string]::IsNullOrWhiteSpace($Message)) {
+        Write-FixedLine $MessageRow " $Message" -Color Yellow
+    }
+    else {
+        Write-FixedLine $MessageRow '' -Color DarkYellow
+    }
+}
+
+function Write-ToolkitShellGapMessageRow {
+    param(
+        [hashtable]$Shell = $null,
+        [int]$GapRow = -1,
+        [string]$Message = ''
+    )
+
+    if ($GapRow -lt 0) {
+        Write-ToolkitShellMessageRow -Shell $Shell -Message $Message
+    }
+    else {
+        Write-ToolkitShellMessageRow -Shell $Shell -MessageRow $GapRow -Message $Message
+    }
+}
+
 function Write-ToolkitShellFooter {
     param(
         [hashtable]$Shell,
@@ -13,10 +62,6 @@ function Write-ToolkitShellFooter {
     $layout = $Shell.Layout
     $barWidth = Get-ToolkitShellLayoutBarInnerWidth -Shell $Shell
 
-    if ($layout.GapRow -ge 0) {
-        Write-FixedLine $layout.GapRow '' -Color DarkGray
-    }
-
     if ($Template -eq 'ListWithToolbar') {
         if (-not $MenuFooter) { return }
         $splitFlash = if (-not [string]::IsNullOrWhiteSpace($FlashMessage)) {
@@ -25,18 +70,20 @@ function Write-ToolkitShellFooter {
         else {
             [string]$MenuFooter.FlashMessage
         }
+        Write-ToolkitShellGapMessageRow -Shell $Shell -Message $splitFlash
         Update-PaginatedMenuFooter -HintRow $layout.HintRow -StatusRow $layout.StatusRow `
             -PageIndex $MenuFooter.PageIndex -PageCount $MenuFooter.PageCount `
             -ItemCount $MenuFooter.ItemCount -SelectedIndex $MenuFooter.SelectedIndex `
             -NumberBuffer $MenuFooter.NumberBuffer -CountLabel $MenuFooter.CountLabel `
             -FooterLayout Split -BrandInnerWidth $barWidth `
             -MenuSplitActionSegments $MenuFooter.MenuSplitActionSegments `
-            -FlashMessage $splitFlash `
             -MultiSelectNav:([bool]$MenuFooter.MultiSelectNav) `
             -CompactNavStatus:([bool]$MenuFooter.CompactNavStatus)
         Clear-ToolkitShellBelowFooter -Shell $Shell
         return
     }
+
+    Write-ToolkitShellGapMessageRow -Shell $Shell -Message $FlashMessage
 
     if ($layout.HintRow -ge 0 -and $layout.HintRow -ne $layout.ToolbarRow) {
         Write-FixedLine $layout.HintRow '' -Color DarkGray
@@ -47,14 +94,6 @@ function Write-ToolkitShellFooter {
 
     if (-not $ToolbarConfig) {
         $ToolbarConfig = New-ShellSystemToolbarConfig
-    }
-
-    if (-not [string]::IsNullOrWhiteSpace($FlashMessage)) {
-        Write-MenuBarLine -Row $layout.ToolbarRow -InnerWidth $lineWidth `
-            -Segments @($FlashMessage, '', '', '', '') -ColumnCount $footerColCount `
-            -Color ([System.ConsoleColor]::Yellow)
-        Clear-ToolkitShellBelowFooter -Shell $Shell
-        return
     }
 
     $barSegments = Format-ShellSystemToolbarBarSegments -Segments $ToolbarConfig.Segments -ColumnCount $footerColCount

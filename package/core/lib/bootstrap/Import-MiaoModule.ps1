@@ -33,6 +33,7 @@ function Get-MiaoToolDepsModulePaths {
         'domain\Invoke-ToolkitDepOperation.ps1'
 
         'ui\shell\DepOperationView.ps1'
+        'ui\shell\ToolkitDepBatchOperation.ps1'
 
         'domain\Invoke-ToolkitDeps.ps1'
 
@@ -147,8 +148,8 @@ function Import-MiaoModule {
 
         'Install' { @($toolDepsPaths + 'pages\install.ps1', 'pages\toolbox-deps.ps1') }
 
-        'Init' { @('ui\shell\DepOperationView.ps1', 'pages\init.ps1') }
-        'Cache' { @('ui\shell\DepOperationView.ps1', 'pages\init.ps1') }
+        'Init' { @('ui\shell\ToolkitDepBatchOperation.ps1', 'ui\shell\DepOperationView.ps1', 'pages\init.ps1') }
+        'Cache' { @('ui\shell\ToolkitDepBatchOperation.ps1', 'ui\shell\DepOperationView.ps1', 'pages\init.ps1') }
 
     }
 
