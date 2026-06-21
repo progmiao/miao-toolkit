@@ -1,0 +1,100 @@
+{
+  "pnpm": {
+    "name": "pnpm 版本管理",
+    "description": "基于 Volta 的 pnpm 版本浏览与安装",
+    "deps": {
+      "install": "安装 Volta，用于管理 pnpm 版本",
+      "update": "将 Volta 更新到最新版本",
+      "uninstall": "卸载 Volta"
+    },
+    "action": {
+      "install": {
+        "name": "安装 pnpm",
+        "description": "从版本列表安装 pnpm 到本机"
+      },
+      "pin": {
+        "name": "指定 pnpm",
+        "description": "锁定当前目录项目的 pnpm 版本"
+      },
+      "default": {
+        "name": "默认 pnpm",
+        "description": "设置未 pin 时使用的 pnpm 版本"
+      },
+      "uninstall": {
+        "name": "卸载 pnpm",
+        "description": "卸载本机已安装的 pnpm 版本"
+      }
+    },
+    "browse": {
+      "loading": "{spinner} 正在加载 pnpm 版本列表…",
+      "loadingFetch": "{spinner} 正在获取 pnpm 版本数据…",
+      "loadingCompute": "{spinner} 正在计算可用版本…",
+      "loadingResult": "{spinner} 正在整理版本列表…",
+      "loadingDraw": "{spinner} 开始绘制版本列表…",
+      "loadFailed": "加载失败",
+      "noVersions": "无可用版本",
+      "voltaMissing": "未找到 Volta，请先在依赖菜单中安装",
+      "cannotSelectInstalled": "该版本已安装，无法勾选",
+      "countUnit": "个版本",
+      "installStatusReady": "准备安装",
+      "installStatusWorking": "{spinner} 正在安装 pnpm@{version}",
+      "installLogStart": "开始安装 pnpm@{version}",
+      "installLogSuccess": "pnpm@{version} 安装成功",
+      "installLogFailed": "pnpm@{version} 安装失败（退出码 {code}）",
+      "installCancelled": "安装已取消"
+    },
+    "uninstall": {
+      "noInstalled": "暂无已安装版本",
+      "voltaMissing": "未找到 Volta，请先在依赖菜单中安装",
+      "countUnit": "个版本",
+      "statusReady": "准备卸载",
+      "uninstallStatusWorking": "{spinner} 正在卸载 pnpm@{version}",
+      "cleanupStatus": "{spinner} 正在清理 pnpm@{version} 的本地缓存",
+      "verifyStatus": "{spinner} 正在验证 pnpm@{version} 卸载结果",
+      "defaultRestoreItemName": "pnpm@{version}（设置默认）",
+      "promoteStatusWorking": "{spinner} 正在设置 pnpm@{version} 为默认",
+      "logStart": "开始卸载 pnpm@{version}",
+      "logVoltaCliUnsupported": "Volta 暂不支持 pnpm 命令行卸载（退出码 {code}），将尝试清理本地缓存",
+      "logCleanupStart": "清理 pnpm@{version} 的 Volta 镜像缓存",
+      "logCleanupNone": "未找到 pnpm@{version} 的镜像目录",
+      "logCleanupRemove": "删除镜像目录：{path}",
+      "logSuccess": "pnpm@{version} 卸载成功",
+      "logFailed": "pnpm@{version} 卸载失败",
+      "logVerifyListed": "验证失败：pnpm@{version} 仍在 volta list 中",
+      "uninstallCancelled": "卸载已取消"
+    },
+    "default": {
+      "voltaMissing": "未找到 Volta，请先在依赖菜单中安装",
+      "noInstalled": "暂无已安装版本，请先在「安装 pnpm」中安装",
+      "countUnit": "个版本",
+      "noChange": "v{version} 已是全局默认版本",
+      "success": "已将 v{version} 设为全局默认",
+      "activePnpm": "当前 pnpm: v{version}",
+      "failed": "设置默认版本未成功，请查看上方 Volta 输出"
+    },
+    "pin": {
+      "voltaMissing": "未找到 Volta，请先在依赖菜单中安装",
+      "countUnit": "个版本",
+      "loadFailed": "加载版本列表失败",
+      "noVersions": "无可用版本",
+      "packageJsonInvalid": "package.json 无法解析",
+      "contextNoProject": "当前目录无 package.json · 选择已安装版本将创建项目配置",
+      "contextProjectPinned": "项目 {project} · 已指定 v{version}",
+      "contextProjectUnpinned": "项目 {project} · 尚未指定 pnpm 版本",
+      "contextSubProjectPinned": "项目 {path} · 已指定 v{version}",
+      "contextSubProjectUnpinned": "项目 {path} · 尚未指定 pnpm 版本",
+      "contextPinnedNotInstalled": "已指定 v{version} 未安装 · Enter 前往安装",
+      "contextSelectedNotInstalled": "v{version} 未安装 · Enter 前往安装",
+      "noChange": "v{version} 已是项目指定版本",
+      "installEffective": "v{version} 已安装 · 项目指定已生效",
+      "success": "已为项目指定 v{version}",
+      "failed": "指定版本未成功，请查看上方 Volta 输出"
+    },
+    "tags": {
+      "installed": "已安装",
+      "default": "默认",
+      "current": "当前",
+      "pinned": "已指定"
+    }
+  }
+}

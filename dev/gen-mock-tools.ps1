@@ -8,8 +8,6 @@
 
 $commandCatalog = @(
 
-    [ordered]@{ command = 'pnpm'; name = 'pnpm 包管理'; description = '快速、节省磁盘空间的 Node 包管理器' }
-
     [ordered]@{ command = 'npm'; name = 'npm 包管理'; description = 'Node.js 官方包管理器' }
 
     [ordered]@{ command = 'claude-code'; name = 'Claude Code'; description = 'Claude 编码助手 CLI 集成' }
@@ -24,9 +22,9 @@ $commandCatalog = @(
 
 
 
-$tools = for ($n = 3; $n -le 81; $n++) {
+$tools = for ($n = 4; $n -le 81; $n++) {
 
-    $c = $commandCatalog[($n - 3) % $commandCatalog.Count]
+    $c = $commandCatalog[($n - 4) % $commandCatalog.Count]
 
     [ordered]@{
 

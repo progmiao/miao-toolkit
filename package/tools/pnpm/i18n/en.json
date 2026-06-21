@@ -1,0 +1,100 @@
+{
+  "pnpm": {
+    "name": "pnpm version manager",
+    "description": "Browse and install pnpm versions with Volta",
+    "deps": {
+      "install": "Install Volta to manage pnpm versions",
+      "update": "Update Volta to the latest version",
+      "uninstall": "Uninstall Volta"
+    },
+    "action": {
+      "install": {
+        "name": "Install pnpm",
+        "description": "Install pnpm on this machine from the version list"
+      },
+      "pin": {
+        "name": "Pin pnpm",
+        "description": "Lock the pnpm version for the current project directory"
+      },
+      "default": {
+        "name": "Default pnpm",
+        "description": "pnpm version to use when not pinned"
+      },
+      "uninstall": {
+        "name": "Uninstall pnpm",
+        "description": "Remove installed pnpm versions from this machine"
+      }
+    },
+    "browse": {
+      "loading": "{spinner} Loading pnpm versions…",
+      "loadingFetch": "{spinner} Fetching pnpm version data…",
+      "loadingCompute": "{spinner} Computing available versions…",
+      "loadingResult": "{spinner} Preparing version list…",
+      "loadingDraw": "{spinner} Rendering version list…",
+      "loadFailed": "Failed to load versions",
+      "noVersions": "No versions available",
+      "voltaMissing": "Volta not found — install it from the dependency menu first",
+      "cannotSelectInstalled": "Already installed — cannot select",
+      "countUnit": "versions",
+      "installStatusReady": "Ready to install",
+      "installStatusWorking": "{spinner} Installing pnpm@{version}",
+      "installLogStart": "Starting install pnpm@{version}",
+      "installLogSuccess": "pnpm@{version} installed",
+      "installLogFailed": "pnpm@{version} failed (exit code {code})",
+      "installCancelled": "Install cancelled"
+    },
+    "uninstall": {
+      "noInstalled": "No installed versions",
+      "voltaMissing": "Volta not found — install it from the dependency menu first",
+      "countUnit": "versions",
+      "statusReady": "Ready to uninstall",
+      "uninstallStatusWorking": "{spinner} Uninstalling pnpm@{version}",
+      "cleanupStatus": "{spinner} Cleaning local cache for pnpm@{version}",
+      "verifyStatus": "{spinner} Verifying pnpm@{version} uninstall",
+      "defaultRestoreItemName": "pnpm@{version} (set default)",
+      "promoteStatusWorking": "{spinner} Setting pnpm@{version} as default",
+      "logStart": "Starting uninstall pnpm@{version}",
+      "logVoltaCliUnsupported": "Volta pnpm CLI uninstall is unsupported (exit code {code}); trying local cleanup",
+      "logCleanupStart": "Cleaning Volta image cache for pnpm@{version}",
+      "logCleanupNone": "No image directory found for pnpm@{version}",
+      "logCleanupRemove": "Removing image directory: {path}",
+      "logSuccess": "pnpm@{version} uninstalled",
+      "logFailed": "pnpm@{version} uninstall failed",
+      "logVerifyListed": "Verify failed: pnpm@{version} still in volta list",
+      "uninstallCancelled": "Uninstall cancelled"
+    },
+    "default": {
+      "voltaMissing": "Volta not found — install it from the dependency menu first",
+      "noInstalled": "No installed versions — use Install pnpm first",
+      "countUnit": "versions",
+      "noChange": "v{version} is already the global default",
+      "success": "Set v{version} as global default",
+      "activePnpm": "Current pnpm: v{version}",
+      "failed": "Failed to set default version — see Volta output above"
+    },
+    "pin": {
+      "voltaMissing": "Volta not found — install it from the dependency menu first",
+      "countUnit": "versions",
+      "loadFailed": "Failed to load version list",
+      "noVersions": "No versions available",
+      "packageJsonInvalid": "Cannot parse package.json",
+      "contextNoProject": "No package.json here · picking an installed version creates project config",
+      "contextProjectPinned": "Project {project} · pinned v{version}",
+      "contextProjectUnpinned": "Project {project} · pnpm not pinned yet",
+      "contextSubProjectPinned": "Project {path} · pinned v{version}",
+      "contextSubProjectUnpinned": "Project {path} · pnpm not pinned yet",
+      "contextPinnedNotInstalled": "Pinned v{version} not installed · Enter to install",
+      "contextSelectedNotInstalled": "v{version} not installed · Enter to install",
+      "noChange": "v{version} is already pinned for this project",
+      "installEffective": "v{version} installed · project pin is active",
+      "success": "Pinned v{version} for this project",
+      "failed": "Pin failed — see Volta output above"
+    },
+    "tags": {
+      "installed": "installed",
+      "default": "default",
+      "current": "current",
+      "pinned": "pinned"
+    }
+  }
+}
