@@ -31,6 +31,59 @@ function Test-ToolkitShellUseBufferDraw {
     return Test-ShellConsoleBatchDraw
 }
 
+function Clear-ToolkitShellListViewport {
+    param([hashtable]$Shell)
+
+    if (-not $Shell -or -not $Shell.Layout) { return }
+
+    $layout = $Shell.Layout
+    $startRow = [int]$layout.ListStartRow
+    if ($startRow -lt 0) { return }
+
+    $endRow = [int]$layout.ListEndRow
+    if ($endRow -lt $startRow) { return }
+
+    for ($row = $startRow; $row -le $endRow; $row++) {
+        Write-FixedLine $row '' -Color DarkGray
+    }
+}
+
+function Show-ToolkitShellNoticePage {
+    param(
+        [hashtable]$Shell,
+        [string]$SectionTitle,
+        [string]$Message,
+        [System.ConsoleColor]$Color = [System.ConsoleColor]::Yellow,
+        [int]$DelayMs = 900
+    )
+
+    Initialize-ToolkitShellBodyView -Shell $Shell -SectionTitle $SectionTitle `
+        -FooterTemplate SystemToolbarOnly
+    Clear-ToolkitShellListViewport -Shell $Shell
+    Set-ToolkitShellBodyCatalogLine -Shell $Shell -CatalogLine ''
+    Render-ToolkitShellCatalogRow -Shell $Shell
+
+    $messageRow = Get-ToolkitShellMessageRow -Shell $Shell
+    if ($messageRow -ge 0) {
+        if (-not [string]::IsNullOrWhiteSpace($Message)) {
+            Write-FixedLine $messageRow " $Message" -Color $Color
+        }
+        else {
+            Write-ToolkitShellMessageRow -Shell $Shell -Message ''
+        }
+    }
+
+    $toolbar = New-ShellSystemToolbarConfig
+    $footerRenderer = New-ShellSystemToolbarFooterRenderer -Shell $Shell -ToolbarConfig $toolbar
+    Register-ToolkitShellFooter -Shell $Shell -Renderer $footerRenderer
+    & $footerRenderer
+    Finalize-ToolkitShellBodyView -Shell $Shell
+
+    if ($DelayMs -gt 0) {
+        Start-Sleep -Milliseconds $DelayMs
+    }
+}
+
 function Initialize-ToolkitShellBodyView {
     param(
         [hashtable]$Shell,
@@ -56,6 +109,7 @@ function Initialize-ToolkitShellBodyView {
     }
 
     Clear-ToolkitShellOrphanRows -Shell $Shell -PreviousLayout $previousLayout
+    Clear-ToolkitShellListViewport -Shell $Shell
     Write-ToolkitShellSectionTitle -Shell $Shell -Title $SectionTitle
 
     if ($useBatch) {

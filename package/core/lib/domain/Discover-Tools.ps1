@@ -4,7 +4,16 @@
     )
 }
 
-function Resolve-ToolDirIdentity {
+function Test-ToolkitToolCommandName {
+    param([string]$Command)
+
+    if ([string]::IsNullOrWhiteSpace($Command)) { return $false }
+    if ($Command -notmatch '^[a-z0-9]+(-[a-z0-9]+)*$') { return $false }
+    if ($Command -in @(Get-ToolkitReservedToolCommands)) { return $false }
+    return $true
+}
+
+function Resolve-BundledToolDirIdentity {
     param([string]$DirName)
 
     if ([string]::IsNullOrWhiteSpace($DirName)) { return $null }
@@ -12,37 +21,66 @@ function Resolve-ToolDirIdentity {
     $idx = $DirName.IndexOf('-')
     if ($idx -lt 1) { return $null }
 
-    $noPart = $DirName.Substring(0, $idx)
+    $sortPart = $DirName.Substring(0, $idx)
     $commandPart = $DirName.Substring($idx + 1)
 
-    if ($noPart -notmatch '^\d+$') { return $null }
+    if ($sortPart -notmatch '^\d+$') { return $null }
     if ([string]::IsNullOrWhiteSpace($commandPart)) { return $null }
-    if ($commandPart -notmatch '^[a-z0-9]+(-[a-z0-9]+)*$') { return $null }
-
-    $command = [string]$commandPart
-    if ($command -in @(Get-ToolkitReservedToolCommands)) { return $null }
+    if (-not (Test-ToolkitToolCommandName -Command $commandPart)) { return $null }
 
     return @{
-        no      = [int]$noPart
-        command = $command
-        id      = $command
+        sortOrder = [int]$sortPart
+        command   = [string]$commandPart
+        id        = [string]$commandPart
+    }
+}
+
+function Resolve-ExternalToolDirIdentity {
+    param([string]$DirName)
+
+    if ([string]::IsNullOrWhiteSpace($DirName)) { return $null }
+    if ($DirName.StartsWith('_')) { return $null }
+    if ($DirName -match '^\d+-') { return $null }
+    if (-not (Test-ToolkitToolCommandName -Command $DirName)) { return $null }
+
+    return @{
+        command = [string]$DirName
+        id      = [string]$DirName
+    }
+}
+
+function Resolve-ToolDirIdentity {
+    param([string]$DirName)
+
+    $identity = Resolve-BundledToolDirIdentity -DirName $DirName
+    if (-not $identity) { return $null }
+
+    return @{
+        sortOrder = [int]$identity.sortOrder
+        command   = [string]$identity.command
+        id        = [string]$identity.id
+        no        = [int]$identity.sortOrder
     }
 }
 
 function Get-DefaultToolFields {
     param(
         [string]$ToolDirName,
-        [hashtable]$Identity = $null
+        [hashtable]$Identity = $null,
+        [ValidateSet('bundled', 'external')]
+        [string]$Origin = 'bundled'
     )
 
     $command = if ($Identity) { [string]$Identity.command } else { $ToolDirName }
-    $no = if ($Identity) { [int]$Identity.no } else { 0 }
+    $sortOrder = if ($Identity -and $null -ne $Identity.sortOrder) { [int]$Identity.sortOrder } else { 0 }
     $id = if ($Identity) { [string]$Identity.id } else { $ToolDirName }
 
     [ordered]@{
         id              = $id
         command         = $command
-        no              = $no
+        sortOrder       = $sortOrder
+        no              = 0
+        origin          = $Origin
         entry           = 'index.ps1'
         help            = 'help.md'
         interactive     = $true
@@ -51,7 +89,7 @@ function Get-DefaultToolFields {
     }
 }
 
-function Merge-ToolManifestFromDirectory {
+function Merge-ToolManifestFromBundledDirectory {
     param(
         [string]$ToolRoot,
         [string]$ToolDirName
@@ -60,19 +98,52 @@ function Merge-ToolManifestFromDirectory {
     $manifestPath = Join-Path $ToolRoot 'index.json'
     if (-not (Test-Path $manifestPath)) { return $null }
 
-    $identity = Resolve-ToolDirIdentity -DirName $ToolDirName
+    $identity = Resolve-BundledToolDirIdentity -DirName $ToolDirName
     if (-not $identity) {
         Write-Warning (Get-I18n -Key 'message.toolDirNameInvalid' -Vars @{ dirName = $ToolDirName })
         return $null
     }
 
+    return Merge-ToolManifestCore -ToolRoot $ToolRoot -ToolDirName $ToolDirName `
+        -Identity $identity -Origin 'bundled'
+}
+
+function Merge-ToolManifestFromExternalDirectory {
+    param(
+        [string]$ToolRoot,
+        [string]$ToolDirName
+    )
+
+    $manifestPath = Join-Path $ToolRoot 'index.json'
+    if (-not (Test-Path $manifestPath)) { return $null }
+
+    $identity = Resolve-ExternalToolDirIdentity -DirName $ToolDirName
+    if (-not $identity) {
+        Write-Warning (Get-I18n -Key 'message.toolExternalDirNameInvalid' -Vars @{ dirName = $ToolDirName })
+        return $null
+    }
+
+    return Merge-ToolManifestCore -ToolRoot $ToolRoot -ToolDirName $ToolDirName `
+        -Identity $identity -Origin 'external'
+}
+
+function Merge-ToolManifestCore {
+    param(
+        [string]$ToolRoot,
+        [string]$ToolDirName,
+        [hashtable]$Identity,
+        [ValidateSet('bundled', 'external')]
+        [string]$Origin
+    )
+
+    $manifestPath = Join-Path $ToolRoot 'index.json'
     $raw = Get-Content -Raw -Path $manifestPath -Encoding UTF8 | ConvertFrom-Json
-    $defaults = Get-DefaultToolFields -ToolDirName $ToolDirName -Identity $identity
+    $defaults = Get-DefaultToolFields -ToolDirName $ToolDirName -Identity $Identity -Origin $Origin
 
     $tool = [ordered]@{}
     foreach ($key in @($defaults.Keys)) { $tool[$key] = $defaults[$key] }
 
-    $ignoredIdentityKeys = @('no', 'command', 'id')
+    $ignoredIdentityKeys = @('no', 'command', 'id', 'sortOrder', 'origin')
     foreach ($prop in $raw.PSObject.Properties) {
         if ($prop.Name -in $ignoredIdentityKeys) {
             Write-Warning (Get-I18n -Key 'message.toolIdentityIgnored' -Vars @{
@@ -89,11 +160,50 @@ function Merge-ToolManifestFromDirectory {
     return Apply-ToolI18nFields -Tool ([pscustomobject]$tool)
 }
 
+function Merge-ToolManifestFromDirectory {
+    param(
+        [string]$ToolRoot,
+        [string]$ToolDirName
+    )
+
+    return Merge-ToolManifestFromBundledDirectory -ToolRoot $ToolRoot -ToolDirName $ToolDirName
+}
+
 function Get-ToolFromDirectory {
     param([string]$ToolRoot)
 
     $toolDirName = Split-Path $ToolRoot -Leaf
     return Merge-ToolManifestFromDirectory -ToolRoot $ToolRoot -ToolDirName $toolDirName
+}
+
+function Assign-ToolMenuNumbers {
+    param([array]$Tools)
+
+    if ($Tools.Count -eq 0) { return @() }
+
+    $enabled = @($Tools | Where-Object { $_.enabled -ne $false })
+    $bundled = @($enabled | Where-Object {
+        -not $_.PSObject.Properties['origin'] -or [string]$_.origin -eq 'bundled'
+    })
+    $external = @($enabled | Where-Object {
+        $_.PSObject.Properties['origin'] -and [string]$_.origin -eq 'external'
+    })
+
+    $sortedBundled = @($bundled | Sort-Object { [int]$_.sortOrder }, { [string]$_.command })
+    $sortedExternal = @($external | Sort-Object { [string]$_.command })
+    $ordered = @($sortedBundled) + @($sortedExternal)
+
+    $no = 1
+    foreach ($tool in $ordered) {
+        $tool | Add-Member -NotePropertyName 'no' -NotePropertyValue $no -Force
+        $no++
+    }
+
+    foreach ($tool in @($Tools | Where-Object { $_.enabled -eq $false })) {
+        $tool | Add-Member -NotePropertyName 'no' -NotePropertyValue 0 -Force
+    }
+
+    return @($Tools | Sort-Object { if ([int]$_.no -le 0) { 1 } else { 0 } }, { [int]$_.no })
 }
 
 function Resolve-ToolMenuNumberIndex {
@@ -119,69 +229,111 @@ function Get-ToolMenuNumberDisplayWidth {
     return Get-MenuNumberDisplayWidth -MaxNumber $maxNumber
 }
 
+function Get-ToolkitToolDirectories {
+    param(
+        [string]$ToolsRoot,
+        [ValidateSet('bundled', 'external')]
+        [string]$Origin
+    )
+
+    if (-not (Test-Path $ToolsRoot)) { return @() }
+
+    return @(Get-ChildItem -Path $ToolsRoot -Directory | Where-Object {
+        -not $_.Name.StartsWith('_')
+    } | ForEach-Object {
+        [pscustomobject]@{
+            FullName = $_.FullName
+            Name     = $_.Name
+            Origin   = $Origin
+        }
+    })
+}
+
 function Discover-Tools {
-    $toolsRoot = Get-ToolsRoot
-    if (-not (Test-Path $toolsRoot)) {
-        return @()
-    }
-
     $result = @()
-    Get-ChildItem -Path $toolsRoot -Directory | ForEach-Object {
-        if ($_.Name.StartsWith('_')) { return }
 
-        $tool = Merge-ToolManifestFromDirectory -ToolRoot $_.FullName -ToolDirName $_.Name
-        if (-not $tool) { return }
-        if ($tool.enabled -eq $false) { return }
-
+    foreach ($entry in @(Get-ToolkitToolDirectories -ToolsRoot (Get-BundledToolsRoot) -Origin 'bundled')) {
+        $tool = Merge-ToolManifestFromBundledDirectory -ToolRoot $entry.FullName -ToolDirName $entry.Name
+        if (-not $tool) { continue }
+        if ($tool.enabled -eq $false) { continue }
         $result += $tool
     }
 
-    $seenNo = @{}
-    $seenCommand = @{}
-    foreach ($t in $result) {
-        $n = [int]$t.no
-        if ($seenNo.ContainsKey($n)) {
-            Write-Warning (Get-I18n -Key 'message.toolNoDuplicate' -Vars @{
-                no            = $n
-                firstCommand  = $seenNo[$n]
-                secondCommand = [string]$t.command
-            })
-        }
-        else {
-            $seenNo[$n] = [string]$t.command
-        }
+    foreach ($entry in @(Get-ToolkitToolDirectories -ToolsRoot (Get-ExternalToolsRoot) -Origin 'external')) {
+        $tool = Merge-ToolManifestFromExternalDirectory -ToolRoot $entry.FullName -ToolDirName $entry.Name
+        if (-not $tool) { continue }
+        if ($tool.enabled -eq $false) { continue }
+        $result += $tool
+    }
 
+    $seenCommand = @{}
+    $deduped = [System.Collections.Generic.List[object]]::new()
+    foreach ($t in $result) {
         $cmd = [string]$t.command
         if ($seenCommand.ContainsKey($cmd)) {
             Write-Warning (Get-I18n -Key 'message.toolCommandDuplicate' -Vars @{
-                command      = $cmd
-                firstDir     = $seenCommand[$cmd]
-                secondDir    = [string]$t._dirName
+                command   = $cmd
+                firstDir  = [string]$seenCommand[$cmd]
+                secondDir = [string]$t._dirName
             })
+            continue
         }
-        else {
-            $seenCommand[$cmd] = [string]$t._dirName
-        }
+
+        $seenCommand[$cmd] = [string]$t._dirName
+        $deduped.Add($t) | Out-Null
     }
 
-    $result | Sort-Object { [int]$_.no }
+    return @(Assign-ToolMenuNumbers -Tools @($deduped))
+}
+
+function Register-ToolkitLiveToolDir {
+    param(
+        [hashtable]$LiveByCommand,
+        [string]$ToolRoot,
+        [string]$DirName,
+        [ValidateSet('bundled', 'external')]
+        [string]$Origin
+    )
+
+    if ($Origin -eq 'bundled') {
+        $identity = Resolve-BundledToolDirIdentity -DirName $DirName
+    }
+    else {
+        $identity = Resolve-ExternalToolDirIdentity -DirName $DirName
+    }
+    if (-not $identity) { return }
+
+    $command = [string]$identity.command
+    if ($LiveByCommand.ContainsKey($command)) {
+        $existing = $LiveByCommand[$command]
+        if ([string]$existing.origin -eq 'bundled' -and $Origin -eq 'external') { return }
+    }
+
+    $LiveByCommand[$command] = @{
+        _root    = $ToolRoot
+        _dirName = $DirName
+        origin   = $Origin
+    }
 }
 
 function Get-ToolkitLiveToolDirsByCommand {
     $liveByCommand = @{}
-    $toolsRoot = Get-ToolsRoot
-    if (-not (Test-Path $toolsRoot)) { return $liveByCommand }
 
-    Get-ChildItem -Path $toolsRoot -Directory | ForEach-Object {
-        if ($_.Name.StartsWith('_')) { return }
+    $bundledRoot = Get-BundledToolsRoot
+    if (Test-Path $bundledRoot) {
+        Get-ChildItem -Path $bundledRoot -Directory | ForEach-Object {
+            if ($_.Name.StartsWith('_')) { return }
+            Register-ToolkitLiveToolDir -LiveByCommand $liveByCommand `
+                -ToolRoot $_.FullName -DirName $_.Name -Origin 'bundled'
+        }
+    }
 
-        $identity = Resolve-ToolDirIdentity -DirName $_.Name
-        if (-not $identity) { return }
-
-        $liveByCommand[[string]$identity.command] = @{
-            _root    = $_.FullName
-            _dirName = $_.Name
-            no       = [int]$identity.no
+    $externalRoot = Get-ExternalToolsRoot
+    if (Test-Path $externalRoot) {
+        Get-ChildItem -Path $externalRoot -Directory | ForEach-Object {
+            if ($_.Name.StartsWith('_')) { return }
+            Register-ToolkitLiveToolDir -LiveByCommand $liveByCommand `
+                -ToolRoot $_.FullName -DirName $_.Name -Origin 'external'
         }
     }
 
@@ -194,7 +346,10 @@ function Sync-ToolkitToolsLivePaths {
     if ($Tools.Count -eq 0) { return @() }
 
     $liveByCommand = Get-ToolkitLiveToolDirsByCommand
-    $toolsRoot = Get-ToolsRoot
+    $searchRoots = @(
+        @{ Path = (Get-BundledToolsRoot); Origin = 'bundled' }
+        @{ Path = (Get-ExternalToolsRoot); Origin = 'external' }
+    )
 
     foreach ($tool in $Tools) {
         if (-not $tool) { continue }
@@ -211,13 +366,16 @@ function Sync-ToolkitToolsLivePaths {
 
         $resolvedRoot = $null
         $resolvedDirName = $null
-        $resolvedNo = $null
 
         if ($tool.PSObject.Properties['_dirName'] -and -not [string]::IsNullOrWhiteSpace([string]$tool._dirName)) {
-            $dirPath = Join-Path $toolsRoot ([string]$tool._dirName)
-            if (Test-Path $dirPath) {
-                $resolvedRoot = $dirPath
-                $resolvedDirName = [string]$tool._dirName
+            foreach ($rootInfo in $searchRoots) {
+                if (-not (Test-Path $rootInfo.Path)) { continue }
+                $dirPath = Join-Path $rootInfo.Path ([string]$tool._dirName)
+                if (Test-Path $dirPath) {
+                    $resolvedRoot = $dirPath
+                    $resolvedDirName = [string]$tool._dirName
+                    break
+                }
             }
         }
 
@@ -237,7 +395,6 @@ function Sync-ToolkitToolsLivePaths {
                 $live = $liveByCommand[$commandKey]
                 $resolvedRoot = [string]$live._root
                 $resolvedDirName = [string]$live._dirName
-                $resolvedNo = [int]$live.no
             }
         }
 
@@ -246,9 +403,6 @@ function Sync-ToolkitToolsLivePaths {
         }
         if ($resolvedDirName) {
             $tool | Add-Member -NotePropertyName '_dirName' -NotePropertyValue $resolvedDirName -Force
-        }
-        if ($null -ne $resolvedNo) {
-            $tool | Add-Member -NotePropertyName 'no' -NotePropertyValue $resolvedNo -Force
         }
     }
 

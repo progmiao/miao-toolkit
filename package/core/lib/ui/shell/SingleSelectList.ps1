@@ -525,6 +525,7 @@ function Invoke-ShellSingleSelectList {
         [Parameter(Mandatory)]
         [string]$SectionTitle,
         [Parameter(Mandatory)]
+        [AllowEmptyCollection()]
         [array]$Rows,
         [Parameter(Mandatory)]
         [string]$CacheKey,

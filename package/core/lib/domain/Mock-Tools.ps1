@@ -35,7 +35,9 @@ function Get-MockToolsForMenu {
         $tool = [ordered]@{
             id              = [string]$raw.command
             command         = [string]$raw.command
-            no              = [int]$raw.no
+            sortOrder       = 0
+            no              = 0
+            origin          = 'external'
             name            = [string]$raw.name
             description     = [string]$raw.description
             entry           = 'index.ps1'
@@ -59,21 +61,19 @@ function Get-ToolkitMenuTools {
         return @($RealTools | Sort-Object { [int]$_.no })
     }
 
-    $all = @($RealTools) + @(Get-MockToolsForMenu)
-    if ($all.Count -eq 0) { return @() }
+    $combined = @($RealTools) + @(Get-MockToolsForMenu)
+    if ($combined.Count -eq 0) { return @() }
 
-    $seen = @{}
-    foreach ($t in $all) {
-        $n = [int]$t.no
-        if ($seen.ContainsKey($n)) {
-            Write-Warning "菜单工具编号重复: $n ($($seen[$n]) / $($t.command))"
-        }
-        else {
-            $seen[$n] = $t.command
-        }
+    $seenCommand = @{}
+    $deduped = [System.Collections.Generic.List[object]]::new()
+    foreach ($t in $combined) {
+        $cmd = [string]$t.command
+        if ($seenCommand.ContainsKey($cmd)) { continue }
+        $seenCommand[$cmd] = $true
+        $deduped.Add($t) | Out-Null
     }
 
-    return @($all | Sort-Object { [int]$_.no })
+    return @(Assign-ToolMenuNumbers -Tools @($deduped))
 }
 
 function Test-IsMockTool {

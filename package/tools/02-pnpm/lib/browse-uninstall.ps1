@@ -120,6 +120,23 @@ function Resolve-PnpmBrowseUninstallTagsColumnWidth {
     return [Math]::Max(10, [Math]::Min($maxTags, $remaining))
 }
 
+function Invoke-PnpmBrowseUninstallNoticePage {
+    param(
+        [hashtable]$Shell,
+        [string]$SectionTitle,
+        [string]$Message
+    )
+
+    Clear-ShellSingleSelectListCache -Shell $Shell -CacheKey 'PnpmUninstallNotice'
+    $toolbar = New-ShellSystemToolbarConfig
+    $invokeSingleSelect = Get-Command Invoke-ShellSingleSelectList -CommandType Function -ErrorAction Stop
+    return & $invokeSingleSelect -Shell $Shell -SectionTitle $SectionTitle `
+        -Rows @() -CacheKey 'PnpmUninstallNotice' `
+        -ColumnLayout (New-ShellListColumnLayout -Preset ToolList) `
+        -ToolbarConfig $toolbar `
+        -InitialFlashMessage $Message
+}
+
 function Invoke-PnpmBrowseUninstallPage {
     param([hashtable]$Shell)
 
@@ -127,11 +144,11 @@ function Invoke-PnpmBrowseUninstallPage {
     $sectionTitle = $PnpmActionSectionTitle
 
     if (-not (Get-Command volta -ErrorAction SilentlyContinue)) {
-        Initialize-ToolkitShellBodyView -Shell $Shell -SectionTitle $sectionTitle `
-            -FooterTemplate SystemToolbarOnly
-        $layout = $Shell.Layout
-        Write-FixedLine $layout.ListStartRow (Get-PnpmBrowseUninstallI18n -Key 'pnpm.uninstall.voltaMissing') -Color Red
-        Start-Sleep -Milliseconds 1200
+        $noticeResult = Invoke-PnpmBrowseUninstallNoticePage -Shell $Shell -SectionTitle $sectionTitle `
+            -Message (Get-PnpmBrowseUninstallI18n -Key 'pnpm.uninstall.voltaMissing')
+        if (Test-ShellNavMarker $noticeResult) {
+            return $noticeResult
+        }
         return (Get-ShellNavMarker -Action 'back')
     }
 
@@ -141,10 +158,11 @@ function Invoke-PnpmBrowseUninstallPage {
         $installed = @($voltaInfo.Map.Keys)
 
         if ($installed.Count -eq 0) {
-            Initialize-ToolkitShellBodyView -Shell $Shell -SectionTitle $sectionTitle -FooterTemplate SystemToolbarOnly
-            $layout = $Shell.Layout
-            Write-FixedLine $layout.ListStartRow (Get-PnpmBrowseUninstallI18n -Key 'pnpm.uninstall.noInstalled') -Color Yellow
-            Start-Sleep -Milliseconds 900
+            $noticeResult = Invoke-PnpmBrowseUninstallNoticePage -Shell $Shell -SectionTitle $sectionTitle `
+                -Message (Get-PnpmBrowseUninstallI18n -Key 'pnpm.uninstall.noInstalled')
+            if (Test-ShellNavMarker $noticeResult) {
+                return $noticeResult
+            }
             return (Get-ShellNavMarker -Action 'back')
         }
 

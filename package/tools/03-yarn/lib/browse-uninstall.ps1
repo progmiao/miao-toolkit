@@ -120,6 +120,23 @@ function Resolve-YarnBrowseUninstallTagsColumnWidth {
     return [Math]::Max(10, [Math]::Min($maxTags, $remaining))
 }
 
+function Invoke-YarnBrowseUninstallNoticePage {
+    param(
+        [hashtable]$Shell,
+        [string]$SectionTitle,
+        [string]$Message
+    )
+
+    Clear-ShellSingleSelectListCache -Shell $Shell -CacheKey 'YarnUninstallNotice'
+    $toolbar = New-ShellSystemToolbarConfig
+    $invokeSingleSelect = Get-Command Invoke-ShellSingleSelectList -CommandType Function -ErrorAction Stop
+    return & $invokeSingleSelect -Shell $Shell -SectionTitle $SectionTitle `
+        -Rows @() -CacheKey 'YarnUninstallNotice' `
+        -ColumnLayout (New-ShellListColumnLayout -Preset ToolList) `
+        -ToolbarConfig $toolbar `
+        -InitialFlashMessage $Message
+}
+
 function Invoke-YarnBrowseUninstallPage {
     param([hashtable]$Shell)
 
@@ -127,11 +144,11 @@ function Invoke-YarnBrowseUninstallPage {
     $sectionTitle = $yarnActionSectionTitle
 
     if (-not (Get-Command volta -ErrorAction SilentlyContinue)) {
-        Initialize-ToolkitShellBodyView -Shell $Shell -SectionTitle $sectionTitle `
-            -FooterTemplate SystemToolbarOnly
-        $layout = $Shell.Layout
-        Write-FixedLine $layout.ListStartRow (Get-YarnBrowseUninstallI18n -Key 'yarn.uninstall.voltaMissing') -Color Red
-        Start-Sleep -Milliseconds 1200
+        $noticeResult = Invoke-YarnBrowseUninstallNoticePage -Shell $Shell -SectionTitle $sectionTitle `
+            -Message (Get-YarnBrowseUninstallI18n -Key 'yarn.uninstall.voltaMissing')
+        if (Test-ShellNavMarker $noticeResult) {
+            return $noticeResult
+        }
         return (Get-ShellNavMarker -Action 'back')
     }
 
@@ -141,10 +158,11 @@ function Invoke-YarnBrowseUninstallPage {
         $installed = @($voltaInfo.Map.Keys)
 
         if ($installed.Count -eq 0) {
-            Initialize-ToolkitShellBodyView -Shell $Shell -SectionTitle $sectionTitle -FooterTemplate SystemToolbarOnly
-            $layout = $Shell.Layout
-            Write-FixedLine $layout.ListStartRow (Get-YarnBrowseUninstallI18n -Key 'yarn.uninstall.noInstalled') -Color Yellow
-            Start-Sleep -Milliseconds 900
+            $noticeResult = Invoke-YarnBrowseUninstallNoticePage -Shell $Shell -SectionTitle $sectionTitle `
+                -Message (Get-YarnBrowseUninstallI18n -Key 'yarn.uninstall.noInstalled')
+            if (Test-ShellNavMarker $noticeResult) {
+                return $noticeResult
+            }
             return (Get-ShellNavMarker -Action 'back')
         }
 

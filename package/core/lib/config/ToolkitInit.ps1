@@ -110,9 +110,21 @@ function Get-ToolkitInitSourceFiles {
     $layoutPath = Join-Path $coreLibDir 'config\ListLayout.ps1'
     if (Test-Path $layoutPath) { $files += $layoutPath }
 
-    $toolsRoot = Get-ToolsRoot
+    $toolsRoot = Get-BundledToolsRoot
     if (Test-Path $toolsRoot) {
         Get-ChildItem -Path $toolsRoot -Directory | ForEach-Object {
+            $indexPath = Join-Path $_.FullName 'index.json'
+            if (Test-Path $indexPath) { $files += $indexPath }
+            $toolI18n = Join-Path $_.FullName 'i18n'
+            if (Test-Path $toolI18n) {
+                $files += @(Get-ChildItem -Path $toolI18n -Filter '*.json' -File | ForEach-Object { $_.FullName })
+            }
+        }
+    }
+
+    $externalToolsRoot = Get-ExternalToolsRoot
+    if (Test-Path $externalToolsRoot) {
+        Get-ChildItem -Path $externalToolsRoot -Directory | ForEach-Object {
             $indexPath = Join-Path $_.FullName 'index.json'
             if (Test-Path $indexPath) { $files += $indexPath }
             $toolI18n = Join-Path $_.FullName 'i18n'

@@ -6,16 +6,22 @@
 
 ## 一、标准目录结构
 
+### 内置工具（随 Miao 安装包分发）
+
 ```
-package/tools/<id>/              # <id> = 命令名，如 node → miao node
-├── index.json                   # ★ 必须。注册 + 可扩展配置
-├── index.ps1                    # ★ 必须。统一入口
-├── install.ps1                  # ★ 必须。该工具外部依赖的安装/更新
-├── uninstall.ps1                # 有 dependencies 时必须。卸载第三方依赖
-├── help.md                      # ★ 必须。帮助文档（miao help 读取）
-├── DESIGN.md                    # ★ 必须。开发者设计（不进 winget 包）
-├── lib/                         # 可选。子功能脚本
-└── _prototype/                  # 可选。开发前原型，不随发布
+package/tools/<sortOrder>-<command>/   # 例：01-node、02-pnpm；前缀仅表示排序权重
+├── index.json
+├── index.ps1
+...
+```
+
+### 外部 / 第三方工具（用户扩展）
+
+```
+%APPDATA%\Miao\extensions\tools\<command>/   # 例：my-tool；目录名即 command，勿加数字前缀
+├── index.json
+├── index.ps1
+...
 ```
 
 **不设 `docs/` 子目录**（当前每工具仅 DESIGN + help 两个文档）。若日后文档超过 3 个，再建 `docs/` 不迟。
@@ -43,26 +49,37 @@ package/tools/<id>/              # <id> = 命令名，如 node → miao node
 
 ## 三、`index.json`：约定优于配置
 
-### 自动推断
+### 自动推断（来自目录名）
 
-| 字段 | 默认 | 说明 |
-|------|------|------|
-| `id` | **文件夹名** | 内部目录标识（deps-state、脚本路径）；不对外展示 |
-| `command` | **文件夹名** | CLI 命令与列表「命令」列，如 `miao node` 中的 `node` |
-| `entry` | `"index.ps1"` | 入口脚本 |
-| `install` | `"install.ps1"` | 依赖安装脚本 |
-| `help` | `"help.md"` | 帮助文件路径 |
-| `interactive` | `true` | 是否交互式工具 |
+| 字段 | 内置工具 | 外部工具 |
+|------|----------|----------|
+| `command` / `id` | 目录 `<sortOrder>-<command>` 中的 **command** 段 | 目录名本身 |
+| `sortOrder` | 目录名数字前缀（如 `01`→1） | 不参与排序（归入外部组后按 command 排序） |
+| `origin` | `bundled` | `external` |
+| `no` | **不在此阶段赋值**；由 init / `Discover-Tools` 统一分配 1…N | 同上 |
+| `entry` | `"index.ps1"` | 同左 |
+| `help` | `"help.md"` | 同左 |
+| `interactive` | `true` | 同左 |
 
-### 必须显式填写
+### 必须显式填写（index.json）
 
 | 字段 | 说明 |
 |------|------|
-| `no` | 列表编号（原 `number`） |
-| `command` | CLI 命令，列表「命令」列与 `miao <command>` 路由 |
-| `name` | **i18n 全路径键**（如 `node.name`），与 `i18n/{code}.json` 嵌套结构对应；缺省解析为「无法识别」 |
-| `description` | **i18n 全路径键**（如 `node.description`）；可为空键，解析后允许空字符串 |
+| `name` | **i18n 全路径键**（如 `node.name`） |
+| `description` | **i18n 全路径键**（如 `node.description`） |
 | `dependencies` | 见下节（无外部依赖时可省略） |
+
+**勿在 index.json 填写** `no`、`command`、`id`、`sortOrder`、`origin`（若出现会被忽略并 warning）。
+
+### 菜单序号 `no`（运行时分配）
+
+| 规则 | 说明 |
+|------|------|
+| 分配时机 | `miao init` 构建 catalog / 首页缓存时；未 init 时 `Discover-Tools` fallback |
+| 顺序 | **内置工具**（按 `sortOrder`）→ **外部工具**（按 `command`） |
+| 连续性 | 启用工具占号 1…N；`enabled: false` 不占号 |
+| CLI 路由 | 始终用 **`command`**（`miao node`），与 `no` 无关 |
+| 数字快捷键 | 以当前菜单显示的 `no` 为准；工具增删后 re-init 可能变化 |
 
 列表三列统一为 **`command` / `name` / `description`**（设置、语言、工具内菜单等同理）。
 
@@ -148,8 +165,6 @@ $menuItems = Get-ToolMenuItems -BusinessActions @($Config.actions) -Tool $tool `
 
 ```json
 {
-  "no": 1,
-  "command": "node",
   "name": "node.name",
   "description": "node.description",
   "dependencies": {
@@ -225,7 +240,7 @@ Format-I18nPressEnterBack
 
 ```
 □ package/tools/<id>/
-□ index.json（no、command、name、description 及 actions）
+□ index.json（name、description 及 actions；勿写 no/command）
 □ i18n/zh.json、en.json（name/description 键对应的真实文案）
 □ index.ps1、install.ps1、help.md、DESIGN.md
 □ 有 dependencies 时：uninstall.ps1；lib/main.ps1 接 Get-ToolMenuItems + Update-ToolDependencyMenuProbe

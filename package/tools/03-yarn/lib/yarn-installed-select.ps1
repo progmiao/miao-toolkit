@@ -104,13 +104,26 @@ function Show-YarnInstalledSelectMessagePage {
         [int]$DelayMs = 900
     )
 
-    Initialize-ToolkitShellBodyView -Shell $Shell -SectionTitle $SectionTitle `
-        -FooterTemplate SystemToolbarOnly
-    $layout = $Shell.Layout
-    Write-FixedLine $layout.ListStartRow $Message -Color $Color
-    if ($DelayMs -gt 0) {
-        Start-Sleep -Milliseconds $DelayMs
-    }
+    Show-ToolkitShellNoticePage -Shell $Shell -SectionTitle $SectionTitle -Message $Message `
+        -Color $Color -DelayMs $DelayMs
+}
+
+function Invoke-YarnInstalledSelectNoticePage {
+    param(
+        [hashtable]$Shell,
+        [string]$SectionTitle,
+        [string]$Message,
+        [string]$CacheKey
+    )
+
+    Clear-ShellSingleSelectListCache -Shell $Shell -CacheKey $CacheKey
+    $toolbar = New-ShellSystemToolbarConfig
+    $invokeSingleSelect = Get-Command Invoke-ShellSingleSelectList -CommandType Function -ErrorAction Stop
+    return & $invokeSingleSelect -Shell $Shell -SectionTitle $SectionTitle `
+        -Rows @() -CacheKey $CacheKey `
+        -ColumnLayout (New-ShellListColumnLayout -Preset ToolList) `
+        -ToolbarConfig $toolbar `
+        -InitialFlashMessage $Message
 }
 
 function Resolve-YarnInstalledVersionFromPick {
@@ -149,10 +162,9 @@ function Invoke-YarnInstalledVersionSingleSelectPage {
     }
 
     if (-not (Get-Command volta -ErrorAction SilentlyContinue)) {
-        Show-YarnInstalledSelectMessagePage -Shell $Shell -SectionTitle $sectionTitle `
+        return Invoke-YarnInstalledSelectNoticePage -Shell $Shell -SectionTitle $sectionTitle `
             -Message (Get-YarnInstalledSelectI18n -ToolRoot $ToolRoot -Key "$I18nPrefix.voltaMissing") `
-            -Color ([System.ConsoleColor]::Red) -DelayMs 1200
-        return (Get-ShellNavMarker -Action 'back')
+            -CacheKey "${CacheKey}Notice"
     }
 
     $voltaInfo = Get-VoltaYarnVersionInfo
@@ -160,10 +172,9 @@ function Invoke-YarnInstalledVersionSingleSelectPage {
     $installed = @($voltaInfo.Map.Keys)
 
     if ($installed.Count -eq 0) {
-        Show-YarnInstalledSelectMessagePage -Shell $Shell -SectionTitle $sectionTitle `
+        return Invoke-YarnInstalledSelectNoticePage -Shell $Shell -SectionTitle $sectionTitle `
             -Message (Get-YarnInstalledSelectI18n -ToolRoot $ToolRoot -Key "$I18nPrefix.noInstalled") `
-            -Color ([System.ConsoleColor]::Yellow)
-        return (Get-ShellNavMarker -Action 'back')
+            -CacheKey "${CacheKey}Notice"
     }
 
     $items = Sort-YarnVersionItems -Items @(

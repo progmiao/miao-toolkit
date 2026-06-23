@@ -115,9 +115,14 @@ foreach ($fnName in @(
         'Get-ToolMenuItems'
         'Get-ToolFromDirectory'
         'Get-ToolSectionTitle'
+        'Assign-ToolMenuNumbers'
+        'Get-BundledToolsRoot'
+        'Get-ExternalToolsRoot'
         'Update-ToolDependencyMenuProbe'
         'Test-ToolDependencyMenuAction'
         'Invoke-ToolDependencyMenuAction'
+        'Invoke-ToolActionMenu'
+        'Invoke-ToolBusinessAction'
     )) {
     $cmd = Get-Command -Name $fnName -CommandType Function -ErrorAction SilentlyContinue
     if ($cmd) {

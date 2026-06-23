@@ -160,7 +160,23 @@ function Get-Home {
 }
 
 function Get-ToolsRoot {
+    return Get-BundledToolsRoot
+}
+
+function Get-BundledToolsRoot {
     Join-Path (Get-Home) 'tools'
+}
+
+function Get-ExternalToolsRoot {
+    Join-Path (Get-UserConfigDirectory) 'extensions\tools'
+}
+
+function Ensure-ExternalToolsRoot {
+    $dir = Get-ExternalToolsRoot
+    if (-not (Test-Path $dir)) {
+        New-Item -ItemType Directory -Path $dir -Force | Out-Null
+    }
+    return $dir
 }
 
 function Get-CoreRoot {

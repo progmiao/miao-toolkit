@@ -138,7 +138,7 @@ function Import-MiaoModule {
 
         'ToolDeps' { $toolDepsPaths }
 
-        'Tool' { @($toolDepsPaths + 'domain\Invoke-Tool.ps1') }
+        'Tool' { @($toolDepsPaths + 'domain\Invoke-Tool.ps1', 'ui\shell\ToolActionMenu.ps1') }
 
         'Help' { @('pages\sys.ps1', 'pages\help.ps1') }
 
