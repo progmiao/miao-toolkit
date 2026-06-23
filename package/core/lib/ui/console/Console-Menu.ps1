@@ -275,6 +275,7 @@ function Get-BrandInnerWidth {
     $maxRight = Measure-BrandStandardRightPanelWidth
 
     $innerWidth = $logoCol + $gap + $maxRight
+    $innerWidth = Expand-ToolkitBrandInnerWidth -NaturalWidth $innerWidth
     $consoleWidth = Get-ConsoleLineWidth
     if (($innerWidth + 1) -gt $consoleWidth) {
         $innerWidth = [Math]::Max(24, $consoleWidth - 1)

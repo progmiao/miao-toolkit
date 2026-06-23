@@ -5,6 +5,9 @@ $script:ListPageNumberMinDisplayWidth = 2
 $script:ToolkitListColumnGap = 2
 $script:ToolkitCliCommandPrefix = 'miao'
 $script:ToolkitBrandSeparatorExtra = 0
+# 品牌/UI 内宽：在 logo+右栏自然宽度基础上再扩 1/3（总宽 × 4/3）
+$script:ToolkitBrandInnerWidthExpandNumerator = 4
+$script:ToolkitBrandInnerWidthExpandDenominator = 3
 $script:ToolkitToolListColumnWidths = @{
     command     = 12
     name        = 18
@@ -16,6 +19,18 @@ function Get-ShellSingleSelectListLeadingSpaces {
     $n = [int]$script:ShellSingleSelectListLeadingSpaces
     if ($n -lt 1) { return 1 }
     return $n
+}
+
+function Expand-ToolkitBrandInnerWidth {
+    param([int]$NaturalWidth)
+
+    if ($NaturalWidth -le 0) { return 0 }
+
+    $num = [int]$script:ToolkitBrandInnerWidthExpandNumerator
+    $den = [int]$script:ToolkitBrandInnerWidthExpandDenominator
+    if ($num -le 0 -or $den -le 0) { return $NaturalWidth }
+
+    return [Math]::Max(24, [int][Math]::Ceiling($NaturalWidth * $num / [double]$den))
 }
 
 function Get-ListNumberDisplayWidth {

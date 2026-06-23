@@ -8,9 +8,15 @@ $script:CurrentLocale = 'zh'
 $anchor = Measure-BrandStandardRightPanelWidth
 $inner = Measure-ToolkitShellBrandInnerWidthForLocale -Locale 'zh'
 $logo = Get-LogoColumnWidth
-$expectedInner = $logo + 2 + $anchor
+$naturalInner = $logo + 2 + $anchor
+$expandedInner = Expand-ToolkitBrandInnerWidth -NaturalWidth $naturalInner
+$consoleLimit = [Math]::Max(24, (Get-ConsoleLineWidth) - 1)
+$expectedInner = [Math]::Min($expandedInner, $consoleLimit)
 if ($inner -ne $expectedInner) {
-    throw "zh brand inner should be logo+gap+anchor ($expectedInner), got $inner"
+    throw "zh brand inner should be min(expanded,console) ($expectedInner from natural $naturalInner), got $inner"
+}
+if ($expandedInner -le $naturalInner) {
+    throw "brand inner should expand beyond natural width"
 }
 
 $compact = Format-I18nPaginationCompactStatus -PageIndex 0 -PageCount 5 -ItemCount 20
@@ -42,8 +48,10 @@ if ($layout.Widths[0] -ne 12 -or $layout.Widths[1] -ne 18) {
 if ((Get-BrandSeparatorExtra) -ne 0) {
     throw 'toolbox chrome should not extend past brand inner width'
 }
-if ($layout.Widths[2] -ge 32) {
-    throw "description column should shrink below fixed 32, got $($layout.Widths[2])"
+$naturalDescEnd = 1 + $naturalInner
+$naturalDescW = $naturalDescEnd - $prefixW - $fixedW
+if ($layout.Widths[2] -lt $naturalDescW) {
+    throw "description column should be at least natural-width desc ($naturalDescW), got $($layout.Widths[2])"
 }
 
 Write-Host 'test-home-toolbox-ui: OK'
