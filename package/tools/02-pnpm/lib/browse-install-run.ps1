@@ -122,14 +122,16 @@ function Run-PnpmBrowseInstallOperation {
         return $null
     }
 
-    $sectionTitle = if (-not [string]::IsNullOrWhiteSpace($SectionTitle)) {
+    $baseTitle = if (-not [string]::IsNullOrWhiteSpace($SectionTitle)) {
         $SectionTitle
     }
     else {
         $script:PnpmActionSectionTitle
     }
+    $toolRoot = Split-Path $PSScriptRoot -Parent
+    $sectionTitle = Extend-PnpmActionSectionTitle -BaseTitle $baseTitle -ToolRoot $toolRoot `
+        -SubPhaseKey 'pnpm.section.installExecute'
     $ctx = Initialize-ToolkitDepBatchOperationView -Shell $Shell -SectionTitle $sectionTitle `
-        -ProgressTotal $total -ReadyStatusText (Get-PnpmBrowseI18n -Key 'pnpm.browse.installStatusReady')
 
     $log = $ctx.Log
     $ui = $ctx.Ui
@@ -238,14 +240,16 @@ function Run-PnpmBrowseUninstallOperation {
         return $null
     }
 
-    $sectionTitle = if (-not [string]::IsNullOrWhiteSpace($SectionTitle)) {
+    $baseTitle = if (-not [string]::IsNullOrWhiteSpace($SectionTitle)) {
         $SectionTitle
     }
     else {
         $script:PnpmActionSectionTitle
     }
+    $toolRoot = Split-Path $PSScriptRoot -Parent
+    $sectionTitle = Extend-PnpmActionSectionTitle -BaseTitle $baseTitle -ToolRoot $toolRoot `
+        -SubPhaseKey 'pnpm.section.uninstallExecute'
     $ctx = Initialize-ToolkitDepBatchOperationView -Shell $Shell -SectionTitle $sectionTitle `
-        -ProgressTotal $total -ReadyStatusText (Get-PnpmBrowseUninstallI18n -Key 'pnpm.uninstall.statusReady')
 
     $log = $ctx.Log
     $ui = $ctx.Ui

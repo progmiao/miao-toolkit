@@ -537,12 +537,15 @@ function Run-NodeBrowseUninstallOperation {
         return $null
     }
 
-    $sectionTitle = if (-not [string]::IsNullOrWhiteSpace($SectionTitle)) {
+    $baseTitle = if (-not [string]::IsNullOrWhiteSpace($SectionTitle)) {
         $SectionTitle
     }
     else {
         $script:NodeActionSectionTitle
     }
+    $toolRoot = Split-Path $PSScriptRoot -Parent
+    $sectionTitle = Extend-NodeActionSectionTitle -BaseTitle $baseTitle -ToolRoot $toolRoot `
+        -SubPhaseKey 'node.section.uninstallExecute'
     $ctx = Initialize-ToolkitDepBatchOperationView -Shell $Shell -SectionTitle $sectionTitle `
         -ProgressTotal $totalSteps -ReadyStatusText (Get-NodeBrowseUninstallI18n -Key 'node.uninstall.statusReady')
 

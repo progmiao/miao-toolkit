@@ -122,14 +122,16 @@ function Run-YarnBrowseInstallOperation {
         return $null
     }
 
-    $sectionTitle = if (-not [string]::IsNullOrWhiteSpace($SectionTitle)) {
+    $baseTitle = if (-not [string]::IsNullOrWhiteSpace($SectionTitle)) {
         $SectionTitle
     }
     else {
         $script:YarnActionSectionTitle
     }
+    $toolRoot = Split-Path $PSScriptRoot -Parent
+    $sectionTitle = Extend-YarnActionSectionTitle -BaseTitle $baseTitle -ToolRoot $toolRoot `
+        -SubPhaseKey 'yarn.section.installExecute'
     $ctx = Initialize-ToolkitDepBatchOperationView -Shell $Shell -SectionTitle $sectionTitle `
-        -ProgressTotal $total -ReadyStatusText (Get-YarnBrowseI18n -Key 'yarn.browse.installStatusReady')
 
     $log = $ctx.Log
     $ui = $ctx.Ui
@@ -237,14 +239,16 @@ function Run-YarnBrowseUninstallOperation {
         return $null
     }
 
-    $sectionTitle = if (-not [string]::IsNullOrWhiteSpace($SectionTitle)) {
+    $baseTitle = if (-not [string]::IsNullOrWhiteSpace($SectionTitle)) {
         $SectionTitle
     }
     else {
         $script:YarnActionSectionTitle
     }
+    $toolRoot = Split-Path $PSScriptRoot -Parent
+    $sectionTitle = Extend-YarnActionSectionTitle -BaseTitle $baseTitle -ToolRoot $toolRoot `
+        -SubPhaseKey 'yarn.section.uninstallExecute'
     $ctx = Initialize-ToolkitDepBatchOperationView -Shell $Shell -SectionTitle $sectionTitle `
-        -ProgressTotal $total -ReadyStatusText (Get-YarnBrowseUninstallI18n -Key 'yarn.uninstall.statusReady')
 
     $log = $ctx.Log
     $ui = $ctx.Ui

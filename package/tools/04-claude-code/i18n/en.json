@@ -4,11 +4,11 @@
     "description": "Install, configure, and manage the Claude Code CLI and plugins",
     "action": {
       "install": {
-        "name": "Install",
+        "name": "Install CLI",
         "description": "Install Claude Code CLI via WinGet"
       },
       "init": {
-        "name": "Initialize",
+        "name": "Init config",
         "description": "Apply required defaults before first use (e.g. disable OAuth login)"
       },
       "configureApi": {
@@ -20,7 +20,7 @@
         "description": "Set HTTP/HTTPS proxy or clear proxy settings"
       },
       "addMarketplace": {
-        "name": "Add marketplace",
+        "name": "Plugin marketplace",
         "description": "Register common plugin marketplaces"
       },
       "installPlugin": {
@@ -36,17 +36,23 @@
         "description": "Pick installed plugins and update to latest"
       },
       "update": {
-        "name": "Update",
+        "name": "Update CLI",
         "description": "Upgrade Claude Code CLI via WinGet"
       },
       "uninstall": {
-        "name": "Uninstall",
+        "name": "Uninstall CLI",
         "description": "Remove Claude Code CLI via WinGet"
       }
     },
     "cli": {
-      "alreadyInstalled": "Claude Code is already installed ({version}). Use Update.",
+      "alreadyInstalled": "Claude Code is installed (v{version})",
+      "alreadyLatest": "Claude Code is up to date (v{version})",
       "notInstalled": "Claude Code CLI is not installed. Use Install first.",
+      "detectStatus": "Detecting Claude Code CLI installation…",
+      "detectNotInstalled": "Not installed; preparing WinGet install",
+      "detectInstalled": "Current version v{version}",
+      "detectUpdateStatus": "Checking for updates…",
+      "detectUpdateAvailable": "Update available; preparing upgrade",
       "installStatusReady": "Ready to install",
       "installSuccess": "Claude Code CLI installed",
       "installFailed": "Install failed: {detail}",

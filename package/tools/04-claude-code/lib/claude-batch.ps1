@@ -151,6 +151,106 @@ function Invoke-ClaudeCodeBatchOperation {
     }
 }
 
+function Invoke-ClaudeCodeWingetStreamWork {
+    param(
+        $Context,
+        [ValidateSet('install', 'upgrade', 'uninstall')]
+        [string]$Verb,
+        [string]$ToolRoot,
+        [string]$SuccessLogKey,
+        [string]$FailureLogKey,
+        [scriptblock]$Pump
+    )
+
+    $log = $Context.Log
+    $ui = $Context.Ui
+    $RedrawView = $Context.RedrawView
+    $label = Get-ClaudeCodeWingetPackageId
+
+    $sectionText = Get-I18n -Key 'page.depOperation.logSectionPackage' -Vars @{
+        name  = $label
+        index = 1
+        total = 1
+    }
+    Write-ClaudeCodeBatchLogLine -Log $log -Text $sectionText -Kind 'section' -WithTimestamp
+
+    $ui.ProgressName = $label
+    $ui.ItemInFlight = $true
+    $ui.ExecuteStartTick = [Environment]::TickCount
+    Set-ToolkitDepOperationInFlightStatus -Ui $ui -MainText $label -AdvanceSpinner
+    & $RedrawView
+
+    $onOutputLine = {
+        param($Line)
+
+        if ([string]::IsNullOrWhiteSpace($Line)) { return }
+
+        $trim = if (Get-Command Get-WingetStreamLineCleanText -ErrorAction SilentlyContinue) {
+            Get-WingetStreamLineCleanText -Line $Line
+        }
+        else {
+            [string]$Line
+        }
+        if ([string]::IsNullOrWhiteSpace($trim)) { return }
+
+        Write-ClaudeCodeBatchLogLine -Log $log -Text $trim -Kind 'text'
+
+        if (Get-Command Get-WingetDepStreamLinePercent -ErrorAction SilentlyContinue) {
+            $pct = Get-WingetDepStreamLinePercent -Line $trim
+            if ($pct -ge 0 -and $pct -le 100) {
+                $ui.ItemSubPercent = $pct
+            }
+        }
+
+        if (Get-Command Get-WingetDepStreamLinePhase -ErrorAction SilentlyContinue) {
+            $phase = Get-WingetDepStreamLinePhase -Line $trim
+            if ($phase -and $phase -ne 'progress') {
+                Set-ToolkitDepOperationInFlightStatus -Ui $ui -MainText $trim -AdvanceSpinner
+            }
+        }
+    }.GetNewClosure()
+
+    $wingetResult = Invoke-ClaudeCodeWingetProcess -Verb $Verb -OnUiPoll $Pump `
+        -OnChromePulse { & $RedrawView } -OnOutputLine $onOutputLine
+
+    $ok = $false
+    if ($wingetResult) {
+        if ($wingetResult.PSObject.Properties['Success']) {
+            $ok = [bool]$wingetResult.Success
+        }
+        else {
+            $ok = ([int]$wingetResult.ExitCode -eq 0)
+        }
+    }
+
+    if ($ok) {
+        Write-ClaudeCodeBatchLogLine -Log $log -Text (Get-ClaudeCodeI18n -ToolRoot $ToolRoot -Key $SuccessLogKey) `
+            -Kind 'success' -WithTimestamp
+    }
+    else {
+        $detail = ''
+        if ($wingetResult) {
+            if ($wingetResult.Lines) {
+                $detail = ($wingetResult.Lines | Select-Object -Last 3 | ForEach-Object { [string]$_ }) -join ' '
+            }
+            if ([string]::IsNullOrWhiteSpace($detail) -and $wingetResult.Output) {
+                $detail = [string]$wingetResult.Output
+            }
+            if ([string]::IsNullOrWhiteSpace($detail) -and $null -ne $wingetResult.ExitCode) {
+                $detail = "exit $($wingetResult.ExitCode)"
+            }
+        }
+        if ([string]::IsNullOrWhiteSpace($detail)) { $detail = 'unknown error' }
+        Write-ClaudeCodeBatchLogLine -Log $log -Text (Get-ClaudeCodeI18n -ToolRoot $ToolRoot -Key $FailureLogKey `
+            -Vars @{ detail = $detail }) -Kind 'error' -WithTimestamp
+    }
+
+    return @{
+        Ok     = $ok
+        Result = $wingetResult
+    }
+}
+
 function Invoke-ClaudeCodeWingetBatchPage {
     param(
         [hashtable]$Shell,
@@ -166,34 +266,50 @@ function Invoke-ClaudeCodeWingetBatchPage {
 
     Import-ClaudeCodeWingetCore -CoreLib $CoreLib
 
-    $label = Get-ClaudeCodeWingetPackageId
-    return Invoke-ClaudeCodeBatchOperation -Shell $Shell -SectionTitle $SectionTitle `
-        -ReadyStatusText $ReadyStatusText -Intent $(if ($Verb -eq 'upgrade') { 'update' } else { $Verb }) `
-        -Items @($label) `
-        -GetItemLabel { param($Item) [string]$Item } `
-        -InvokeItem {
-            param($Item)
-            $result = Invoke-ClaudeCodeWingetProcess -Verb $Verb -OnOutputLine {
-                param($Line)
-                if (-not [string]::IsNullOrWhiteSpace($Line)) {
-                    $null = $Line
-                }
-            }
-            return $result
-        } `
-        -GetSuccessLog {
-            param($Item, $Result)
-            Get-ClaudeCodeI18n -ToolRoot $ToolRoot -Key $SuccessLogKey
-        } `
-        -GetFailureLog {
-            param($Item, $Result)
-            $detail = if ($Result -is [string]) { $Result } elseif ($Result.Lines) {
-                ($Result.Lines | Select-Object -Last 3 | ForEach-Object { [string]$_ }) -join ' '
-            }
-            else { [string]$Result.Output }
-            if ([string]::IsNullOrWhiteSpace($detail)) { $detail = "exit $($Result.ExitCode)" }
-            Get-ClaudeCodeI18n -ToolRoot $ToolRoot -Key $FailureLogKey -Vars @{ detail = $detail }
+    $intent = if ($Verb -eq 'upgrade') { 'update' } else { $Verb }
+    $ctx = Initialize-ToolkitDepBatchOperationView -Shell $Shell -SectionTitle $SectionTitle `
+        -ProgressTotal 1 -ReadyStatusText $ReadyStatusText
+
+    $ui = $ctx.Ui
+    $RedrawView = $ctx.RedrawView
+    $successCount = 0
+    $failedCount = 0
+
+    try {
+        & $ctx.FnDrainStaleInput
+        if (Get-Command Clear-ConsoleInputBuffer -ErrorAction SilentlyContinue) {
+            Clear-ConsoleInputBuffer
         }
+
+        Set-ToolkitShellToolbarLocked -Shell $Shell -Locked $true
+        Start-ToolkitDepOperationBatch -Ui $ui
+        & $RedrawView
+
+        $streamHolder = @{ Result = $null }
+        Invoke-ToolkitDepBatchOperationRunWork -Context $ctx -Work {
+            param($Pump)
+
+            $streamHolder.Result = Invoke-ClaudeCodeWingetStreamWork -Context $ctx -Verb $Verb `
+                -ToolRoot $ToolRoot -SuccessLogKey $SuccessLogKey -FailureLogKey $FailureLogKey `
+                -Pump $Pump
+        }
+
+        $streamResult = $streamHolder.Result
+        if ($streamResult -and $streamResult.Ok) { $successCount = 1 }
+        else { $failedCount = 1 }
+
+        $ui.ItemInFlight = $false
+        $ui.ItemSubPercent = -1
+        $ui.ProgressCurrent = 1
+
+        Set-ToolkitDepOperationBatchCompleteUi -Ui $ui -Intent $intent `
+            -TotalCount 1 -SuccessCount $successCount -FailedCount $failedCount -ProgressCurrent 1
+
+        return Invoke-ToolkitDepBatchOperationWaitLoop -Context $ctx
+    }
+    finally {
+        Clear-ToolkitDepBatchOperationView -Context $ctx
+    }
 }
 
 function Invoke-ClaudeCodeInitBatchPage {

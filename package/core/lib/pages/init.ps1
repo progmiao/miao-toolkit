@@ -33,22 +33,28 @@ function Invoke-ToolkitInitView {
         & $RedrawView
 
         try {
-            $null = Invoke-ToolkitInitBuild -OnProgress {
-                param($Info)
+            Invoke-ToolkitDepBatchOperationRunWork -Context $ctx -Work {
+                param($Pump)
 
-                if ([int]$Info.Total -gt 0) {
-                    $ctx.ProgressTotal = [int]$Info.Total
-                }
-                $ui.ProgressCurrent = [Math]::Max(0, [int]$Info.Step - 1)
-                Set-ToolkitDepOperationInFlightStatus -Ui $ui -MainText ([string]$Info.Message) -AdvanceSpinner
-                & $fnAddLog -Log $log -Text ([string]$Info.Message) -WithTimestamp
+                $null = Invoke-ToolkitInitBuild -OnProgress {
+                    param($Info)
+
+                    if ([int]$Info.Total -gt 0) {
+                        $ctx.ProgressTotal = [int]$Info.Total
+                    }
+                    Update-ToolkitDepOperationProgressStep -Ui $ui `
+                        -ProgressCurrent ([Math]::Max(0, [int]$Info.Step - 1)) `
+                        -Message ([string]$Info.Message)
+                    & $fnAddLog -Log $log -Text ([string]$Info.Message) -WithTimestamp
+                    & $RedrawView
+                } -OnUiPump $Pump
+
+                $total = [int]$ctx.ProgressTotal
+                Set-ToolkitDepOperationBatchCompleteUi -Ui $ui -Intent init `
+                    -TotalCount $total -SuccessCount $total -FailedCount 0 -ProgressCurrent $total
                 & $RedrawView
+                Initialize-ToolkitHomeBundle -Shell $Shell | Out-Null
             }
-
-            $total = [int]$ctx.ProgressTotal
-            Set-ToolkitDepOperationBatchCompleteUi -Ui $ui -Intent init `
-                -TotalCount $total -SuccessCount $total -FailedCount 0 -ProgressCurrent $total
-            Initialize-ToolkitHomeBundle -Shell $Shell | Out-Null
         }
         catch {
             $buildFailed = $true
@@ -67,6 +73,7 @@ function Invoke-ToolkitInitView {
             }
             & $fnAddLog -Log $log -Text (Get-I18n -Key 'page.init.logFailed' -Vars @{ detail = $detail }) `
                 -Kind 'error' -WithTimestamp
+            & $RedrawView
         }
 
         $waitResult = Invoke-ToolkitDepBatchOperationWaitLoop -Context $ctx -QuitNavAction back

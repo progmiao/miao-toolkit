@@ -9,21 +9,25 @@
     },
     "action": {
       "install": {
-        "name": "Install Yarn",
-        "description": "Install Yarn on this machine from the version list"
+        "name": "Batch install",
+        "description": "Batch install Yarn on this machine from the version list"
       },
       "pin": {
-        "name": "Pin Yarn",
+        "name": "Pin version",
         "description": "Lock the Yarn version for the current project directory"
       },
       "default": {
-        "name": "Default Yarn",
+        "name": "Set default",
         "description": "Yarn version to use when not pinned"
       },
       "uninstall": {
-        "name": "Uninstall Yarn",
-        "description": "Remove installed Yarn versions from this machine"
+        "name": "Batch uninstall",
+        "description": "Batch remove installed Yarn versions from this machine"
       }
+    },
+    "section": {
+      "installExecute": "Install execution",
+      "uninstallExecute": "Uninstall execution"
     },
     "browse": {
       "loading": "{spinner} Loading Yarn versions…",
@@ -65,7 +69,7 @@
     },
     "default": {
       "voltaMissing": "Volta not found — install it from the dependency menu first",
-      "noInstalled": "No installed versions — use Install Yarn first",
+      "noInstalled": "No installed versions — use Batch install first",
       "countUnit": "versions",
       "noChange": "v{version} is already the global default",
       "success": "Set v{version} as global default",

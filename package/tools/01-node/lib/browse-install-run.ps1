@@ -411,12 +411,15 @@ function Run-NodeBrowseInstallOperation {
         return $null
     }
 
-    $sectionTitle = if (-not [string]::IsNullOrWhiteSpace($SectionTitle)) {
+    $baseTitle = if (-not [string]::IsNullOrWhiteSpace($SectionTitle)) {
         $SectionTitle
     }
     else {
         $script:NodeActionSectionTitle
     }
+    $toolRoot = Split-Path $PSScriptRoot -Parent
+    $sectionTitle = Extend-NodeActionSectionTitle -BaseTitle $baseTitle -ToolRoot $toolRoot `
+        -SubPhaseKey 'node.section.installExecute'
     $ctx = Initialize-ToolkitDepBatchOperationView -Shell $Shell -SectionTitle $sectionTitle `
         -ProgressTotal $total -ReadyStatusText (Get-NodeBrowseI18n -Key 'node.browse.installStatusReady')
 

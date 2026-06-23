@@ -569,7 +569,8 @@ function Get-ToolkitToolInitStateForTool {
 
 function Invoke-ToolkitInitBuild {
     param(
-        [scriptblock]$OnProgress = $null
+        [scriptblock]$OnProgress = $null,
+        [scriptblock]$OnUiPump = $null
     )
 
     $coreLibDir = $script:MiaoCoreLibDir
@@ -604,6 +605,12 @@ function Invoke-ToolkitInitBuild {
         Total = 2 + ($locales.Count * 3) + $allTools.Count
     }
 
+    function Invoke-InitBuildUiPump {
+        if ($OnUiPump) {
+            & $OnUiPump
+        }
+    }
+
     function Invoke-InitBuildProgress {
         param(
             [string]$Message,
@@ -624,12 +631,14 @@ function Invoke-ToolkitInitBuild {
                 Percent = $(if ($Percent -ge 0) { $Percent } else { [int](100 * $buildProgress.Step / $buildProgress.Total) })
             }
         }
+        Invoke-InitBuildUiPump
     }
 
     Invoke-InitBuildProgress -Message (Get-I18n -Key 'page.init.logScanFingerprint') -Phase toolbox
     Invoke-InitBuildProgress -Message (Get-I18n -Key 'page.init.logPrepareDirectory') -Phase toolbox
 
     foreach ($locale in $locales) {
+        Invoke-InitBuildUiPump
         $tools = @(Discover-ToolsForLocale -Locale $locale)
 
         $header = New-ToolkitMenuHeader -HideSectionTitle
@@ -637,6 +646,7 @@ function Invoke-ToolkitInitBuild {
         $brandPath = Join-Path $tmpRoot "brand.$locale.json"
         $brandJson = ($brandSnapshot | ConvertTo-Json -Depth 20 -Compress:$false)
         [IO.File]::WriteAllText($brandPath, $brandJson, [Text.UTF8Encoding]::new($true))
+        Invoke-InitBuildUiPump
 
         Invoke-InitBuildProgress -Message (Get-I18n -Key 'page.init.logBrandBuilt' -Vars @{ locale = $locale }) -Phase toolbox
 
@@ -647,6 +657,7 @@ function Invoke-ToolkitInitBuild {
         $catalogPath = Join-Path $tmpRoot "catalog.$locale.json"
         $catalogJson = ($catalog | ConvertTo-Json -Depth 20 -Compress:$false)
         [IO.File]::WriteAllText($catalogPath, $catalogJson, [Text.UTF8Encoding]::new($true))
+        Invoke-InitBuildUiPump
 
         Invoke-InitBuildProgress -Message (Get-I18n -Key 'page.init.logCatalogBuilt' -Vars @{
             locale = $locale
@@ -673,12 +684,14 @@ function Invoke-ToolkitInitBuild {
         $rowsPath = Join-Path $tmpRoot "rows.$locale.home.json"
         $rowsJson = ($payload | ConvertTo-Json -Depth 30 -Compress:$false)
         [IO.File]::WriteAllText($rowsPath, $rowsJson, [Text.UTF8Encoding]::new($true))
+        Invoke-InitBuildUiPump
 
         Invoke-InitBuildProgress -Message (Get-I18n -Key 'page.init.logHomeRowsBuilt' -Vars @{ locale = $locale }) -Phase toolbox
     }
 
     $toolsState = [ordered]@{}
     foreach ($tool in $allTools) {
+        Invoke-InitBuildUiPump
         $hasDeps = Test-ToolHasExternalDeps $tool
         if (-not $hasDeps) {
             $installed = $true
@@ -689,6 +702,7 @@ function Invoke-ToolkitInitBuild {
             $probeCache = @{}
             $meets = $true
             foreach ($pkg in @(Get-ToolDependencyPackages -Tool $tool)) {
+                Invoke-InitBuildUiPump
                 $status = Resolve-ToolDepPackageStatus -Tool $tool -Package $pkg -ProbeCache $probeCache `
                     -SkipRemoteUpgradeProbe -PreferLocalProbe
                 if (-not $status.CommandAvailable) {
@@ -724,6 +738,7 @@ function Invoke-ToolkitInitBuild {
     }
     $manifestPath = Join-Path $tmpRoot 'manifest.json'
     [IO.File]::WriteAllText($manifestPath, ($manifest | ConvertTo-Json -Depth 6), [Text.UTF8Encoding]::new($true))
+    Invoke-InitBuildUiPump
 
     if (Test-Path $tmpRoot) {
         Get-ChildItem -Path $tmpRoot -Force | ForEach-Object {
@@ -749,4 +764,10 @@ function Clear-ToolkitCacheDirectory { Clear-ToolkitInitDirectory }
 function Get-ToolkitCacheManifest { Get-ToolkitInitManifest }
 function Test-ToolkitCacheValid { Test-ToolkitInitValid }
 function Get-ToolkitToolsFromCache { param([string]$Locale = (Get-CurrentLocale)) Get-ToolkitToolsFromInit -Locale $Locale }
-function Invoke-ToolkitCacheBuild { param([scriptblock]$OnProgress = $null) Invoke-ToolkitInitBuild -OnProgress $OnProgress }
+function Invoke-ToolkitCacheBuild {
+    param(
+        [scriptblock]$OnProgress = $null,
+        [scriptblock]$OnUiPump = $null
+    )
+    Invoke-ToolkitInitBuild -OnProgress $OnProgress -OnUiPump $OnUiPump
+}

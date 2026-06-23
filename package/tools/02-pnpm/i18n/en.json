@@ -9,21 +9,25 @@
     },
     "action": {
       "install": {
-        "name": "Install pnpm",
-        "description": "Install pnpm on this machine from the version list"
+        "name": "Batch install",
+        "description": "Batch install pnpm on this machine from the version list"
       },
       "pin": {
-        "name": "Pin pnpm",
+        "name": "Pin version",
         "description": "Lock the pnpm version for the current project directory"
       },
       "default": {
-        "name": "Default pnpm",
+        "name": "Set default",
         "description": "pnpm version to use when not pinned"
       },
       "uninstall": {
-        "name": "Uninstall pnpm",
-        "description": "Remove installed pnpm versions from this machine"
+        "name": "Batch uninstall",
+        "description": "Batch remove installed pnpm versions from this machine"
       }
+    },
+    "section": {
+      "installExecute": "Install execution",
+      "uninstallExecute": "Uninstall execution"
     },
     "browse": {
       "loading": "{spinner} Loading pnpm versions…",
@@ -65,7 +69,7 @@
     },
     "default": {
       "voltaMissing": "Volta not found — install it from the dependency menu first",
-      "noInstalled": "No installed versions — use Install pnpm first",
+      "noInstalled": "No installed versions — use Batch install first",
       "countUnit": "versions",
       "noChange": "v{version} is already the global default",
       "success": "Set v{version} as global default",

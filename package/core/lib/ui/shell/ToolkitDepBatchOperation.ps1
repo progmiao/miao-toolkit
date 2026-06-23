@@ -107,12 +107,12 @@ function Update-ToolkitDepOperationDisplayElapsedIfDue {
     $trueSecond = Get-ToolkitDepOperationWallElapsedSecond -Ui $Ui
     if ($trueSecond -le $displayed) { return $false }
 
-    if ([DateTime]::UtcNow -lt $startUtc.AddSeconds($trueSecond)) {
-        return $false
-    }
+    $nextSecond = $displayed + 1
+    if ($nextSecond -gt $trueSecond) { return $false }
+    if ([DateTime]::UtcNow -lt $startUtc.AddSeconds($nextSecond)) { return $false }
 
-    $Ui.ElapsedDisplaySecond = $trueSecond
-    $Ui.StatusRightText = Format-ToolkitDepOperationElapsedLabel -Seconds $trueSecond -Mode running
+    $Ui.ElapsedDisplaySecond = $nextSecond
+    $Ui.StatusRightText = Format-ToolkitDepOperationElapsedLabel -Seconds $nextSecond -Mode running
     return $true
 }
 
@@ -219,6 +219,78 @@ function Sync-ToolkitDepOperationStatusChrome {
     )
 
     return (Update-ToolkitDepOperationStatusChrome -Ui $Ui -PollState $PollState -SpinnerIntervalMs $SpinnerIntervalMs)
+}
+
+function Test-ToolkitDepOperationChromePumpActive {
+    param($Ui)
+
+    if ($null -eq $Ui) { return $false }
+    return ([bool]$Ui.ItemInFlight -or [bool]$Ui.StatusSpinnerActive)
+}
+
+function Invoke-ToolkitDepBatchOperationUiPump {
+    param(
+        $Context,
+        [switch]$Force
+    )
+
+    if ($null -eq $Context) { return $false }
+
+    $ui = $Context.Ui
+    if (-not $Force -and -not (Test-ToolkitDepOperationChromePumpActive -Ui $ui)) {
+        return $false
+    }
+
+    $null = Sync-ToolkitDepOperationStatusChrome -Ui $ui -PollState $Context.PollState
+    if ($Context.UseBufferDraw) {
+        & $Context.FnEnterBatch
+    }
+    & $Context.RedrawDepChrome
+    if ($Context.UseBufferDraw) {
+        $null = & $Context.FnCompleteBatch -ToolkitShell $Context.Shell
+    }
+    return $true
+}
+
+function Invoke-ToolkitDepBatchOperationRunWork {
+    param(
+        [Parameter(Mandatory)]
+        $Context,
+        [Parameter(Mandatory)]
+        [scriptblock]$Work
+    )
+
+    $pump = {
+        Invoke-ToolkitDepBatchOperationUiPump -Context $Context
+    }.GetNewClosure()
+
+    & $Work $pump
+}
+
+function Set-ToolkitDepOperationProgressMessage {
+    param(
+        $Ui,
+        [string]$Message
+    )
+
+    if ($null -eq $Ui) { return }
+    Set-ToolkitDepOperationInFlightStatus -Ui $Ui -MainText $Message
+}
+
+function Update-ToolkitDepOperationProgressStep {
+    param(
+        $Ui,
+        [int]$ProgressCurrent,
+        [string]$Message
+    )
+
+    if ($null -eq $Ui) { return }
+    if ([int]$ProgressCurrent -ge 0) {
+        $Ui.ProgressCurrent = $ProgressCurrent
+    }
+    if (-not [string]::IsNullOrWhiteSpace($Message)) {
+        Set-ToolkitDepOperationProgressMessage -Ui $Ui -Message $Message
+    }
 }
 
 function Format-ToolkitDepOperationElapsedSecondsSlot {
@@ -541,6 +613,7 @@ function Invoke-ToolkitDepBatchOperationWaitLoop {
             }
         }
 
+        $null = Invoke-ToolkitDepBatchOperationUiPump -Context $Context
         Start-Sleep -Milliseconds 20
     }
 }

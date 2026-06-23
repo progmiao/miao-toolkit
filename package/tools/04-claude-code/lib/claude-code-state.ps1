@@ -57,6 +57,27 @@ function Get-ClaudeCodeInstalledVersion {
     return Get-ClaudeCodeCliVersion
 }
 
+function Test-ClaudeCodeUpdateAvailable {
+    param([string]$CoreLib = '')
+
+    if (-not (Test-ClaudeCodeInstalled)) {
+        return $false
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($CoreLib)) {
+        Import-ClaudeCodeWingetCore -CoreLib $CoreLib
+    }
+
+    if (-not (Get-Command Test-WingetPackageUpdateAvailable -ErrorAction SilentlyContinue)) {
+        return $false
+    }
+
+    $packageId = Get-ClaudeCodeWingetPackageId
+    $installedVersion = Get-ClaudeCodeInstalledVersion
+    return (Test-WingetPackageUpdateAvailable -PackageId $packageId `
+        -InstalledVersion $(if ($installedVersion) { $installedVersion } else { '' }))
+}
+
 function Import-ClaudeCodeWingetCore {
     param([string]$CoreLib)
 
@@ -90,11 +111,14 @@ function Invoke-ClaudeCodeWingetProcess {
     param(
         [ValidateSet('install', 'upgrade', 'uninstall')]
         [string]$Verb,
-        [scriptblock]$OnOutputLine = $null
+        [scriptblock]$OnOutputLine = $null,
+        [scriptblock]$OnUiPoll = $null,
+        [scriptblock]$OnChromePulse = $null
     )
 
     $argumentList = New-ClaudeCodeWingetArgumentList -Verb $Verb
-    return Invoke-WingetDepProcess -ArgumentList $argumentList -OnOutputLine $OnOutputLine
+    return Invoke-WingetDepProcess -ArgumentList $argumentList -OnOutputLine $OnOutputLine `
+        -OnUiPoll $OnUiPoll -OnChromePulse $OnChromePulse
 }
 
 function Invoke-ClaudeCodeCliCommand {

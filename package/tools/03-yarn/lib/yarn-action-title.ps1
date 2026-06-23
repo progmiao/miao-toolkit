@@ -1,12 +1,14 @@
-﻿# yarn — 功能页标题（与一级菜单列表名称同源）
+﻿# yarn — 功能页标题（工具名 - 功能名 [- 子阶段]）
+
+if (-not (Get-Command Format-ToolActionSectionTitle -ErrorAction SilentlyContinue)) {
+    $yarnActionTitleCoreLib = Join-Path $PSScriptRoot '..\..\..\core\lib'
+    . (Join-Path $yarnActionTitleCoreLib 'ui\shell\ToolActionSectionTitle.ps1')
+}
 
 function Import-YarnActionTitleCore {
     param([string]$CoreLib)
 
-    if (-not (Get-Command Resolve-ToolI18nLabel -ErrorAction SilentlyContinue)) {
-        . (Join-Path $CoreLib 'config\Paths.ps1')
-        . (Join-Path $CoreLib 'config\I18n.ps1')
-    }
+    Import-ToolActionSectionTitleCore -CoreLib $CoreLib
 }
 
 function Resolve-YarnToolAction {
@@ -35,20 +37,26 @@ function Get-YarnActionSectionTitle {
     param(
         [string]$ToolRoot,
         $Action = $null,
-        [string]$ScriptLeaf = ''
+        [string]$ScriptLeaf = '',
+        [string]$SubPhaseKey = ''
     )
 
     $resolved = Resolve-YarnToolAction -ToolRoot $ToolRoot -Action $Action -ScriptLeaf $ScriptLeaf
     if (-not $resolved) {
-        if (Get-Command Get-ToolFromDirectory -ErrorAction SilentlyContinue) {
-            $tool = Get-ToolFromDirectory -ToolRoot $ToolRoot
-            if ($tool) {
-                return [string]$tool.name
-            }
-        }
-        return 'yarn'
+        return (Get-ToolkitToolDisplayName -ToolRoot $ToolRoot)
     }
 
-    return (Resolve-ToolI18nLabel -ToolRoot $ToolRoot -Key ([string]$resolved.name) `
-        -Fallback ([string]$resolved.command))
+    return (Format-ToolActionSectionTitle -ToolRoot $ToolRoot -ActionNameKey ([string]$resolved.name) `
+        -SubPhaseKey $SubPhaseKey)
+}
+
+function Extend-YarnActionSectionTitle {
+    param(
+        [string]$BaseTitle,
+        [string]$ToolRoot,
+        [string]$SubPhaseKey
+    )
+
+    return Extend-ToolActionSectionTitle -BaseTitle $BaseTitle -ToolRoot $ToolRoot `
+        -SubPhaseKey $SubPhaseKey
 }

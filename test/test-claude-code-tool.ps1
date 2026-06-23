@@ -21,8 +21,15 @@ $actions = @((Get-Content (Join-Path $toolRoot 'index.json') -Raw -Encoding UTF8
 if ($actions.Count -ne 10) { throw "expected 10 actions, got $($actions.Count)" }
 if ($actions[0].command -ne 'install') { throw 'first action must be install' }
 if ($actions[1].command -ne 'init') { throw 'second action must be init' }
-if ($actions[-2].command -ne 'update') { throw 'second last action must be update' }
-if ($actions[-1].command -ne 'uninstall') { throw 'last action must be uninstall' }
+$expectedCommands = @(
+    'install', 'init', 'config-api', 'config-proxy', 'plugin',
+    'inst-plug', 'upd-plug', 'uninst-plug', 'update', 'uninstall'
+)
+for ($i = 0; $i -lt $expectedCommands.Count; $i++) {
+    if ([string]$actions[$i].command -ne $expectedCommands[$i]) {
+        throw "action[$i] command should be [$($expectedCommands[$i])], got [$($actions[$i].command)]"
+    }
+}
 
 . (Join-Path $toolRoot 'lib\claude-code-core.ps1')
 . (Join-Path $toolRoot 'lib\claude-code-state.ps1')

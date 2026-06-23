@@ -82,17 +82,48 @@ function Invoke-ClaudeCodeNoticePage {
         [hashtable]$Shell,
         [string]$SectionTitle,
         [string]$Message,
-        [string]$CacheKey
+        [string]$CacheKey = '',
+        [System.ConsoleColor]$Color = [System.ConsoleColor]::Yellow
     )
 
-    Clear-ShellSingleSelectListCache -Shell $Shell -CacheKey $CacheKey
+    if (-not [string]::IsNullOrWhiteSpace($CacheKey)) {
+        Clear-ShellSingleSelectListCache -Shell $Shell -CacheKey $CacheKey
+    }
+
     $toolbar = New-ShellSystemToolbarConfig
-    $invokeSingleSelect = Get-Command Invoke-ShellSingleSelectList -CommandType Function -ErrorAction Stop
-    return & $invokeSingleSelect -Shell $Shell -SectionTitle $SectionTitle `
-        -Rows @() -CacheKey $CacheKey `
-        -ColumnLayout (New-ShellListColumnLayout -Preset ToolList) `
-        -ToolbarConfig $toolbar `
-        -InitialFlashMessage $Message
+    Initialize-ToolkitShellBodyView -Shell $Shell -SectionTitle $SectionTitle `
+        -FooterTemplate SystemToolbarOnly
+    Clear-ToolkitShellListViewport -Shell $Shell
+    Set-ToolkitShellBodyCatalogLine -Shell $Shell -CatalogLine ''
+    Render-ToolkitShellCatalogRow -Shell $Shell
+
+    $messageRow = Get-ToolkitShellMessageRow -Shell $Shell
+    if ($messageRow -ge 0) {
+        if (-not [string]::IsNullOrWhiteSpace($Message)) {
+            Write-FixedLine $messageRow " $Message" -Color $Color
+        }
+        else {
+            Write-ToolkitShellMessageRow -Shell $Shell -Message ''
+        }
+    }
+
+    $footerRenderer = New-ShellSystemToolbarFooterRenderer -Shell $Shell -ToolbarConfig $toolbar
+    Register-ToolkitShellFooter -Shell $Shell -Renderer $footerRenderer
+    & $footerRenderer
+    Finalize-ToolkitShellBodyView -Shell $Shell
+
+    while ($true) {
+        $result = Read-ShellSystemToolbarKey -Shell $Shell -ToolbarConfig $toolbar
+        if ($result -eq 'exitCancel' -or $result -eq 'exitConfirm') {
+            continue
+        }
+        if ($result -eq 'exitConfirmed') {
+            return (Get-ShellNavMarker -Action 'quit')
+        }
+        if (Test-ShellNavMarker $result) {
+            return $result
+        }
+    }
 }
 
 function Read-ClaudeCodeShellLineInput {

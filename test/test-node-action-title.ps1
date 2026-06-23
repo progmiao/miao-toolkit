@@ -9,13 +9,21 @@ Initialize-PathsFromToolRoot -ToolRoot $toolRoot
 . (Join-Path $toolRoot 'lib\node-action-title.ps1')
 Import-NodeActionTitleCore -CoreLib $coreLib
 
-$expectedInstall = Resolve-ToolI18nLabel -ToolRoot $toolRoot -Key 'node.action.install.name'
-$expectedPin = Resolve-ToolI18nLabel -ToolRoot $toolRoot -Key 'node.action.pin.name'
+$toolName = Get-ToolkitToolDisplayName -ToolRoot $toolRoot
+$installAction = Resolve-ToolI18nLabel -ToolRoot $toolRoot -Key 'node.action.install.name'
+$pinAction = Resolve-ToolI18nLabel -ToolRoot $toolRoot -Key 'node.action.pin.name'
+$expectedInstall = "$toolName - $installAction"
+$expectedPin = "$toolName - $pinAction"
 $installTitle = Get-NodeActionSectionTitle -ToolRoot $toolRoot -ScriptLeaf 'browse-install.ps1'
 $pinTitle = Get-NodeActionSectionTitle -ToolRoot $toolRoot -ScriptLeaf 'pin-project.ps1'
-if ($installTitle -ne $expectedInstall) { throw "unexpected install title: $installTitle" }
-if ($pinTitle -ne $expectedPin) { throw "unexpected pin title: $pinTitle" }
+if ($installTitle -ne $expectedInstall) { throw "unexpected install title: $installTitle (expected $expectedInstall)" }
+if ($pinTitle -ne $expectedPin) { throw "unexpected pin title: $pinTitle (expected $expectedPin)" }
 if ($installTitle -eq $pinTitle) { throw 'install and pin titles must differ' }
+
+$executeTitle = Extend-NodeActionSectionTitle -BaseTitle $installTitle -ToolRoot $toolRoot `
+    -SubPhaseKey 'node.section.installExecute'
+$expectedExecute = "$expectedInstall - $(Resolve-ToolI18nLabel -ToolRoot $toolRoot -Key 'node.section.installExecute')"
+if ($executeTitle -ne $expectedExecute) { throw "unexpected execute title: $executeTitle (expected $expectedExecute)" }
 
 . (Join-Path $toolRoot 'lib\volta-node.ps1')
 Set-NodeVoltaToolRoot -ToolRoot $toolRoot

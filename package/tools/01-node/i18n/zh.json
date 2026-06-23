@@ -9,21 +9,25 @@
     },
     "action": {
       "install": {
-        "name": "安装 Node.js",
-        "description": "从版本列表安装 Node 到本机"
+        "name": "批量安装",
+        "description": "从版本列表批量安装 Node 到本机"
       },
       "pin": {
-        "name": "指定 Node.js",
+        "name": "指定版本",
         "description": "锁定当前目录项目的 Node 版本"
       },
       "default": {
-        "name": "默认 Node.js",
+        "name": "设置默认",
         "description": "设置未 pin 时使用的 Node 版本"
       },
       "uninstall": {
-        "name": "卸载 Node.js",
-        "description": "卸载本机已安装的 Node 版本"
+        "name": "批量卸载",
+        "description": "批量卸载本机已安装的 Node 版本"
       }
+    },
+    "section": {
+      "installExecute": "安装执行",
+      "uninstallExecute": "卸载执行"
     },
     "browse": {
       "loading": "{spinner} 正在加载 Node 版本列表…",
@@ -104,7 +108,7 @@
     },
     "default": {
       "voltaMissing": "未找到 Volta，请先在依赖菜单中安装",
-      "noInstalled": "暂无已安装版本，请先在「安装 Node.js」中安装",
+      "noInstalled": "暂无已安装版本，请先在「批量安装」中安装",
       "countUnit": "个版本",
       "noChange": "v{version} 已是全局默认版本",
       "success": "已将 v{version} 设为全局默认",
