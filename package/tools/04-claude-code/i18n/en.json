@@ -1,0 +1,115 @@
+{
+  "claude-code": {
+    "name": "Claude Code",
+    "description": "Install, configure, and manage the Claude Code CLI and plugins",
+    "action": {
+      "install": {
+        "name": "Install",
+        "description": "Install Claude Code CLI via WinGet"
+      },
+      "init": {
+        "name": "Initialize",
+        "description": "Apply required defaults before first use (e.g. disable OAuth login)"
+      },
+      "configureApi": {
+        "name": "Configure API",
+        "description": "Set Anthropic API key or custom base URL"
+      },
+      "configureProxy": {
+        "name": "Configure proxy",
+        "description": "Set HTTP/HTTPS proxy or clear proxy settings"
+      },
+      "addMarketplace": {
+        "name": "Add marketplace",
+        "description": "Register common plugin marketplaces"
+      },
+      "installPlugin": {
+        "name": "Install plugins",
+        "description": "Pick plugins from registered marketplaces and install"
+      },
+      "uninstallPlugin": {
+        "name": "Uninstall plugins",
+        "description": "Pick installed plugins and uninstall"
+      },
+      "updatePlugin": {
+        "name": "Update plugins",
+        "description": "Pick installed plugins and update to latest"
+      },
+      "update": {
+        "name": "Update",
+        "description": "Upgrade Claude Code CLI via WinGet"
+      },
+      "uninstall": {
+        "name": "Uninstall",
+        "description": "Remove Claude Code CLI via WinGet"
+      }
+    },
+    "cli": {
+      "alreadyInstalled": "Claude Code is already installed ({version}). Use Update.",
+      "notInstalled": "Claude Code CLI is not installed. Use Install first.",
+      "installStatusReady": "Ready to install",
+      "installSuccess": "Claude Code CLI installed",
+      "installFailed": "Install failed: {detail}",
+      "updateStatusReady": "Ready to update",
+      "updateSuccess": "Claude Code CLI updated",
+      "updateFailed": "Update failed: {detail}",
+      "uninstallStatusReady": "Ready to uninstall",
+      "uninstallSuccess": "Claude Code CLI uninstalled",
+      "uninstallFailed": "Uninstall failed: {detail}"
+    },
+    "init": {
+      "statusReady": "Ready to initialize",
+      "stepDisableLogin": "Disable OAuth login",
+      "stepWriteSettings": "Merge settings.json",
+      "stepVerify": "Verify configuration",
+      "logSuccess": "{step} done",
+      "logFailed": "{step} failed: {detail}"
+    },
+    "api": {
+      "modeOfficial": "Official API key",
+      "modeCustom": "Custom base URL + token",
+      "modeClear": "Clear API settings",
+      "promptApiKey": "API key",
+      "promptBaseUrl": "Base URL",
+      "promptToken": "Token / API key",
+      "statusReady": "Ready to write settings",
+      "applyLabel": "Configure API",
+      "logSuccess": "Written to {path}",
+      "logFailed": "Configure failed: {detail}"
+    },
+    "proxy": {
+      "modeSet": "Set proxy",
+      "modeClear": "Clear proxy",
+      "promptHttp": "HTTP_PROXY (optional)",
+      "promptHttps": "HTTPS_PROXY",
+      "statusReady": "Ready to write proxy",
+      "applyLabel": "Configure proxy",
+      "logSuccess": "Written to {path}",
+      "logFailed": "Configure failed: {detail}"
+    },
+    "marketplace": {
+      "countUnit": "marketplaces",
+      "noPresets": "No preset marketplaces",
+      "statusReady": "Ready to add marketplaces",
+      "logSuccess": "Added {source}",
+      "logFailed": "Failed to add {source}: {detail}"
+    },
+    "plugin": {
+      "countUnit": "plugins",
+      "tagInstalled": "installed",
+      "tagUpdate": "update→{version}",
+      "loadFailed": "Failed to load plugin list: {detail}",
+      "noInstallable": "No installable plugins",
+      "noInstalled": "No installed plugins",
+      "installStatusReady": "Ready to install plugins",
+      "installSuccess": "Installed {plugin}",
+      "installFailed": "Failed to install {plugin}: {detail}",
+      "uninstallStatusReady": "Ready to uninstall plugins",
+      "uninstallSuccess": "Uninstalled {plugin}",
+      "uninstallFailed": "Failed to uninstall {plugin}: {detail}",
+      "updateStatusReady": "Ready to update plugins",
+      "updateSuccess": "Updated {plugin}: {detail}",
+      "updateFailed": "Failed to update {plugin}: {detail}"
+    }
+  }
+}

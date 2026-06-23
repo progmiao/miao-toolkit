@@ -1,0 +1,115 @@
+{
+  "claude-code": {
+    "name": "Claude Code",
+    "description": "Claude 编码助手 CLI 安装、配置与插件管理",
+    "action": {
+      "install": {
+        "name": "安装",
+        "description": "通过 WinGet 安装 Claude Code CLI"
+      },
+      "init": {
+        "name": "初始化",
+        "description": "写入使用前必要的默认配置（如禁用 OAuth 登录）"
+      },
+      "configureApi": {
+        "name": "配置 API",
+        "description": "配置 Anthropic API Key 或自定义 Base URL"
+      },
+      "configureProxy": {
+        "name": "配置代理",
+        "description": "配置 HTTP/HTTPS 代理或清除代理"
+      },
+      "addMarketplace": {
+        "name": "添加插件市场",
+        "description": "注册常用插件市场目录"
+      },
+      "installPlugin": {
+        "name": "安装插件",
+        "description": "从已注册市场选择并安装插件"
+      },
+      "uninstallPlugin": {
+        "name": "卸载插件",
+        "description": "选择已安装插件并卸载"
+      },
+      "updatePlugin": {
+        "name": "更新插件",
+        "description": "选择已安装插件并更新到最新版本"
+      },
+      "update": {
+        "name": "更新",
+        "description": "通过 WinGet 更新 Claude Code CLI"
+      },
+      "uninstall": {
+        "name": "卸载",
+        "description": "通过 WinGet 卸载 Claude Code CLI"
+      }
+    },
+    "cli": {
+      "alreadyInstalled": "Claude Code 已安装（{version}），请使用「更新」",
+      "notInstalled": "尚未安装 Claude Code CLI，请先使用「安装」",
+      "installStatusReady": "准备安装",
+      "installSuccess": "Claude Code CLI 安装完成",
+      "installFailed": "安装失败：{detail}",
+      "updateStatusReady": "准备更新",
+      "updateSuccess": "Claude Code CLI 更新完成",
+      "updateFailed": "更新失败：{detail}",
+      "uninstallStatusReady": "准备卸载",
+      "uninstallSuccess": "Claude Code CLI 卸载完成",
+      "uninstallFailed": "卸载失败：{detail}"
+    },
+    "init": {
+      "statusReady": "准备初始化",
+      "stepDisableLogin": "禁用 OAuth 登录",
+      "stepWriteSettings": "合并写入 settings.json",
+      "stepVerify": "校验配置",
+      "logSuccess": "{step} 完成",
+      "logFailed": "{step} 失败：{detail}"
+    },
+    "api": {
+      "modeOfficial": "官方 API Key",
+      "modeCustom": "自定义 Base URL + Token",
+      "modeClear": "清除 API 配置",
+      "promptApiKey": "API Key",
+      "promptBaseUrl": "Base URL",
+      "promptToken": "Token / API Key",
+      "statusReady": "准备写入配置",
+      "applyLabel": "配置 API",
+      "logSuccess": "已写入 {path}",
+      "logFailed": "配置失败：{detail}"
+    },
+    "proxy": {
+      "modeSet": "设置代理",
+      "modeClear": "清除代理",
+      "promptHttp": "HTTP_PROXY（可留空）",
+      "promptHttps": "HTTPS_PROXY",
+      "statusReady": "准备写入代理",
+      "applyLabel": "配置代理",
+      "logSuccess": "已写入 {path}",
+      "logFailed": "配置失败：{detail}"
+    },
+    "marketplace": {
+      "countUnit": "个市场",
+      "noPresets": "暂无预设市场",
+      "statusReady": "准备添加市场",
+      "logSuccess": "已添加 {source}",
+      "logFailed": "添加 {source} 失败：{detail}"
+    },
+    "plugin": {
+      "countUnit": "个插件",
+      "tagInstalled": "已安装",
+      "tagUpdate": "可更新→{version}",
+      "loadFailed": "加载插件列表失败：{detail}",
+      "noInstallable": "暂无可安装插件",
+      "noInstalled": "暂无已安装插件",
+      "installStatusReady": "准备安装插件",
+      "installSuccess": "已安装 {plugin}",
+      "installFailed": "安装 {plugin} 失败：{detail}",
+      "uninstallStatusReady": "准备卸载插件",
+      "uninstallSuccess": "已卸载 {plugin}",
+      "uninstallFailed": "卸载 {plugin} 失败：{detail}",
+      "updateStatusReady": "准备更新插件",
+      "updateSuccess": "已更新 {plugin}：{detail}",
+      "updateFailed": "更新 {plugin} 失败：{detail}"
+    }
+  }
+}

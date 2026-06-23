@@ -1,0 +1,88 @@
+{
+  "name": "claude-code.name",
+  "description": "claude-code.description",
+  "interactive": true,
+  "requiresInstall": false,
+  "actions": [
+    {
+      "command": "install",
+      "name": "claude-code.action.install.name",
+      "description": "claude-code.action.install.description",
+      "script": "lib/install-cli.ps1",
+      "param": { "switch": "Install", "alias": "i" },
+      "enabled": true
+    },
+    {
+      "command": "init",
+      "name": "claude-code.action.init.name",
+      "description": "claude-code.action.init.description",
+      "script": "lib/init.ps1",
+      "param": { "switch": "Init", "alias": "n" },
+      "enabled": true
+    },
+    {
+      "command": "configure-api",
+      "name": "claude-code.action.configureApi.name",
+      "description": "claude-code.action.configureApi.description",
+      "script": "lib/configure-api.ps1",
+      "param": { "switch": "ConfigureApi", "alias": "a" },
+      "enabled": true
+    },
+    {
+      "command": "configure-proxy",
+      "name": "claude-code.action.configureProxy.name",
+      "description": "claude-code.action.configureProxy.description",
+      "script": "lib/configure-proxy.ps1",
+      "param": { "switch": "ConfigureProxy", "alias": "x" },
+      "enabled": true
+    },
+    {
+      "command": "add-marketplace",
+      "name": "claude-code.action.addMarketplace.name",
+      "description": "claude-code.action.addMarketplace.description",
+      "script": "lib/add-marketplace.ps1",
+      "param": { "switch": "AddMarketplace", "alias": "m" },
+      "enabled": true
+    },
+    {
+      "command": "install-plugin",
+      "name": "claude-code.action.installPlugin.name",
+      "description": "claude-code.action.installPlugin.description",
+      "script": "lib/install-plugin.ps1",
+      "param": { "switch": "InstallPlugin", "alias": "p" },
+      "enabled": true
+    },
+    {
+      "command": "uninstall-plugin",
+      "name": "claude-code.action.uninstallPlugin.name",
+      "description": "claude-code.action.uninstallPlugin.description",
+      "script": "lib/uninstall-plugin.ps1",
+      "param": { "switch": "UninstallPlugin", "alias": "r" },
+      "enabled": true
+    },
+    {
+      "command": "update-plugin",
+      "name": "claude-code.action.updatePlugin.name",
+      "description": "claude-code.action.updatePlugin.description",
+      "script": "lib/update-plugin.ps1",
+      "param": { "switch": "UpdatePlugin", "alias": "g" },
+      "enabled": true
+    },
+    {
+      "command": "update",
+      "name": "claude-code.action.update.name",
+      "description": "claude-code.action.update.description",
+      "script": "lib/update-cli.ps1",
+      "param": { "switch": "Update", "alias": "u" },
+      "enabled": true
+    },
+    {
+      "command": "uninstall",
+      "name": "claude-code.action.uninstall.name",
+      "description": "claude-code.action.uninstall.description",
+      "script": "lib/uninstall-cli.ps1",
+      "param": { "switch": "Uninstall", "alias": "d" },
+      "enabled": true
+    }
+  ]
+}

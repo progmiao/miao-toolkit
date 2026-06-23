@@ -1,0 +1,87 @@
+# test-claude-code-tool.ps1 — claude-code 工具发现、i18n、设置与插件解析
+
+$ErrorActionPreference = 'Stop'
+$root = Split-Path $PSScriptRoot -Parent
+$lib = Join-Path $root 'package\core\lib'
+. (Join-Path $lib 'bootstrap\Load-Core.ps1') -LibDirectory $lib
+Initialize-Paths -BinDirectory (Join-Path $root 'package\bin')
+
+$toolRoot = Join-Path $root 'package\tools\04-claude-code'
+Initialize-PathsFromToolRoot -ToolRoot $toolRoot
+
+$tool = Get-ToolFromDirectory -ToolRoot $toolRoot
+if (-not $tool) { throw 'tool not discovered' }
+if ([string]$tool.command -ne 'claude-code') { throw "unexpected command: $($tool.command)" }
+if ([int]$tool.sortOrder -ne 4) { throw "unexpected sortOrder: $($tool.sortOrder)" }
+
+$name = Resolve-ToolI18nLabel -ToolRoot $toolRoot -Key 'claude-code.name' -Fallback 'claude-code'
+if ([string]::IsNullOrWhiteSpace($name)) { throw 'name i18n empty' }
+
+$actions = @((Get-Content (Join-Path $toolRoot 'index.json') -Raw -Encoding UTF8 | ConvertFrom-Json).actions)
+if ($actions.Count -ne 10) { throw "expected 10 actions, got $($actions.Count)" }
+if ($actions[0].command -ne 'install') { throw 'first action must be install' }
+if ($actions[1].command -ne 'init') { throw 'second action must be init' }
+if ($actions[-2].command -ne 'update') { throw 'second last action must be update' }
+if ($actions[-1].command -ne 'uninstall') { throw 'last action must be uninstall' }
+
+. (Join-Path $toolRoot 'lib\claude-code-core.ps1')
+. (Join-Path $toolRoot 'lib\claude-code-state.ps1')
+. (Join-Path $toolRoot 'lib\claude-settings.ps1')
+. (Join-Path $toolRoot 'lib\claude-plugin.ps1')
+
+if ((Compare-ClaudeSemVersion -Left '2.0.0' -Right '1.9.9') -ne 1) { throw 'Compare-ClaudeSemVersion gt failed' }
+if ((Compare-ClaudeSemVersion -Left '1.0.0' -Right '1.0.0') -ne 0) { throw 'Compare-ClaudeSemVersion eq failed' }
+
+$split = Split-ClaudePluginId -PluginId 'superpowers@claude-plugins-official'
+if ($split.Name -ne 'superpowers' -or $split.Marketplace -ne 'claude-plugins-official') {
+    throw 'Split-ClaudePluginId failed'
+}
+
+$tmpdir = Join-Path ([IO.Path]::GetTempPath()) ("miao-cc-test-" + [Guid]::NewGuid().ToString('n'))
+New-Item -ItemType Directory -Path $tmpdir -Force | Out-Null
+$prevHome = $env:USERPROFILE
+$prevAppData = $env:APPDATA
+try {
+    $fakeHome = Join-Path $tmpdir 'home'
+    $fakeAppData = Join-Path $tmpdir 'appdata'
+    New-Item -ItemType Directory -Path (Join-Path $fakeHome '.claude') -Force | Out-Null
+    New-Item -ItemType Directory -Path (Join-Path $fakeAppData 'Miao') -Force | Out-Null
+    $env:USERPROFILE = $fakeHome
+    $env:APPDATA = $fakeAppData
+    Set-Item -Path Env:HOME -Value $fakeHome
+
+    $path = Apply-ClaudeCodeInitDefaults
+    if (-not (Test-Path -LiteralPath $path)) { throw 'init defaults did not write settings' }
+    $settings = Get-Content -Raw -LiteralPath $path -Encoding UTF8 | ConvertFrom-Json
+    if ([string]$settings.env.DISABLE_LOGIN_COMMAND -ne '1') {
+        throw 'DISABLE_LOGIN_COMMAND not set'
+    }
+
+    $apiPath = Apply-ClaudeCodeApiSecrets -ApiConfig @{
+        mode   = 'official'
+        apiKey = 'test-key'
+    }
+    if (-not (Test-Path -LiteralPath $apiPath)) { throw 'api settings not written' }
+    $settings2 = Get-Content -Raw -LiteralPath $apiPath -Encoding UTF8 | ConvertFrom-Json
+    if ([string]$settings2.env.ANTHROPIC_API_KEY -ne 'test-key') {
+        throw 'ANTHROPIC_API_KEY not merged'
+    }
+
+    $clearPath = Apply-ClaudeCodeApiSecrets -ApiConfig @{ mode = 'clear' }
+    $settings3 = Get-Content -Raw -LiteralPath $clearPath -Encoding UTF8 | ConvertFrom-Json
+    if ($settings3.env.PSObject.Properties['ANTHROPIC_API_KEY']) {
+        throw 'api clear should remove ANTHROPIC_API_KEY'
+    }
+}
+finally {
+    $env:USERPROFILE = $prevHome
+    $env:APPDATA = $prevAppData
+    Remove-Item -LiteralPath $tmpdir -Recurse -Force -ErrorAction SilentlyContinue
+}
+
+$discovered = Discover-Tools -BundledToolsRoot (Join-Path $root 'package\tools')
+$cc = @($discovered | Where-Object { $_.command -eq 'claude-code' } | Select-Object -First 1)
+if (-not $cc) { throw 'claude-code missing from Discover-Tools' }
+if ([int]$cc.no -lt 1) { throw 'claude-code menu no not assigned' }
+
+Write-Host 'test-claude-code-tool: OK'
