@@ -1,0 +1,57 @@
+{
+  "name": "pnpm.name",
+  "description": "pnpm.description",
+  "interactive": true,
+  "dependencies": {
+    "menus": {
+      "install": "pnpm.deps.install",
+      "update": "pnpm.deps.update",
+      "uninstall": "pnpm.deps.uninstall"
+    },
+    "packages": [
+      {
+        "name": "volta",
+        "checkCommand": "volta --version",
+        "version": "latest",
+        "install": {
+          "type": "winget",
+          "packageId": "Volta.Volta"
+        }
+      }
+    ]
+  },
+  "actions": [
+    {
+      "command": "install",
+      "name": "pnpm.action.install.name",
+      "description": "pnpm.action.install.description",
+      "script": "lib/browse-install.ps1",
+      "param": { "switch": "Install", "alias": "i" },
+      "enabled": true
+    },
+    {
+      "command": "pin",
+      "name": "pnpm.action.pin.name",
+      "description": "pnpm.action.pin.description",
+      "script": "lib/pin-project.ps1",
+      "param": { "switch": "Pin", "alias": "p" },
+      "enabled": true
+    },
+    {
+      "command": "default",
+      "name": "pnpm.action.default.name",
+      "description": "pnpm.action.default.description",
+      "script": "lib/set-default.ps1",
+      "param": { "switch": "Default", "alias": "d" },
+      "enabled": true
+    },
+    {
+      "command": "uninstall",
+      "name": "pnpm.action.uninstall.name",
+      "description": "pnpm.action.uninstall.description",
+      "script": "lib/browse-uninstall.ps1",
+      "param": { "switch": "Uninstall", "alias": "u" },
+      "enabled": true
+    }
+  ]
+}

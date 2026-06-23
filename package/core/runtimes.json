@@ -1,0 +1,17 @@
+{
+  "runtimes": [
+    {
+      "id": "winget",
+      "nameKey": "page.runtime.winget.name",
+      "checkCommand": "winget --version",
+      "install": {
+        "type": "msix",
+        "uri": "https://aka.ms/get-appinstaller"
+      },
+      "fallback": {
+        "type": "store",
+        "productId": "9NBLGGH4NNS1"
+      }
+    }
+  ]
+}

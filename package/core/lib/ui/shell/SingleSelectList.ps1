@@ -226,18 +226,18 @@ function Write-ShellSingleSelectListRow {
         [bool]$Selected,
         [bool]$Enabled,
         [hashtable]$RowSpec = $null,
-        [int]$ContentLineWidth = 0,
-        [int]$ContentStartColumn = 0
+        [int]$LayoutLineWidth = 0,
+        [int]$LayoutStartColumn = 0
     )
 
     if (-not $RowSpec) { return }
 
     if (Test-UseConsoleListBufferDraw) {
         try {
-            $highlightWidth = if ($Selected) { $ContentLineWidth } else { 0 }
-            $highlightStart = if ($Selected) { $ContentStartColumn } else { 0 }
-            Write-ListRowFromSpec -ScreenRow $ScreenRow -Spec $RowSpec -ContentLineWidth $highlightWidth `
-                -ContentStartColumn $highlightStart
+            $highlightWidth = if ($Selected) { $LayoutLineWidth } else { 0 }
+            $highlightStart = if ($Selected) { $LayoutStartColumn } else { 0 }
+            Write-ListRowFromSpec -ScreenRow $ScreenRow -Spec $RowSpec -LayoutLineWidth $highlightWidth `
+                -LayoutStartColumn $highlightStart
             return
         }
         catch { }
@@ -249,7 +249,7 @@ function Write-ShellSingleSelectListRow {
     $width = Get-SafeWriteLineWidth -Row $ScreenRow
     if ($Selected) {
         $region = Resolve-ConsoleContentHighlightRegion -Row $ScreenRow `
-            -ContentStartColumn $ContentStartColumn -ContentLineWidth $ContentLineWidth
+            -LayoutStartColumn $LayoutStartColumn -LayoutLineWidth $LayoutLineWidth
         Write-ConsoleRowHighlightText -Text ([string]$RowSpec.Text) -Region $region
         Set-ConsoleCursorAfterRowWrite -Row $ScreenRow
         return
@@ -281,8 +281,8 @@ function Invoke-ShellSingleSelectListDrawRow {
         [int]$NumWidth,
         [int]$DisplayNumber,
         [bool]$Enabled,
-        [int]$ContentLineWidth = 0,
-        [int]$ContentStartColumn = 0
+        [int]$LayoutLineWidth = 0,
+        [int]$LayoutStartColumn = 0
     )
 
     if ($Index -lt 0 -or $Index -ge $RowCache.Count) { return }
@@ -293,21 +293,21 @@ function Invoke-ShellSingleSelectListDrawRow {
         -NumWidth $NumWidth -DisplayNumber $DisplayNumber -Gap $ColGap
     Write-ShellSingleSelectListRow -ScreenRow $ScreenRow -DisplayNumber $DisplayNumber `
         -NumWidth $NumWidth -Gap $ColGap -Selected $Selected -Enabled $Enabled -RowSpec $spec `
-        -ContentLineWidth $ContentLineWidth -ContentStartColumn $ContentStartColumn
+        -LayoutLineWidth $LayoutLineWidth -LayoutStartColumn $LayoutStartColumn
 }
 
 function New-ShellSingleSelectListDrawHandlers {
     param(
         [array]$RowCache,
         [string]$ColGap,
-        [int]$ContentLineWidth = 0,
-        [int]$ContentStartColumn = 0
+        [int]$LayoutLineWidth = 0,
+        [int]$LayoutStartColumn = 0
     )
 
     $cacheSnapshot = @($RowCache)
     $gapSnapshot = [string]$ColGap
-    $contentWidthSnapshot = [int]$ContentLineWidth
-    $contentStartSnapshot = [int]$ContentStartColumn
+    $contentWidthSnapshot = [int]$LayoutLineWidth
+    $contentStartSnapshot = [int]$LayoutStartColumn
 
     $getLabel = {
         param($Item, [int]$Index)
@@ -347,7 +347,7 @@ function New-ShellSingleSelectListDrawHandlers {
         Invoke-ShellSingleSelectListDrawRow -ScreenRow $ScreenRow -Index $Index `
             -RowCache $cacheSnapshot -ColGap $gapSnapshot -Selected $Selected `
             -NumWidth $NumWidth -DisplayNumber $DisplayNumber -Enabled $Enabled `
-            -ContentLineWidth $contentWidthSnapshot -ContentStartColumn $contentStartSnapshot
+            -LayoutLineWidth $contentWidthSnapshot -LayoutStartColumn $contentStartSnapshot
     }.GetNewClosure()
 
     return @{
@@ -534,7 +534,7 @@ function Invoke-ShellSingleSelectList {
         [hashtable]$ToolbarConfig,
         [string]$CountLabel = '',
         [switch]$SkipBodyInit,
-        [string]$InitialContentLine = '',
+        [string]$InitialCatalogLine = '',
         [string]$InitialFlashMessage = ''
     )
 
@@ -569,14 +569,14 @@ function Invoke-ShellSingleSelectList {
     $normalized = @(Normalize-ShellListRows -Rows $Rows -ColumnLayout $ColumnLayout)
 
     if (-not $SkipBodyInit) {
-        Set-ToolkitShellBodyContentLine -Shell $Shell -ContentLine $InitialContentLine
+        Set-ToolkitShellBodyCatalogLine -Shell $Shell -CatalogLine $InitialCatalogLine
         Initialize-ToolkitShellBodyView -Shell $Shell `
             -SectionTitle $SectionTitle `
             -FooterTemplate ListWithToolbar
     }
     else {
-        Set-ToolkitShellBodyContentLine -Shell $Shell -ContentLine $InitialContentLine
-        Render-ToolkitShellContentRow -Shell $Shell
+        Set-ToolkitShellBodyCatalogLine -Shell $Shell -CatalogLine $InitialCatalogLine
+        Render-ToolkitShellCatalogRow -Shell $Shell
     }
 
     $header = New-ToolkitMenuHeader -HideSectionTitle
@@ -592,10 +592,10 @@ function Invoke-ShellSingleSelectList {
     }
     if ($maxNumber -lt 1) { $maxNumber = $normalized.Count }
     $numWidth = Get-ListNumberDisplayWidth -MaxNumber $maxNumber
-    $contentMetrics = Get-ToolkitShellContentMetrics -Shell $Shell
+    $contentMetrics = Get-ToolkitShellLayoutLineMetrics -Shell $Shell
     $handlers = New-ShellSingleSelectListDrawHandlers -RowCache $rowCache -ColGap $colGap `
-        -ContentLineWidth ([int]$contentMetrics.EndColumn) `
-        -ContentStartColumn ([int]$contentMetrics.StartColumn)
+        -LayoutLineWidth ([int]$contentMetrics.EndColumn) `
+        -LayoutStartColumn ([int]$contentMetrics.StartColumn)
     if (-not $handlers['GetLabel'] -or -not $handlers['DrawListRow']) {
         throw 'Invoke-ShellSingleSelectList: list draw handlers are not available.'
     }
@@ -649,7 +649,7 @@ function Invoke-ShellSingleSelectList {
         -AllowBack:($ToolbarConfig.AllowBack) `
         -CompactNavStatus `
         -AllowSpaceConfirm `
-        -InitialContentLine $InitialContentLine `
+        -InitialCatalogLine $InitialCatalogLine `
         -InitialFlashMessage $InitialFlashMessage
 
     return Resolve-ShellSingleSelectListPick -Picked $picked

@@ -55,7 +55,7 @@ function Resolve-ShellToolListColumnLayout {
     )
 
     $base = Get-ToolListColumnWidths
-    $metrics = Get-ToolkitShellContentMetrics -Shell $Shell -BrandInnerWidth $BrandInnerWidth
+    $metrics = Get-ToolkitShellLayoutLineMetrics -Shell $Shell -BrandInnerWidth $BrandInnerWidth
     $maxRowWidth = [int]$metrics.EndColumn
     $colGap = Get-MenuColumnGap
     $leading = Get-ShellSingleSelectListLeadingSpaces

@@ -1,4 +1,5 @@
-﻿# Shell 布局：header / title / content / footer 行号 metrics
+﻿# Shell 布局：Header / Title / Catalog / Body / Message / Footer 行号 metrics
+# 标准定义（已冻结）：docs/LAYOUT.md — 修改须与用户确认
 
 function Get-ToolkitShellStandardBrandInnerWidth {
     if ($global:ToolkitShellStandardBrandInnerWidth -gt 0) {
@@ -67,7 +68,7 @@ function Apply-ToolkitShellLayoutBrandInnerWidth {
     if ($Shell.Layout) {
         $Shell.Layout['BrandInnerWidth'] = $Width
     }
-    $null = Sync-ToolkitShellContentMetrics -Shell $Shell
+    $null = Sync-ToolkitShellLayoutLineMetrics -Shell $Shell
 }
 
 function Get-ToolkitShellLayoutBarInnerWidth {
@@ -98,7 +99,7 @@ function Ensure-ToolkitShellLayoutBrandInnerWidth {
     return $width
 }
 
-function Get-ToolkitShellContentMetrics {
+function Get-ToolkitShellLayoutLineMetrics {
     param(
         [hashtable]$Shell = $null,
         [int]$BrandInnerWidth = 0
@@ -129,14 +130,14 @@ function Get-ToolkitShellContentMetrics {
     }
 }
 
-function Get-ToolkitShellContentLineWidth {
+function Get-ToolkitShellLayoutLineWidth {
     param(
         [hashtable]$Shell = $null,
         [int]$BrandInnerWidth = 0
     )
 
-    if ($Shell -and $Shell.ContentMetrics -and [int]$Shell.ContentMetrics.EndColumn -gt 0) {
-        return [int]$Shell.ContentMetrics.EndColumn
+    if ($Shell -and $Shell.LayoutLineMetrics -and [int]$Shell.LayoutLineMetrics.EndColumn -gt 0) {
+        return [int]$Shell.LayoutLineMetrics.EndColumn
     }
 
     if ($BrandInnerWidth -le 0 -and $Shell) {
@@ -155,18 +156,18 @@ function Get-ToolkitShellContentLineWidth {
     return 1 + (Get-BrandSeparatorLineWidth -BrandInnerWidth $BrandInnerWidth)
 }
 
-function Sync-ToolkitShellContentMetrics {
+function Sync-ToolkitShellLayoutLineMetrics {
     param([hashtable]$Shell)
 
     if (-not $Shell) { return $null }
 
-    $metrics = Get-ToolkitShellContentMetrics -Shell $Shell
-    $Shell['ContentMetrics'] = $metrics
+    $metrics = Get-ToolkitShellLayoutLineMetrics -Shell $Shell
+    $Shell['LayoutLineMetrics'] = $metrics
     if ($Shell.Layout) {
-        $Shell.Layout['ContentMetrics'] = $metrics
+        $Shell.Layout['LayoutLineMetrics'] = $metrics
         $Shell.Layout['BrandInnerWidth'] = $metrics.InnerWidth
-        $Shell.Layout['ContentStartColumn'] = $metrics.StartColumn
-        $Shell.Layout['ContentLineWidth'] = $metrics.EndColumn
+        $Shell.Layout['LayoutStartColumn'] = $metrics.StartColumn
+        $Shell.Layout['LayoutLineWidth'] = $metrics.EndColumn
     }
     $Shell['BrandInnerWidth'] = $metrics.InnerWidth
     return $metrics
@@ -174,8 +175,8 @@ function Sync-ToolkitShellContentMetrics {
 
 function Get-ShellLayoutConstants {
     return @{
-        SectionCapRows    = 2
-        FooterGapRows     = 1
+        TitleCatalogRows  = 2
+        MessageRows       = 1
         HomeFooterBarRows = 2
         SubFooterBarRows  = 1
         HomeDRows         = 3
@@ -195,7 +196,7 @@ function Get-ShellBrandRowCount {
     return (Get-MenuHeaderRowCount -Header $header)
 }
 
-function Get-ShellHomeContentRows {
+function Get-ShellHomeBodyRows {
     param(
         [int]$ConsoleHeight = 0,
         [int]$BrandRowCount = 0
@@ -205,16 +206,16 @@ function Get-ShellHomeContentRows {
     if ($BrandRowCount -le 0) { $BrandRowCount = (Get-ShellBrandRowCount) }
 
     $c = Get-ShellLayoutConstants
-    $homeNatural = $BrandRowCount + $c.SectionCapRows + $c.ListSlotRows + $c.HomeDRows
+    $homeNatural = $BrandRowCount + $c.TitleCatalogRows + $c.ListSlotRows + $c.HomeDRows
 
     if ($ConsoleHeight -ge $homeNatural) {
         return $c.ListSlotRows
     }
 
-    return [Math]::Max(1, $ConsoleHeight - $BrandRowCount - $c.SectionCapRows - $c.HomeDRows)
+    return [Math]::Max(1, $ConsoleHeight - $BrandRowCount - $c.TitleCatalogRows - $c.HomeDRows)
 }
 
-function Get-ShellViewContentRows {
+function Get-ShellViewBodyRows {
     param(
         [ValidateSet('ListWithToolbar', 'SystemToolbarOnly')]
         [string]$FooterTemplate,
@@ -223,7 +224,7 @@ function Get-ShellViewContentRows {
     )
 
     $c = Get-ShellLayoutConstants
-    $cHome = Get-ShellHomeContentRows -ConsoleHeight $ConsoleHeight -BrandRowCount $BrandRowCount
+    $cHome = Get-ShellHomeBodyRows -ConsoleHeight $ConsoleHeight -BrandRowCount $BrandRowCount
     $dRows = if ($FooterTemplate -eq 'ListWithToolbar') { $c.HomeDRows } else { $c.SubDRows }
 
     return $cHome + ($c.HomeDRows - $dRows)
@@ -243,30 +244,30 @@ function Get-ShellLayoutMetrics {
     $brandRowCount = Get-ShellBrandRowCount -Shell $Shell
     $dRows = if ($FooterTemplate -eq 'ListWithToolbar') { $c.HomeDRows } else { $c.SubDRows }
     $footerBarRows = if ($FooterTemplate -eq 'ListWithToolbar') { $c.HomeFooterBarRows } else { $c.SubFooterBarRows }
-    $listViewport = Get-ShellViewContentRows -FooterTemplate $FooterTemplate `
+    $listViewport = Get-ShellViewBodyRows -FooterTemplate $FooterTemplate `
         -ConsoleHeight $ConsoleHeight -BrandRowCount $brandRowCount
-    $homeNatural = $brandRowCount + $c.SectionCapRows + $c.ListSlotRows + $c.HomeDRows
+    $homeNatural = $brandRowCount + $c.TitleCatalogRows + $c.ListSlotRows + $c.HomeDRows
     $expanded = ($ConsoleHeight -ge $homeNatural)
 
-    $listStart = $brandRowCount + $c.SectionCapRows
+    $listStart = $brandRowCount + $c.TitleCatalogRows
     $listEnd = $listStart + $listViewport - 1
 
     $metrics = @{
         BrandRowCount     = $brandRowCount
-        SectionCapRows    = $c.SectionCapRows
+        TitleCatalogRows  = $c.TitleCatalogRows
         ListSlotRows      = $c.ListSlotRows
-        HomeContentRows   = (Get-ShellHomeContentRows -ConsoleHeight $ConsoleHeight -BrandRowCount $brandRowCount)
+        HomeBodyRows      = (Get-ShellHomeBodyRows -ConsoleHeight $ConsoleHeight -BrandRowCount $brandRowCount)
         ListViewportRows  = $listViewport
-        FooterGapRows     = $c.FooterGapRows
+        MessageRows       = $c.MessageRows
         FooterBarRows     = $footerBarRows
         FooterDRows       = $dRows
         HomeNaturalHeight = $homeNatural
         LayoutMode        = if ($expanded) { 'Expanded' } else { 'Compressed' }
         ListStartRow      = $listStart
         ListEndRow        = $listEnd
-        SectionTitleRow   = $brandRowCount
-        SectionGapRow     = ($brandRowCount + 1)
-        GapRow            = -1
+        TitleRow          = $brandRowCount
+        CatalogRow        = ($brandRowCount + 1)
+        MessageRow        = -1
         HintRow           = -1
         StatusRow         = -1
         ToolbarRow        = -1
@@ -274,7 +275,7 @@ function Get-ShellLayoutMetrics {
     }
 
     if ($expanded) {
-        $metrics.GapRow = $listEnd + 1
+        $metrics.MessageRow = $listEnd + 1
         if ($FooterTemplate -eq 'ListWithToolbar') {
             $metrics.HintRow = $listEnd + 2
             $metrics.StatusRow = $listEnd + 3
@@ -291,12 +292,12 @@ function Get-ShellLayoutMetrics {
         $metrics.ToolbarRow = $ConsoleHeight - 1
         if ($FooterTemplate -eq 'ListWithToolbar') {
             $metrics.HintRow = $ConsoleHeight - 2
-            $metrics.GapRow = $ConsoleHeight - 3
+            $metrics.MessageRow = $ConsoleHeight - 3
             $metrics.ListEndRow = [Math]::Max($listStart, $ConsoleHeight - 4)
         }
         else {
             $metrics.HintRow = -1
-            $metrics.GapRow = $ConsoleHeight - 2
+            $metrics.MessageRow = $ConsoleHeight - 2
             $metrics.ListEndRow = [Math]::Max($listStart, $ConsoleHeight - 3)
         }
         $metrics.ListViewportRows = [Math]::Max(1, $metrics.ListEndRow - $listStart + 1)
@@ -324,27 +325,24 @@ function Update-ToolkitShellViewLayout {
     }
 
     $null = Ensure-ToolkitShellLayoutBrandInnerWidth -Shell $Shell
-    $null = Sync-ToolkitShellContentMetrics -Shell $Shell
+    $null = Sync-ToolkitShellLayoutLineMetrics -Shell $Shell
 
     $metrics = Get-ShellLayoutMetrics -FooterTemplate $FooterTemplate -Shell $Shell
     $c = Get-ShellLayoutConstants
 
     if ($WithSectionTitle) {
-        $layout['SectionTitleRow'] = $metrics.SectionTitleRow
-        $layout['SectionGapRow'] = $metrics.SectionGapRow
-        $layout['ContentRow'] = $metrics.SectionGapRow
+        $layout['TitleRow'] = $metrics.TitleRow
+        $layout['CatalogRow'] = $metrics.CatalogRow
     }
     else {
-        $layout['SectionTitleRow'] = -1
-        $layout['SectionGapRow'] = -1
-        $layout['ContentRow'] = -1
+        $layout['TitleRow'] = -1
+        $layout['CatalogRow'] = -1
     }
 
     $layout['ListStartRow'] = $metrics.ListStartRow
     $layout['ListEndRow'] = $metrics.ListEndRow
     $layout['ListViewportHeight'] = $metrics.ListViewportRows
-    $layout['GapRow'] = $metrics.GapRow
-    $layout['MessageRow'] = $metrics.GapRow
+    $layout['MessageRow'] = $metrics.MessageRow
     $layout['HintRow'] = $metrics.HintRow
     $layout['StatusRow'] = $metrics.StatusRow
     $layout['ToolbarRow'] = $metrics.ToolbarRow
@@ -353,11 +351,11 @@ function Update-ToolkitShellViewLayout {
 
     $layout['LayoutMode'] = $metrics.LayoutMode
     $layout['PinFooterToBottom'] = ($metrics.LayoutMode -eq 'Compressed')
-    $layout['FooterGapRows'] = $c.FooterGapRows
+    $layout['MessageRows'] = $c.MessageRows
     $layout['HideColHeader'] = $true
     $layout['ShellMode'] = $true
     $layout['FooterTemplate'] = $FooterTemplate
-    $layout['HomeContentRows'] = $metrics.HomeContentRows
+    $layout['HomeBodyRows'] = $metrics.HomeBodyRows
     $layout['ListSlotRows'] = $metrics.ListSlotRows
 }
 
@@ -367,13 +365,13 @@ function Get-ToolkitShellLayoutSnapshot {
     if (-not $Layout) { return $null }
 
     return @{
-        ListEndRow = $Layout.ListEndRow
-        ContentRow = $Layout.ContentRow
-        GapRow     = $Layout.GapRow
-        MessageRow = $Layout.MessageRow
-        HintRow    = $Layout.HintRow
-        StatusRow  = $Layout.StatusRow
-        ToolbarRow = $Layout.ToolbarRow
+        ListEndRow  = $Layout.ListEndRow
+        CatalogRow  = $Layout.CatalogRow
+        TitleRow    = $Layout.TitleRow
+        MessageRow  = $Layout.MessageRow
+        HintRow     = $Layout.HintRow
+        StatusRow   = $Layout.StatusRow
+        ToolbarRow  = $Layout.ToolbarRow
     }
 }
 
@@ -416,7 +414,7 @@ function Clear-ToolkitShellOrphanRows {
         }
     }
 
-    foreach ($rowKey in @('ContentRow', 'GapRow', 'MessageRow', 'HintRow', 'StatusRow', 'ToolbarRow')) {
+    foreach ($rowKey in @('TitleRow', 'CatalogRow', 'MessageRow', 'HintRow', 'StatusRow', 'ToolbarRow')) {
         $prevRow = $PreviousLayout[$rowKey]
         if ($null -eq $prevRow -or $prevRow -lt 0) { continue }
 

@@ -1,4 +1,4 @@
-﻿# Shell 标题区：2 行居中 cap + gap
+﻿# Shell Title 层：页面标题（1 行 cap）；Catalog 层由 Render-ToolkitShellCatalogRow 绘制
 
 function Write-ToolkitShellSectionTitle {
     param(
@@ -7,12 +7,12 @@ function Write-ToolkitShellSectionTitle {
     )
 
     if ([string]::IsNullOrWhiteSpace($Title)) { return }
-    if ($Shell.Layout.SectionTitleRow -lt 0) { return }
+    if ($Shell.Layout.TitleRow -lt 0) { return }
 
     $barWidth = Get-ToolkitShellLayoutBarInnerWidth -Shell $Shell
-    Write-BrandSectionCapLine -Row $Shell.Layout.SectionTitleRow -Title $Title -BrandInnerWidth $barWidth
+    Write-BrandSectionCapLine -Row $Shell.Layout.TitleRow -Title $Title -BrandInnerWidth $barWidth
 
-    Render-ToolkitShellContentRow -Shell $Shell
+    Render-ToolkitShellCatalogRow -Shell $Shell
 }
 
 function Render-ShellTitle {

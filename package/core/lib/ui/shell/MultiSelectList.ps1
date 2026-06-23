@@ -143,18 +143,18 @@ function Write-ShellMultiSelectListRow {
         [bool]$Checked,
         [bool]$Enabled,
         [hashtable]$RowSpec = $null,
-        [int]$ContentLineWidth = 0,
-        [int]$ContentStartColumn = 0
+        [int]$LayoutLineWidth = 0,
+        [int]$LayoutStartColumn = 0
     )
 
     if (-not $RowSpec) { return }
 
     if (Test-UseConsoleListBufferDraw) {
         try {
-            $highlightWidth = if ($Selected) { $ContentLineWidth } else { 0 }
-            $highlightStart = if ($Selected) { $ContentStartColumn } else { 0 }
-            Write-ListRowFromSpec -ScreenRow $ScreenRow -Spec $RowSpec -ContentLineWidth $highlightWidth `
-                -ContentStartColumn $highlightStart
+            $highlightWidth = if ($Selected) { $LayoutLineWidth } else { 0 }
+            $highlightStart = if ($Selected) { $LayoutStartColumn } else { 0 }
+            Write-ListRowFromSpec -ScreenRow $ScreenRow -Spec $RowSpec -LayoutLineWidth $highlightWidth `
+                -LayoutStartColumn $highlightStart
             return
         }
         catch { }
@@ -166,7 +166,7 @@ function Write-ShellMultiSelectListRow {
     $width = Get-SafeWriteLineWidth -Row $ScreenRow
     if ($Selected) {
         $region = Resolve-ConsoleContentHighlightRegion -Row $ScreenRow `
-            -ContentStartColumn $ContentStartColumn -ContentLineWidth $ContentLineWidth
+            -LayoutStartColumn $LayoutStartColumn -LayoutLineWidth $LayoutLineWidth
         Write-ConsoleRowHighlightText -Text ([string]$RowSpec.Text) -Region $region
         Set-ConsoleCursorAfterRowWrite -Row $ScreenRow
         return
@@ -200,8 +200,8 @@ function Invoke-ShellMultiSelectListDrawRow {
         [int]$NumWidth,
         [int]$DisplayNumber,
         [bool]$Enabled,
-        [int]$ContentLineWidth = 0,
-        [int]$ContentStartColumn = 0,
+        [int]$LayoutLineWidth = 0,
+        [int]$LayoutStartColumn = 0,
         [switch]$UseSearchKeyColumn,
         [int]$KeyWidth = 0,
         [string]$DisplayKey = ''
@@ -216,7 +216,7 @@ function Invoke-ShellMultiSelectListDrawRow {
         -UseSearchKeyColumn:$UseSearchKeyColumn -KeyWidth $KeyWidth -DisplayKey $DisplayKey
     Write-ShellMultiSelectListRow -ScreenRow $ScreenRow -DisplayNumber $DisplayNumber `
         -NumWidth $NumWidth -Gap $ColGap -Selected $Selected -Checked $Checked -Enabled $Enabled `
-        -RowSpec $spec -ContentLineWidth $ContentLineWidth -ContentStartColumn $ContentStartColumn
+        -RowSpec $spec -LayoutLineWidth $LayoutLineWidth -LayoutStartColumn $LayoutStartColumn
 }
 
 function New-ShellMultiSelectListDrawHandlers {
@@ -224,16 +224,16 @@ function New-ShellMultiSelectListDrawHandlers {
         [array]$RowCache,
         [string]$ColGap,
         [System.Collections.Generic.HashSet[int]]$CheckedIndexSet = $null,
-        [int]$ContentLineWidth = 0,
-        [int]$ContentStartColumn = 0,
+        [int]$LayoutLineWidth = 0,
+        [int]$LayoutStartColumn = 0,
         [switch]$SearchKeyMode,
         [int]$SearchKeyWidth = 0
     )
 
     $cacheSnapshot = @($RowCache)
     $gapSnapshot = [string]$ColGap
-    $contentWidthSnapshot = [int]$ContentLineWidth
-    $contentStartSnapshot = [int]$ContentStartColumn
+    $contentWidthSnapshot = [int]$LayoutLineWidth
+    $contentStartSnapshot = [int]$LayoutStartColumn
     $checkedSetSnapshot = $CheckedIndexSet
     $searchKeyModeSnapshot = [bool]$SearchKeyMode
     $searchKeyWidthSnapshot = if ($SearchKeyWidth -gt 0) { [int]$SearchKeyWidth } else { (Get-ShellMultiSelectSearchKeyWidth) }
@@ -301,7 +301,7 @@ function New-ShellMultiSelectListDrawHandlers {
         Invoke-ShellMultiSelectListDrawRow -ScreenRow $ScreenRow -Index $Index `
             -RowCache $cacheSnapshot -ColGap $gapSnapshot -Selected $Selected `
             -Checked $checked -NumWidth $NumWidth -DisplayNumber $DisplayNumber `
-            -Enabled $Enabled -ContentLineWidth $contentWidthSnapshot -ContentStartColumn $contentStartSnapshot `
+            -Enabled $Enabled -LayoutLineWidth $contentWidthSnapshot -LayoutStartColumn $contentStartSnapshot `
             -UseSearchKeyColumn:$searchKeyModeSnapshot -KeyWidth $searchKeyWidthSnapshot -DisplayKey $displayKey
     }.GetNewClosure()
 
@@ -473,15 +473,15 @@ function Show-ShellMultiSelectListMenu {
     if ($PageSize -le 0) {
         $PageSize = $layout.ListViewportHeight
     }
-    if (-not $layout.ContentLineWidth -or -not $layout.ContentStartColumn) {
-        $metrics = if ($ToolkitShell.ContentMetrics) {
-            $ToolkitShell.ContentMetrics
+    if (-not $layout.LayoutLineWidth -or -not $layout.LayoutStartColumn) {
+        $metrics = if ($ToolkitShell.LayoutLineMetrics) {
+            $ToolkitShell.LayoutLineMetrics
         }
         else {
-            Get-ToolkitShellContentMetrics -Shell $ToolkitShell
+            Get-ToolkitShellLayoutLineMetrics -Shell $ToolkitShell
         }
-        $layout['ContentStartColumn'] = [int]$metrics.StartColumn
-        $layout['ContentLineWidth'] = [int]$metrics.EndColumn
+        $layout['LayoutStartColumn'] = [int]$metrics.StartColumn
+        $layout['LayoutLineWidth'] = [int]$metrics.EndColumn
     }
 
     $resolveNumberFn = $ResolveMenuNumber
@@ -530,11 +530,11 @@ function Show-ShellMultiSelectListMenu {
         $pageIndex = [Math]::Floor($selectedIndex / [double]$PageSize)
     }
 
-    $contentLineWidth = [int]$layout.ContentLineWidth
-    $contentStartColumn = [int]$layout.ContentStartColumn
+    $layoutLineWidth = [int]$layout.LayoutLineWidth
+    $contentStartColumn = [int]$layout.LayoutStartColumn
     $handlers = New-ShellMultiSelectListDrawHandlers -RowCache $RowCache -ColGap $ColGap `
-        -CheckedIndexSet $checkedIndexSet -ContentLineWidth $contentLineWidth `
-        -ContentStartColumn $contentStartColumn -SearchKeyMode:$SearchKeyMode `
+        -CheckedIndexSet $checkedIndexSet -LayoutLineWidth $layoutLineWidth `
+        -LayoutStartColumn $contentStartColumn -SearchKeyMode:$SearchKeyMode `
         -SearchKeyWidth $(if ($SearchKeyMode) { $numWidth } else { 0 })
 
     function Apply-MultiSelectInputBuffer {
@@ -807,8 +807,8 @@ function Show-ShellMultiSelectListMenu {
                     -ScrollOffset $listScrollOffset -NumWidth $numWidth `
                     -GetItemLabel $handlers['GetLabel'] -TestItemEnabled $TestItemEnabled `
                     -GetItemDisplayNumber $GetItemDisplayNumber -DrawListRow $handlers['DrawListRow'] `
-                    -GetListRowSpec $handlers['GetListRowSpec'] -ContentLineWidth $contentLineWidth `
-                    -ContentStartColumn $contentStartColumn
+                    -GetListRowSpec $handlers['GetListRowSpec'] -LayoutLineWidth $layoutLineWidth `
+                    -LayoutStartColumn $contentStartColumn
             }
 
             if ($footerChanged) {
@@ -880,7 +880,7 @@ function Invoke-ShellMultiSelectList {
     $gapField = "${CacheKey}MultiListColGap"
     $colGap = if ($Shell[$gapField]) { $Shell[$gapField] } else { $built.ColGap }
 
-    $contentMetrics = Get-ToolkitShellContentMetrics -Shell $Shell
+    $contentMetrics = Get-ToolkitShellLayoutLineMetrics -Shell $Shell
     $null = Get-ShellMultiSelectCheckedSet -Shell $Shell -CacheKey $CacheKey
 
     $getDisplayNumber = {

@@ -8,9 +8,6 @@ function Get-ToolkitShellMessageRow {
     if ($null -ne $layout.MessageRow -and [int]$layout.MessageRow -ge 0) {
         return [int]$layout.MessageRow
     }
-    if ($null -ne $layout.GapRow -and [int]$layout.GapRow -ge 0) {
-        return [int]$layout.GapRow
-    }
     return -1
 }
 
@@ -31,21 +28,6 @@ function Write-ToolkitShellMessageRow {
     }
     else {
         Write-FixedLine $MessageRow '' -Color DarkYellow
-    }
-}
-
-function Write-ToolkitShellGapMessageRow {
-    param(
-        [hashtable]$Shell = $null,
-        [int]$GapRow = -1,
-        [string]$Message = ''
-    )
-
-    if ($GapRow -lt 0) {
-        Write-ToolkitShellMessageRow -Shell $Shell -Message $Message
-    }
-    else {
-        Write-ToolkitShellMessageRow -Shell $Shell -MessageRow $GapRow -Message $Message
     }
 }
 
@@ -70,7 +52,7 @@ function Write-ToolkitShellFooter {
         else {
             [string]$MenuFooter.FlashMessage
         }
-        Write-ToolkitShellGapMessageRow -Shell $Shell -Message $splitFlash
+        Write-ToolkitShellMessageRow -Shell $Shell -Message $splitFlash
         Update-PaginatedMenuFooter -HintRow $layout.HintRow -StatusRow $layout.StatusRow `
             -PageIndex $MenuFooter.PageIndex -PageCount $MenuFooter.PageCount `
             -ItemCount $MenuFooter.ItemCount -SelectedIndex $MenuFooter.SelectedIndex `
@@ -83,7 +65,7 @@ function Write-ToolkitShellFooter {
         return
     }
 
-    Write-ToolkitShellGapMessageRow -Shell $Shell -Message $FlashMessage
+    Write-ToolkitShellMessageRow -Shell $Shell -Message $FlashMessage
 
     if ($layout.HintRow -ge 0 -and $layout.HintRow -ne $layout.ToolbarRow) {
         Write-FixedLine $layout.HintRow '' -Color DarkGray

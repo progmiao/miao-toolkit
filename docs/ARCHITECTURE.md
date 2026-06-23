@@ -1,4 +1,4 @@
-# 架构设计
+﻿# 架构设计
 
 > 状态：**已冻结**（Shell 重构 v2 + lib 分目录 R6 已落地）
 
@@ -9,6 +9,7 @@ miao-toolkit/
 ├── README.md
 ├── docs/
 ├── dev/
+├── test/
 │   ├── dev-miao.ps1
 │   └── ensure-utf8bom.ps1
 ├── package/
@@ -74,20 +75,26 @@ miao-toolkit/
 | 页面路由 | 小写（`home.ps1`、`lang.ps1`） |
 | 加载 | **启动** `bootstrap/Load-Core.ps1`；**按需** `Import-MiaoModule -Name Help|Lang|Set|Update|Install|Tool`（注册到 global 作用域） |
 
-## 二、Shell 四区布局
+## 二、Shell 布局
+
+> **权威标准：[LAYOUT.md](LAYOUT.md)**（已冻结，2026-05-29）  
+> 六层固定顺序：**Header → Title → Catalog → Body → Message → Footer**。工具箱内所有页面须遵循；修改布局须与用户确认。
 
 ```
-┌─ Header（品牌顶栏，会话内只画一次；换语言时重绘）────────┐
-├─ Title（2 行居中 cap + gap）───────────────────────────┤
-├─ Content（页面负责：列表 / 滚动文本）───────────────────┤
-├─ Footer gap（1 行）──────────────────────────────────┤
-└─ Footer toolbar（Home=MenuSplit D=3；Sub=DefaultBar D=2）┘
+┌─ Header ─── 品牌顶栏（会话级）
+├─ Title ──── 页面标题（1 行 cap）
+├─ Catalog ── 目录/上下文（1 行）
+├─ Body ───── 列表 / 滚动正文（主视口）
+├─ Message ── 瞬时消息（1 行）
+└─ Footer ─── 底栏（列表 2 行 / 内容页 1 行）
 ```
 
-| 模式 | Content 行数 | Footer |
-|------|-------------|--------|
-| Expanded | `pageSize`（home）或 `pageSize+1`（sub） | D 紧贴 Content |
-| Compressed | 仅 C 收缩 | D 贴窗底 |
+| 模式 | Body 行数 | Footer |
+|------|-----------|--------|
+| Expanded | `pageSize`（列表页）或 `pageSize+1`（内容页） | 紧贴 Body 下方 |
+| Compressed | 仅 Body 收缩 | Message + Footer 贴窗底 |
+
+层职责、行号字段、代码对照与变更控制见 **[LAYOUT.md](LAYOUT.md)**。
 
 **Shell 公共组件（`ui/shell/`）：**
 
@@ -98,7 +105,7 @@ miao-toolkit/
 
 底栏布局：`ListWithToolbar`（列表页双行）/ `SystemToolbarOnly`（内容页单行）。
 
-**工具箱内容区宽度（全局）**：`Sync-ToolkitShellContentMetrics` 写入 `$Shell.ContentMetrics` / `$Shell.Layout.ContentMetrics`，各页统一使用：
+**工具箱内容区宽度（全局）**：`Sync-ToolkitShellLayoutLineMetrics` 写入 `$Shell.LayoutLineMetrics` / `$Shell.Layout.LayoutLineMetrics`，各页统一使用：
 
 | 字段 | 含义 |
 |------|------|

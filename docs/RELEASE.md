@@ -18,7 +18,8 @@
 | `release/pack.ps1` | 打 zip（不进安装包） |
 | `dist/` | 本地输出目录（gitignore） |
 | `package/scripts/` | 未来用户侧 bootstrap / install（非打包脚本） |
-| `dev/` | 仅本地开发（预览、UTF-8 BOM 维护） |
+| `dev/` | 本地调试（预览入口、UTF-8 BOM 维护） |
+| `test/` | 测试脚本（不进安装包） |
 
 ## 步骤
 

@@ -27,7 +27,8 @@ winget install ProgMiao.Miao     # 同上（Package Id）
 
 ```
 miao-toolkit/
-├── dev/                     # 仅开发用（不进安装包）
+├── dev/                     # 本地调试（dev-miao、BOM 维护等）
+├── test/                    # 自动化/手工测试脚本（不进安装包）
 ├── docs/                    # 工具箱设计文档（平铺）
 └── package/
     ├── bin/

@@ -20,7 +20,7 @@ function New-BrandedHelpLine {
         [System.ConsoleColor]$Color = [System.ConsoleColor]::Gray
     )
 
-    return New-BrandedContentLine -Text $Text -Kind $Kind -Color $Color
+    return New-BrandedBodyLine -Text $Text -Kind $Kind -Color $Color
 }
 
 function Get-ToolkitHelpLines {

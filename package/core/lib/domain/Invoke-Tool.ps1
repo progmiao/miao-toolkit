@@ -6,11 +6,22 @@
         [hashtable]$ToolkitShell = $null
     )
 
-    $entry = Join-Path $Tool._root $Tool.entry
+    $entryName = if ($Tool.entry) { [string]$Tool.entry } else { 'index.ps1' }
+    $root = if (Get-Command Resolve-ToolkitToolLiveRoot -ErrorAction SilentlyContinue) {
+        Resolve-ToolkitToolLiveRoot -Tool $Tool
+    }
+    else {
+        [string]$Tool._root
+    }
+    if ($root) {
+        $Tool | Add-Member -NotePropertyName '_root' -NotePropertyValue $root -Force
+    }
+
+    $entry = if ($root) { Join-Path $root $entryName } else { '' }
     if (-not (Test-Path $entry)) {
         Write-Host (Get-I18n -Key 'message.toolMissingEntry' -Vars @{
                 toolId = $Tool.id
-                entry  = $Tool.entry
+                entry  = $entryName
             }) -ForegroundColor Red
         return 1
     }

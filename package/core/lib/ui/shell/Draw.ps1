@@ -49,7 +49,7 @@ function Initialize-ToolkitShellBodyView {
     $previousLayout = Get-ToolkitShellLayoutSnapshot -Layout $Shell.Layout
 
     Update-ToolkitShellViewLayout -Shell $Shell -FooterTemplate $FooterTemplate -WithSectionTitle
-    $null = Sync-ToolkitShellContentMetrics -Shell $Shell
+    $null = Sync-ToolkitShellLayoutLineMetrics -Shell $Shell
 
     if ($Shell.Layout.BodyDirty) {
         $Shell.Layout['BodyDirty'] = $false

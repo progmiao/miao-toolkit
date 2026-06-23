@@ -15,12 +15,18 @@ Get-ChildItem -Path (Join-Path $root 'package') -Filter '*.ps1' -Recurse |
         Write-BomRelative -FullPath $_.FullName -RepoRoot $root
     }
 
-Get-ChildItem -Path $PSScriptRoot -Filter '*.ps1' |
-    ForEach-Object {
-        $text = [System.IO.File]::ReadAllText($_.FullName)
-        [System.IO.File]::WriteAllText($_.FullName, $text, $utf8bom)
-        Write-BomRelative -FullPath $_.FullName -RepoRoot $root
-    }
+foreach ($scriptDir in @(
+        $PSScriptRoot
+        (Join-Path $root 'test')
+    )) {
+    if (-not (Test-Path -LiteralPath $scriptDir)) { continue }
+    Get-ChildItem -Path $scriptDir -Filter '*.ps1' |
+        ForEach-Object {
+            $text = [System.IO.File]::ReadAllText($_.FullName)
+            [System.IO.File]::WriteAllText($_.FullName, $text, $utf8bom)
+            Write-BomRelative -FullPath $_.FullName -RepoRoot $root
+        }
+}
 
 Get-ChildItem -Path (Join-Path $root 'release') -Filter '*.ps1' -ErrorAction SilentlyContinue |
     ForEach-Object {

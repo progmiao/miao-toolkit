@@ -87,6 +87,11 @@
       "languageChangeFailed": "Could not change language: {detail}",
       "toolNoMissing": "Tool {command} has no no in index.json; using temporary number 9999",
       "toolNoDuplicate": "Duplicate tool no {no} ({firstCommand} / {secondCommand})",
+      "toolDirNameInvalid": "Tool directory name must be <no>-<command>: {dirName}",
+      "toolIdentityIgnored": "Tool {dirName}: index.json should not contain {field}; ignored",
+      "toolCommandDuplicate": "Duplicate tool command {command} ({firstDir} / {secondDir})",
+      "runtimeConfigInvalid": "Failed to read runtimes.json",
+      "ynConfirmHint": "Press Y to confirm, N to cancel",
       "mockToolNoEntry": "This menu test item has no entry",
       "unknownSysCommand": "Unknown sys subcommand: {command}"
     },
@@ -186,6 +191,8 @@
         "updateSummary": "Update this tool\u0027s third-party dependencies",
         "uninstallLabel": "Uninstall deps",
         "uninstallSummary": "Uninstall this tool\u0027s third-party dependencies",
+        "sharedUninstallPrompt": "Dependencies are still used by other tools ({details}). Continue uninstalling deps for {tool}?",
+        "sharedUninstallItem": "{dep} \u2190 {tools}",
         "backTarget": " to the tool menu",
         "installing": "Installing dependencies for {name}…"
       },
@@ -315,8 +322,20 @@
         "summaryAllLatest": "All dependencies are up to date",
         "summaryNothingToDo": "Nothing to install or update",
         "summaryFailed": "Failed — see log above",
-        "summaryUninstallComplete": "Dependencies uninstalled; install record cleared",
-        "summaryUninstallNothing": "No installed dependencies detected; install record cleared"
+        "summaryUninstallComplete": "Dependencies uninstalled",
+        "logSkipSharedDep": "{name} is still used by other tools ({tools}); skipped",
+        "logSharedUninstallDeclined": "{name} uninstall cancelled (still used by {tools})",
+        "summaryUninstallNothing": "Nothing to uninstall"
+      },
+      "runtime": {
+        "winget": {
+          "name": "App Installer (winget)"
+        },
+        "logStarting": "Installing runtime: {name}…",
+        "logFailed": "Failed to install {name}",
+        "logDownloading": "Downloading installer…",
+        "logInstalling": "Installing…",
+        "logStoreFallback": "MSIX install failed; opened Microsoft Store — complete install manually to continue"
       }
     }
   }

@@ -1,0 +1,30 @@
+﻿---
+description: Frozen six-layer Shell layout (Header/Title/Catalog/Body/Message/Footer) — confirm before any layout change
+globs: docs/LAYOUT.md,package/core/lib/ui/shell/Layout.ps1,package/core/lib/ui/shell/Header.ps1,package/core/lib/ui/shell/Title.ps1,package/core/lib/ui/shell/CatalogRow.ps1,package/core/lib/ui/shell/Draw.ps1,package/core/lib/ui/shell/Footer.ps1,package/core/lib/ui/shell/Page-Host.ps1,package/core/lib/ui/shell/SingleSelectList.ps1,package/core/lib/ui/shell/MultiSelectList.ps1
+alwaysApply: false
+---
+
+# Shell layout (frozen)
+
+Canonical spec: **`docs/LAYOUT.md`** (status: 已冻结).
+
+## Six layers (order fixed)
+
+`Header` → `Title` (1 row) → `Catalog` (1 row) → `Body` → `Message` (1 row) → `Footer`
+
+- Do **not** add/remove/reorder layers, merge Title+Catalog, or drop Message without **explicit user confirmation**.
+- Do **not** change `Get-ShellLayoutConstants` / row math in `Layout.ps1` without confirmation.
+- Use only standard layer names: **Header / Title / Catalog / Body / Message / Footer** and matching symbols (`CatalogRow`, `BodyCatalogLine`, `LayoutLineMetrics`, …).
+
+## Allowed without layout approval
+
+- Fill Catalog/Message text; Body list/content; i18n; bug fixes that preserve row budget.
+- `ListLayout.ps1` column widths (Body internals).
+
+## Required before layout changes
+
+1. Cite which layer(s) and constants would change.
+2. Ask user to confirm modifying `docs/LAYOUT.md` and/or layout implementation.
+3. If user did not explicitly request a layout change, keep existing six-layer structure.
+
+Footer Esc/exit rules remain in `shell-toolbar.mdc`.

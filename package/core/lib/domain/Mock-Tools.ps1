@@ -8,8 +8,8 @@ function Get-MockToolsConfigPath {
     }
 
     $miaoHome = Get-Home
-    $repoDev = Join-Path (Split-Path $miaoHome -Parent) 'dev\mock-tools.json'
-    if (Test-Path $repoDev) { return $repoDev }
+    $repoTest = Join-Path (Split-Path $miaoHome -Parent) 'test\mock-tools.json'
+    if (Test-Path $repoTest) { return $repoTest }
 
     return $null
 }

@@ -15,9 +15,13 @@ miao-toolkit/
 │   ├── README.md              ← 本文件
 │   └── OVERVIEW.md …
 │
-├── dev/                       ← 仅仓库开发用（不进安装包）
+├── dev/                       ← 本地调试（不进安装包）
 │   ├── dev-miao.ps1           ← 本地预览 miao
-│   └── ensure-utf8bom.ps1     ← 维护 package/dev/release 下 ps1 的 UTF-8 BOM
+│   └── ensure-utf8bom.ps1     ← 维护 package/dev/test/release 下 ps1 的 UTF-8 BOM
+│
+├── test/                      ← 测试脚本（不进安装包）
+│   ├── test-*.ps1
+│   └── mock-tools.json        ← 开发菜单模拟工具配置
 │
 ├── release/                   ← 维护者发版脚本（不进安装包）
 │   └── pack.ps1               ← 打 GitHub Release zip → dist/
@@ -133,6 +137,7 @@ help 来源：`package/tools/<id>/help.md`。
 | 6 | [UPDATE.md](UPDATE.md) | 发布与更新 | ✅ 已冻结 |
 | 7 | [CLI.md](CLI.md) | 命令与 help | ✅ 已冻结 |
 | 8 | [UX.md](UX.md) | 交互规范 | ✅ 已冻结 |
+| 8b | [LAYOUT.md](LAYOUT.md) | Shell 六层布局标准 | ✅ 已冻结 |
 | 9 | [../package/tools/node/DESIGN.md](../package/tools/node/DESIGN.md) | node 工具设计 | 🔄 评审中（**暂停**，待恢复） |
 | 10 | [../package/tools/node/help.md](../package/tools/node/help.md) | node 用户帮助 | 待确认 |
 | 11 | [../package/tools/node/index.json](../package/tools/node/index.json) | node 注册配置 | 待确认 |
@@ -155,6 +160,7 @@ help 来源：`package/tools/<id>/help.md`。
 | [RELEASE.md](RELEASE.md) | 维护者：main 发版清单 |
 | [CLI.md](CLI.md) | 命令、help |
 | [UX.md](UX.md) | 交互 |
+| [LAYOUT.md](LAYOUT.md) | **Shell 六层布局**（Header/Title/Catalog/Body/Message/Footer，已冻结） |
 | [MANIFEST.md](MANIFEST.md) | `core/manifest.json` 字段说明 |
 | [I18N.md](I18N.md) | `core/i18n` 分区与 `Get-ToolkitI18n` |
 

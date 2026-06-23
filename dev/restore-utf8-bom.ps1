@@ -1,4 +1,4 @@
-param(
+﻿param(
     [string]$Root = (Join-Path $PSScriptRoot '..\package')
 )
 

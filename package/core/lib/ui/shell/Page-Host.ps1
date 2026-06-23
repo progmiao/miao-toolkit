@@ -24,7 +24,7 @@ function Invoke-ToolkitShellContentView {
     $footerRenderer = New-ShellSystemToolbarFooterRenderer -Shell $Shell -ToolbarConfig $ToolbarConfig
     Register-ToolkitShellFooter -Shell $Shell -Renderer $footerRenderer
 
-    Draw-BrandedContentLines -Layout $Shell.Layout -Lines $Lines -ScrollOffset $scrollOffset
+    Draw-BrandedBodyLines -Layout $Shell.Layout -Lines $Lines -ScrollOffset $scrollOffset
     & $footerRenderer
     Finalize-ToolkitShellBodyView -Shell $Shell
 
@@ -40,7 +40,7 @@ function Invoke-ToolkitShellContentView {
         }
 
         if ($result -eq 'scroll') {
-            Draw-BrandedContentLines -Layout $Shell.Layout -Lines $Lines -ScrollOffset $scrollOffset
+            Draw-BrandedBodyLines -Layout $Shell.Layout -Lines $Lines -ScrollOffset $scrollOffset
             & $footerRenderer
             Finalize-ToolkitShellBodyView -Shell $Shell
             continue

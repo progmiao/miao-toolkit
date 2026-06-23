@@ -21,7 +21,7 @@ function Register-DepOperationFnCache {
             'Resolve-DepOperationProgressDisplay'
             'Format-ToolkitDepLogLineText'
             'Get-BrandSeparatorLineWidth'
-            'Format-ToolkitShellContentSeparator'
+            'Format-ToolkitShellLayoutSeparator'
             'Pad-DisplayText'
             'Get-DisplayWidth'
             'Truncate-DisplayText'
@@ -42,7 +42,9 @@ function Register-DepOperationFnCache {
             'Add-ToolkitDepLogSection'
             'Write-ToolkitDepPlanDetectLog'
             'Invoke-ToolDepPackageExecute'
+            'Invoke-ToolkitRuntimeExecute'
             'Set-ToolDepPackageVersion'
+            'Remove-GlobalDepPackage'
             'Update-ToolDepSessionPath'
             'Test-ToolDepCommandAvailable'
             'Resolve-ToolDepPackageVersionAfterAction'
@@ -62,6 +64,7 @@ function Register-DepOperationFnCache {
             'Test-WingetDepResultNoApplicableInstaller'
             'Get-WingetDepResultSummaryLine'
             'Get-WingetDepStreamLinePercent'
+            'Test-WingetDepZhStreamPhrase'
             'Get-WingetDepStreamLinePhase'
             'Test-WingetDepStreamLineIsProgressVisual'
             'Test-WingetDepStreamLineIsFileLockRemoveError'
@@ -144,8 +147,8 @@ function Get-ToolkitDepOperationLogLayout {
 
     $listStart = [int]$Layout.ListStartRow
     $listEnd = [int]$Layout.ListEndRow
-    $gapRow = [int]$Layout.GapRow
-    $maxPaintRow = if ($gapRow -ge 0) { [Math]::Min($listEnd, $gapRow - 1) } else { $listEnd }
+    $messageRow = [int]$Layout.MessageRow
+    $maxPaintRow = if ($messageRow -ge 0) { [Math]::Min($listEnd, $messageRow - 1) } else { $listEnd }
 
     $idealContentStartRow = $listStart + 3
     $contentStartRow = [Math]::Min($idealContentStartRow, $maxPaintRow)
@@ -1008,13 +1011,13 @@ function Get-ToolkitDepBatchSummarySegments {
     )
 }
 
-function Get-ToolkitDepContentRowWriteLimit {
+function Get-ToolkitDepCatalogRowWriteLimit {
     param(
         [hashtable]$Shell = $null,
         [int]$BrandInnerWidth = 0
     )
 
-    $fnContentWidth = Get-Command Get-ToolkitShellContentLineWidth -ErrorAction SilentlyContinue
+    $fnContentWidth = Get-Command Get-ToolkitShellLayoutLineWidth -ErrorAction SilentlyContinue
     if ($fnContentWidth) {
         $limit = & $fnContentWidth -Shell $Shell -BrandInnerWidth $BrandInnerWidth
         if ($limit -gt 0) { return $limit }
@@ -1030,7 +1033,7 @@ function Get-ToolkitDepContentRowWriteLimit {
     return 1 + [Math]::Max(1, $inner)
 }
 
-function Complete-ToolkitDepContentRowPadding {
+function Complete-ToolkitDepCatalogRowPadding {
     param(
         [int]$Row,
         [int]$Used,
@@ -1038,7 +1041,7 @@ function Complete-ToolkitDepContentRowPadding {
         [int]$BrandInnerWidth = 0
     )
 
-    $limit = Get-ToolkitDepContentRowWriteLimit -Shell $Shell -BrandInnerWidth $BrandInnerWidth
+    $limit = Get-ToolkitDepCatalogRowWriteLimit -Shell $Shell -BrandInnerWidth $BrandInnerWidth
     if ($Used -lt $limit) {
         Write-Host (' ' * ($limit - $Used)) -NoNewline
     }
@@ -1060,7 +1063,7 @@ function Write-ToolkitDepContentFixedLine {
 
     $fnDisplayWidth = Resolve-DepOperationFn 'Get-DisplayWidth'
     $fnTruncate = Resolve-DepOperationFn 'Truncate-DisplayText'
-    $limit = Get-ToolkitDepContentRowWriteLimit -Shell $Shell -BrandInnerWidth $BrandInnerWidth
+    $limit = Get-ToolkitDepCatalogRowWriteLimit -Shell $Shell -BrandInnerWidth $BrandInnerWidth
 
     $foreground = if ($Disabled) { [System.ConsoleColor]::DarkGray } else { $Color }
 
@@ -1094,7 +1097,7 @@ function Write-ToolkitDepFixedLineSegments {
 
     $fnDisplayWidth = Resolve-DepOperationFn 'Get-DisplayWidth'
     $fnTruncate = Resolve-DepOperationFn 'Truncate-DisplayText'
-    $limit = Get-ToolkitDepContentRowWriteLimit -Shell $Shell -BrandInnerWidth $BrandInnerWidth
+    $limit = Get-ToolkitDepCatalogRowWriteLimit -Shell $Shell -BrandInnerWidth $BrandInnerWidth
     $background = Get-ConsoleSurfaceBackground
 
     $drawSegments = New-Object 'System.Collections.Generic.List[object]'
@@ -1145,7 +1148,7 @@ function Format-ToolkitDepLogLineText {
 
     if ($Line.Kind -eq 'separator') {
         if ($BrandInnerWidth -gt 0) {
-            $fnFormatSep = Resolve-DepOperationFn 'Format-ToolkitShellContentSeparator'
+            $fnFormatSep = Resolve-DepOperationFn 'Format-ToolkitShellLayoutSeparator'
             return & $fnFormatSep -BrandInnerWidth $BrandInnerWidth
         }
         return [string]$Line.Text
@@ -1244,7 +1247,7 @@ function Write-ToolkitDepOperationSplitStatusSegments {
     else {
         24
     }
-    $limit = Get-ToolkitDepContentRowWriteLimit -Shell $Shell -BrandInnerWidth $BrandInnerWidth
+    $limit = Get-ToolkitDepCatalogRowWriteLimit -Shell $Shell -BrandInnerWidth $BrandInnerWidth
     $background = Get-ConsoleSurfaceBackground
 
     $drawSegments = New-Object 'System.Collections.Generic.List[object]'
@@ -1796,11 +1799,16 @@ function Get-ToolkitDepWingetOutputDecision {
             }
             return $decision
         }
-        if ($trim -match '(?i)^Starting package uninstall|^正在(?:启动|执行)程序包卸载') {
+        if ($trim -match '(?i)^Starting package uninstall\b') {
             $decision.RedrawOnly = $true
             return $decision
         }
-        if ($trim -match '(?i)^Starting package install|^正在(?:启动|执行|运行)程序包安装') {
+        if ($trim -match '(?i)^Starting package install\b') {
+            $decision.RedrawOnly = $true
+            return $decision
+        }
+        $fnTestZhPhrase = Resolve-DepOperationFn 'Test-WingetDepZhStreamPhrase'
+        if ((& $fnTestZhPhrase $trim 'startUninstall') -or (& $fnTestZhPhrase $trim 'startInstall')) {
             $decision.RedrawOnly = $true
             return $decision
         }
@@ -1970,9 +1978,18 @@ function Write-ToolkitDepPlanDetectLog {
     }) -WithTimestamp
 
     if (-not $PlanItem.ShouldExecute) {
-        Add-ToolkitDepLogLine -Log $Log -Text (Get-I18n -Key 'page.depOperation.logSkip' -Vars @{
-            action = (Get-ToolkitDepActionLabel -Action ([string]$status.Action))
-        }) -Kind 'success' -WithTimestamp
+        if ($status.BlockedByOtherTools) {
+            $others = @($status.OtherToolCommands) -join ', '
+            Add-ToolkitDepLogLine -Log $Log -Text (Get-I18n -Key 'page.depOperation.logSkipSharedDep' -Vars @{
+                name  = [string]$status.Name
+                tools = $others
+            }) -Kind 'success' -WithTimestamp
+        }
+        else {
+            Add-ToolkitDepLogLine -Log $Log -Text (Get-I18n -Key 'page.depOperation.logSkip' -Vars @{
+                action = (Get-ToolkitDepActionLabel -Action ([string]$status.Action))
+            }) -Kind 'success' -WithTimestamp
+        }
         return
     }
 
@@ -2015,6 +2032,8 @@ function New-ToolkitDepOperationRunner {
     $fnAddLog = Resolve-DepOperationFn 'Add-ToolkitDepLogLine'
     $fnGetI18n = Resolve-DepOperationFn 'Get-I18n'
     $fnExecutePackage = Resolve-DepOperationFn 'Invoke-ToolDepPackageExecute'
+    $fnExecuteRuntime = Resolve-DepOperationFn 'Invoke-ToolkitRuntimeExecute'
+    $fnRemoveGlobalDep = Resolve-DepOperationFn 'Remove-GlobalDepPackage'
     $fnSetPkgVersion = Resolve-DepOperationFn 'Set-ToolDepPackageVersion'
     $fnUpdatePath = Resolve-DepOperationFn 'Update-ToolDepSessionPath'
     $fnTestCmd = Resolve-DepOperationFn 'Test-ToolDepCommandAvailable'
@@ -2060,6 +2079,39 @@ function New-ToolkitDepOperationRunner {
         $executeAction = [string]$PlanItem.ExecuteAction
         $status = $PlanItem.Status
 
+        if ($PlanItem._kind -eq 'runtime') {
+            if ($OnProgress) { & $OnProgress @{ Phase = 'preflight'; Item = $PlanItem } }
+            & $fnAddLog -Log $runnerState.Log -Text (& $fnGetI18n -Key 'page.runtime.logStarting' -Vars @{
+                name = [string]$status.Name
+            }) -WithTimestamp
+            if ($OnBeforeExecute) { & $OnBeforeExecute }
+            if ($OnUiPoll) { & $OnUiPoll }
+            $runtimeResult = & $fnExecuteRuntime -Runtime $status.Package -ExecuteAction 'Install' `
+                -OnOutputLine $OnOutputLine -OnPulse $OnChromePulse
+            if ($runtimeResult.Lines) {
+                foreach ($line in @($runtimeResult.Lines)) {
+                    if (-not [string]::IsNullOrWhiteSpace([string]$line)) {
+                        & $fnAddLog -Log $runnerState.Log -Text ([string]$line) -WithTimestamp
+                    }
+                }
+            }
+            if (-not $runtimeResult.Success) {
+                if ($OnProgress) { & $OnProgress @{ Phase = 'fail'; Item = $PlanItem } }
+                & $fnAddLog -Log $runnerState.Log -Text (& $fnGetI18n -Key 'page.runtime.logFailed' -Vars @{
+                    name = [string]$status.Name
+                }) -Kind 'error' -WithTimestamp
+                & $fnRegisterItemResult -RunnerState $runnerState -Result 'failed'
+                return
+            }
+            & $fnUpdatePath
+            if ($OnProgress) { & $OnProgress @{ Phase = 'done'; Item = $PlanItem } }
+            & $fnAddLog -Log $runnerState.Log -Text (& $fnGetI18n -Key 'page.depOperation.packageDone' -Vars @{
+                name = [string]$status.Name
+            }) -Kind 'success' -WithTimestamp
+            & $fnRegisterItemResult -RunnerState $runnerState -Result 'success'
+            return
+        }
+
         if ($executeAction -eq 'Reconcile') {
             if ($OnProgress) { & $OnProgress @{ Phase = 'reconcile'; Item = $PlanItem } }
             $version = [string]$status.EffectiveVersion
@@ -2069,7 +2121,7 @@ function New-ToolkitDepOperationRunner {
             }
             if (-not [string]::IsNullOrWhiteSpace($version)) {
                 & $fnSetPkgVersion -ToolId ([string]$runnerState.Tool.id) `
-                    -DependencyId ([string]$status.DependencyId) -Version $version
+                    -DependencyId ([string]$status.DependencyId) -Version $version -Package $status.Package
                 & $fnAddLog -Log $runnerState.Log -Text (& $fnGetI18n -Key 'page.depOperation.logReconciled' -Vars @{
                     name = [string]$status.Name; version = $version
                 }) -Kind 'success' -WithTimestamp
@@ -2318,9 +2370,13 @@ function New-ToolkitDepOperationRunner {
             if ($versions -and $versions.Count -gt 0) {
                 foreach ($depId in $versions.Keys) {
                     & $fnSetPkgVersion -ToolId ([string]$runnerState.Tool.id) `
-                        -DependencyId ([string]$depId) -Version ([string]$versions[$depId])
+                        -DependencyId ([string]$depId) -Version ([string]$versions[$depId]) -Package $status.Package
                 }
             }
+        }
+
+        if ($executeAction -eq 'Uninstall') {
+            & $fnRemoveGlobalDep -Fingerprint ([string]$status.DependencyId)
         }
 
         if ($OnProgress) { & $OnProgress @{ Phase = 'done'; Item = $PlanItem } }
@@ -2479,8 +2535,8 @@ function Draw-ToolkitDepOperationView {
     if ($ChromeOnly) { return }
 
     if ($LogViewportRows -le 0) {
-        if ($layout.GapRow -ge 0) {
-            Write-ToolkitDepContentFixedLine -Row $layout.GapRow -Text '' -Color DarkGray `
+        if ($layout.MessageRow -ge 0) {
+            Write-ToolkitDepContentFixedLine -Row $layout.MessageRow -Text '' -Color DarkGray `
                 -Shell $Shell -BrandInnerWidth $barWidth
         }
         return
@@ -2508,8 +2564,8 @@ function Draw-ToolkitDepOperationView {
         }
     }
 
-    if ($layout.GapRow -ge 0) {
-        Write-ToolkitDepContentFixedLine -Row $layout.GapRow -Text '' -Color DarkGray `
+    if ($layout.MessageRow -ge 0) {
+        Write-ToolkitDepContentFixedLine -Row $layout.MessageRow -Text '' -Color DarkGray `
             -Shell $Shell -BrandInnerWidth $barWidth
     }
 }
@@ -2523,14 +2579,29 @@ function Invoke-ToolkitDepOperationView {
         [string]$Intent,
         [switch]$AutoContinue,
         [string]$PreflightErrorKey = '',
-        $SharedLog = $null
+        $SharedLog = $null,
+        [array]$AllTools = $null
     )
 
     $fnGetI18n = Resolve-DepOperationFn 'Get-I18n'
-    $plan = if ([string]::IsNullOrWhiteSpace($PreflightErrorKey)) {
-        Build-ToolDepSyncPlan -Tool $Tool -Intent $Intent
+    $resolvedTools = if ($AllTools) { @($AllTools) } elseif (Get-Command Get-ToolkitTools -ErrorAction SilentlyContinue) {
+        @(Get-ToolkitTools)
     }
-    else { $null }
+    else {
+        @(Discover-Tools)
+    }
+    $plan = $null
+    $effectivePreflightKey = [string]$PreflightErrorKey
+    if ([string]::IsNullOrWhiteSpace($effectivePreflightKey)) {
+        $builtPlan = Build-ToolkitDepOperationPlan -Tool $Tool -Intent $Intent -AllTools $resolvedTools
+        $wingetPreflightKey = Get-ToolkitDepWingetPreflightErrorKey -Plan $builtPlan
+        if ($wingetPreflightKey) {
+            $effectivePreflightKey = $wingetPreflightKey
+        }
+        else {
+            $plan = $builtPlan
+        }
+    }
 
     $total = if ($plan) { @($plan.Items).Count } else { 1 }
 
@@ -2566,8 +2637,8 @@ function Invoke-ToolkitDepOperationView {
         & $invokeDepOperationRedrawNow
     }.GetNewClosure()
 
-    if ($PreflightErrorKey) {
-        Add-ToolkitDepLogLine -Log $log -Text (& $fnGetI18n -Key $PreflightErrorKey) -Kind 'error' -WithTimestamp
+    if ($effectivePreflightKey) {
+        Add-ToolkitDepLogLine -Log $log -Text (& $fnGetI18n -Key $effectivePreflightKey) -Kind 'error' -WithTimestamp
         $complete = $true
     }
 
@@ -2936,7 +3007,7 @@ function Invoke-ToolkitDepOperationView {
             -OnChromePulse $onChromePulse -OnDepLogChanged $onDepLogChanged
     }
 
-    if ($plan -and -not $PreflightErrorKey) {
+    if ($plan -and -not $effectivePreflightKey) {
         Set-ToolkitShellToolbarLocked -Shell $Shell -Locked $true
         Start-ToolkitDepOperationBatch -Ui $ui
         & $invokeDepOperationRedrawNow
@@ -2979,6 +3050,19 @@ function Invoke-ToolkitDepOperationView {
             $ui.ExecuteStartTick = 0
             & $invokeDepOperationRedrawNow
             & $fnDrainEscInput -Shell $Shell -ProcessEsc $onExitKey
+            if (-not (Resolve-ToolkitDepSharedUninstallConfirm -Tool $Tool -PlanItem $item -Log $log `
+                    -Intent $Intent -Shell $Shell)) {
+                Register-ToolkitDepRunnerItemResult -RunnerState $runner.State -Result 'success'
+                if (-not $runner.State.Cancelled) {
+                    Apply-ToolkitDepWingetProgressUpdate -Ui $ui -WingetOutputState $wingetOutputState -Target 100 -Jump
+                    & $invokeDepOperationRedrawNow
+                    $ui.ProgressCurrent++
+                }
+                $ui.ItemInFlight = $false
+                $ui.ItemSubPercent = -1
+                & $invokeDepOperationRedrawNow
+                continue
+            }
             & $runner.ProcessItem $item
             & $fnDrainEscInput -Shell $Shell -ProcessEsc $onExitKey
             if (-not $runner.State.Cancelled) {
@@ -3034,7 +3118,7 @@ function Invoke-ToolkitDepOperationView {
         if (Test-ShellNavMarker $waitResult) {
             return $waitResult
         }
-        if ($PreflightErrorKey) {
+        if ($effectivePreflightKey) {
             return $false
         }
         return (Test-ToolkitDepRunnerSuccess -Runner $runner)

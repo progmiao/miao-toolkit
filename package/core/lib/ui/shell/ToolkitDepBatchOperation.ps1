@@ -349,8 +349,8 @@ function Initialize-ToolkitDepBatchOperationView {
     $logSeparatorRow = [int]$logLayout.SeparatorRow
     $logContentViewportRows = [int]$logLayout.ContentViewportRows
 
-    $contentMetrics = if ($Shell.Layout.ContentMetrics) { $Shell.Layout.ContentMetrics } else {
-        Sync-ToolkitShellContentMetrics -Shell $Shell
+    $contentMetrics = if ($Shell.Layout.LayoutLineMetrics) { $Shell.Layout.LayoutLineMetrics } else {
+        Sync-ToolkitShellLayoutLineMetrics -Shell $Shell
     }
     $barWidth = [int]$contentMetrics.InnerWidth
     if ($null -eq $Log) {

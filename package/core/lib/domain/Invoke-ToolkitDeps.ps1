@@ -40,7 +40,7 @@ function Test-ToolDependencyNeedsImmediateLocalAttention {
 
     foreach ($dep in @(Get-ToolDependencyPackages -Tool $Tool)) {
         $depId = Get-DependencyRecordId -Dependency $dep
-        $recorded = Get-ToolDepRecordedVersion -ToolId ([string]$Tool.id) -DependencyId $depId
+        $recorded = Get-GlobalDepRecordedVersion -Fingerprint $depId
         if ([string]::IsNullOrWhiteSpace($recorded)) { continue }
 
         $checkCommand = if ($dep.checkCommand) { [string]$dep.checkCommand } else { '' }

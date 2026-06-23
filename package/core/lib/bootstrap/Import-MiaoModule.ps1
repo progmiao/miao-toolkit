@@ -30,6 +30,8 @@ function Get-MiaoToolDepsModulePaths {
 
         'domain\Invoke-ToolDepPackage.ps1'
 
+        'domain\Invoke-ToolkitRuntime.ps1'
+
         'domain\Invoke-ToolkitDepOperation.ps1'
 
         'ui\shell\DepOperationView.ps1'

@@ -88,6 +88,11 @@
             "languageChangeFailed": "无法切换语言: {detail}",
             "toolNoMissing": "工具 {command} 未配置 no，已在 index.json 中临时使用 9999",
             "toolNoDuplicate": "工具编号重复: {no} ({firstCommand} / {secondCommand})",
+            "toolDirNameInvalid": "工具目录名不符合约定（需 <序号>-<编码>）: {dirName}",
+            "toolIdentityIgnored": "工具 {dirName} 的 index.json 不应再包含 {field}，已忽略",
+            "toolCommandDuplicate": "工具命令重复: {command} ({firstDir} / {secondDir})",
+            "runtimeConfigInvalid": "无法读取 runtimes.json",
+            "ynConfirmHint": "按 Y 确认，N 取消",
             "mockToolNoEntry": "该工具为菜单测试项，暂无入口",
             "unknownSysCommand": "未知系统子命令: {command}"
         },
@@ -187,6 +192,8 @@
                 "updateSummary": "更新本工具的第三方依赖",
                 "uninstallLabel": "卸载依赖",
                 "uninstallSummary": "卸载本工具的第三方依赖",
+                "sharedUninstallPrompt": "依赖仍被其他工具使用（{details}）。确认继续卸载 {tool} 的依赖？",
+                "sharedUninstallItem": "{dep} ← {tools}",
                 "backTarget": "功能菜单",
                 "installing": "正在安装 {name} 的依赖…"
             },
@@ -331,7 +338,19 @@
                 "summaryNothingToDo": "无需安装或更新",
                 "summaryFailed": "处理失败，请查看上方日志",
                 "summaryUninstallComplete": "依赖卸载完成，已清除安装记录",
-                "summaryUninstallNothing": "未检测到已安装的依赖，已清除安装记录"
+                "logSkipSharedDep": "{name} 仍被其他工具使用（{tools}），跳过卸载",
+                "logSharedUninstallDeclined": "{name} 卸载已取消（仍被 {tools} 使用）",
+                "summaryUninstallNothing": "未检测到可卸载的依赖"
+            },
+            "runtime": {
+                "winget": {
+                    "name": "应用安装程序 (winget)"
+                },
+                "logStarting": "正在安装运行时：{name}…",
+                "logFailed": "{name} 安装失败",
+                "logDownloading": "正在下载安装包…",
+                "logInstalling": "正在安装…",
+                "logStoreFallback": "MSIX 安装失败，已打开 Microsoft Store，请手动完成安装后继续"
             }
         }
     }

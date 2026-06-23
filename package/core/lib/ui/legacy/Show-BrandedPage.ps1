@@ -1,7 +1,7 @@
 ﻿# 品牌页模板：固定顶栏 + 列表区内容 + 底栏（Esc 返回 / S 设置）
 # legacy：standalone 路由逐步迁移至 Shell Page-Host
 
-function New-BrandedContentLine {
+function New-BrandedBodyLine {
     param(
         [string]$Text,
         [string]$Kind = 'text',
@@ -52,7 +52,7 @@ function Update-BrandedContentFooter {
     )
 }
 
-function Draw-BrandedContentLines {
+function Draw-BrandedBodyLines {
     param(
         [hashtable]$Layout,
         [array]$Lines,
@@ -80,8 +80,8 @@ function Draw-BrandedContentLines {
         }
     }
 
-    if ($Layout.GapRow -ge 0) {
-        Write-FixedLine $Layout.GapRow '' -Color DarkGray
+    if ($Layout.MessageRow -ge 0) {
+        Write-FixedLine $Layout.MessageRow '' -Color DarkGray
     }
 }
 
@@ -95,7 +95,7 @@ function Show-BrandedContentPage {
     if ($null -eq $Lines) { $Lines = @() }
 
     $header = New-ToolkitBrandedHeader -SectionTitle $SectionTitle
-    $layout = Get-MenuLayout -Header $header -HideColHeader -PinFooterToBottom -FooterGapRows 0
+    $layout = Get-MenuLayout -Header $header -HideColHeader -PinFooterToBottom -MessageRows 0
     $scrollOffset = 0
     $viewport = $layout.ListViewportHeight
     $scrollable = ($Lines.Count -gt $viewport)
@@ -105,7 +105,7 @@ function Show-BrandedContentPage {
 
     try {
         Write-MenuHeader -Header $header -StartRow 0
-        Draw-BrandedContentLines -Layout $layout -Lines $Lines -ScrollOffset $scrollOffset
+        Draw-BrandedBodyLines -Layout $layout -Lines $Lines -ScrollOffset $scrollOffset
         Update-BrandedContentFooter -HintRow $layout.HintRow -StatusRow $layout.StatusRow `
             -BrandInnerWidth $layout.BrandInnerWidth -Scrollable:$scrollable
 
@@ -136,7 +136,7 @@ function Show-BrandedContentPage {
             }
 
             if ($oldScroll -ne $scrollOffset) {
-                Draw-BrandedContentLines -Layout $layout -Lines $Lines -ScrollOffset $scrollOffset
+                Draw-BrandedBodyLines -Layout $layout -Lines $Lines -ScrollOffset $scrollOffset
             }
         }
     }

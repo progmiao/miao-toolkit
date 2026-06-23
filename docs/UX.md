@@ -1,6 +1,7 @@
 # 交互与用户体验（UX）
 
-> 状态：**已冻结**（第 8 步确认：2026-05-24）
+> 状态：**已冻结**（第 8 步确认：2026-05-24）  
+> Shell 纵向分区见 **[LAYOUT.md](LAYOUT.md)**（Header / Title / Catalog / Body / Message / Footer）。
 
 ## 一、主菜单
 

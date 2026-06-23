@@ -78,6 +78,19 @@ function Get-ToolkitInitFileHash {
     }
 }
 
+function Get-ToolkitInitStringHash {
+    param([string]$Text)
+
+    $bytes = [Text.Encoding]::UTF8.GetBytes([string]$Text)
+    $sha = [System.Security.Cryptography.SHA256]::Create()
+    try {
+        return ([BitConverter]::ToString($sha.ComputeHash($bytes))).Replace('-', '').ToLowerInvariant()
+    }
+    finally {
+        $sha.Dispose()
+    }
+}
+
 function Get-ToolkitInitSourceFiles {
     $files = @()
     $manifestPath = Get-ManifestRawPath
@@ -117,7 +130,7 @@ function New-ToolkitInitFingerprint {
     foreach ($path in @(Get-ToolkitInitSourceFiles)) {
         $parts += "$(Get-ToolkitInitFileHash -Path $path)|$path"
     }
-    return (Get-ToolkitInitFileHash -Path ([string]::Join([char]0, $parts)))
+    return (Get-ToolkitInitStringHash -Text ([string]::Join([char]0, $parts)))
 }
 
 function Convert-ToolToInitRecord {
@@ -393,7 +406,11 @@ function Get-ToolkitToolsFromInit {
     if (-not (Test-Path $path)) { return @() }
 
     $doc = Get-Content -Raw -Path $path -Encoding UTF8 | ConvertFrom-Json
-    return @($doc.tools | ForEach-Object { Convert-InitRecordToTool $_ })
+    $tools = @($doc.tools | ForEach-Object { Convert-InitRecordToTool $_ })
+    if (Get-Command Sync-ToolkitToolsLivePaths -ErrorAction SilentlyContinue) {
+        return @(Sync-ToolkitToolsLivePaths -Tools $tools)
+    }
+    return $tools
 }
 
 function Get-ToolkitTools {
@@ -551,6 +568,7 @@ function Invoke-ToolkitInitBuild {
             'config\Deps-State.ps1'
             'domain\Ensure-ToolDeps.ps1'
             'domain\Invoke-ToolDepPackage.ps1'
+            'domain\Invoke-ToolkitRuntime.ps1'
             'domain\Invoke-ToolkitDeps.ps1'
             'domain\Invoke-ToolkitDepOperation.ps1'
         )) {

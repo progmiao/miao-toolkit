@@ -33,7 +33,7 @@ function Get-InstallPageToolStatusInfo {
     $recordedVersion = $null
     foreach ($dep in @(Get-ToolDependencyPackages -Tool $Tool)) {
         $depId = Get-DependencyRecordId -Dependency $dep
-        $recordedVersion = Get-ToolDepRecordedVersion -ToolId $Tool.id -DependencyId $depId
+        $recordedVersion = Get-GlobalDepRecordedVersion -Fingerprint $depId
         if ($recordedVersion) { break }
     }
 

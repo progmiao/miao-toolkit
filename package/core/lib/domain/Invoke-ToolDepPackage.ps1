@@ -32,7 +32,15 @@ function Resolve-ToolDepCheckCommandVersion {
 }
 
 function Test-WingetCliAvailable {
-    return [bool](Get-Command winget -ErrorAction SilentlyContinue)
+    if (-not (Get-Command winget -ErrorAction SilentlyContinue)) { return $false }
+
+    try {
+        $null = & winget --version --disable-interactivity 2>&1
+        return ($LASTEXITCODE -eq 0)
+    }
+    catch {
+        return $false
+    }
 }
 
 function Update-ToolDepSessionPath {
@@ -1210,6 +1218,22 @@ function Invoke-ToolDepPackageExecute {
             Cancelled = $false
             ExitCode  = 1
             Lines     = @('missing packageId')
+            Command   = ''
+        }
+    }
+
+    if (-not (Test-WingetCliAvailable)) {
+        $missingText = if (Get-Command Get-I18n -ErrorAction SilentlyContinue) {
+            Get-I18n -Key 'page.depOperation.wingetMissing'
+        }
+        else {
+            'winget not found'
+        }
+        return @{
+            Success   = $false
+            Cancelled = $false
+            ExitCode  = 1
+            Lines     = @($missingText)
             Command   = ''
         }
     }

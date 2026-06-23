@@ -63,7 +63,7 @@ function Resolve-ToolDepPackageStatus {
     $checkCommand = if ($Package.checkCommand) { [string]$Package.checkCommand } else { '' }
     $policy = Get-DependencyVersionPolicy -Dependency $Package
 
-    $recorded = Get-ToolDepRecordedVersion -ToolId ([string]$Tool.id) -DependencyId $depId
+    $recorded = Get-GlobalDepRecordedVersion -Fingerprint $depId
     $commandAvailable = Test-ToolDepCommandAvailable -CheckCommand $checkCommand
 
     $actualVersion = $null
@@ -150,7 +150,8 @@ function Resolve-ToolDepUninstallPackageStatus {
     param(
         $Tool,
         $Package,
-        [hashtable]$ProbeCache = $null
+        [hashtable]$ProbeCache = $null,
+        [array]$AllTools = $null
     )
 
     if (-not $ProbeCache) { $ProbeCache = @{} }
@@ -176,21 +177,36 @@ function Resolve-ToolDepUninstallPackageStatus {
     }
 
     $wingetInstalled = -not [string]::IsNullOrWhiteSpace($actualVersion)
+    $blockedByOthers = $false
+    $otherToolCommands = @()
+
+    if ($AllTools -and ($commandAvailable -or $wingetInstalled)) {
+        if (Test-ToolDepUninstallBlockedByOtherTools -Package $Package -Tools $AllTools `
+                -ExcludeToolId ([string]$Tool.id)) {
+            $blockedByOthers = $true
+            $others = @(Get-ToolsReferencingDependency -Fingerprint $depId -Tools $AllTools `
+                -ExcludeToolId ([string]$Tool.id))
+            $otherToolCommands = @($others | ForEach-Object { [string]$_.command })
+        }
+    }
+
     $action = if ($commandAvailable -or $wingetInstalled) { 'Uninstall' } else { 'Skip' }
 
     return [pscustomobject]@{
-        DependencyId      = $depId
-        Name              = $depName
-        PackageId         = $packageId
-        Action            = $action
-        RecordedVersion   = (Get-ToolDepRecordedVersion -ToolId ([string]$Tool.id) -DependencyId $depId)
-        ActualVersion     = $actualVersion
-        EffectiveVersion  = $actualVersion
-        VersionDrift      = $false
-        Policy            = (Get-DependencyVersionPolicy -Dependency $Package)
-        CheckCommand      = $checkCommand
-        CommandAvailable  = $commandAvailable
-        Package           = $Package
+        DependencyId       = $depId
+        Name               = $depName
+        PackageId          = $packageId
+        Action             = $action
+        RecordedVersion    = (Get-GlobalDepRecordedVersion -Fingerprint $depId)
+        ActualVersion      = $actualVersion
+        EffectiveVersion   = $actualVersion
+        VersionDrift       = $false
+        Policy             = (Get-DependencyVersionPolicy -Dependency $Package)
+        CheckCommand       = $checkCommand
+        CommandAvailable   = $commandAvailable
+        Package            = $Package
+        BlockedByOtherTools = $blockedByOthers
+        OtherToolCommands  = @($otherToolCommands)
     }
 }
 
@@ -220,7 +236,8 @@ function Build-ToolDepSyncPlan {
     param(
         $Tool,
         [ValidateSet('install', 'update', 'uninstall')]
-        [string]$Intent
+        [string]$Intent,
+        [array]$AllTools = $null
     )
 
     $effectiveIntent = Get-ToolkitDepEffectiveIntent -Tool $Tool -Intent $Intent
@@ -229,7 +246,8 @@ function Build-ToolDepSyncPlan {
 
     foreach ($pkg in @(Get-ToolDependencyPackages -Tool $Tool)) {
         $status = if ($Intent -eq 'uninstall') {
-            Resolve-ToolDepUninstallPackageStatus -Tool $Tool -Package $pkg -ProbeCache $probeCache
+            Resolve-ToolDepUninstallPackageStatus -Tool $Tool -Package $pkg -ProbeCache $probeCache `
+                -AllTools $AllTools
         }
         else {
             Resolve-ToolDepPackageStatus -Tool $Tool -Package $pkg -ProbeCache $probeCache
@@ -243,16 +261,46 @@ function Build-ToolDepSyncPlan {
                 $status.Action
             }
             else { $null }
+            _kind          = 'toolPackage'
         }
     }
 
     return [pscustomobject]@{
-        Tool           = $Tool
-        Intent         = $Intent
+        Tool            = $Tool
+        Intent          = $Intent
         EffectiveIntent = $effectiveIntent
-        Items          = $items
-        ProbeCache     = $probeCache
+        Items           = $items
+        ProbeCache      = $probeCache
     }
+}
+
+function Build-ToolkitDepOperationPlan {
+    param(
+        $Tool,
+        [ValidateSet('install', 'update', 'uninstall')]
+        [string]$Intent,
+        [array]$AllTools = $null
+    )
+
+    $toolPlan = Build-ToolDepSyncPlan -Tool $Tool -Intent $Intent -AllTools $AllTools
+    $items = @($toolPlan.Items)
+
+    return [pscustomobject]@{
+        Tool            = $toolPlan.Tool
+        Intent          = $toolPlan.Intent
+        EffectiveIntent = $toolPlan.EffectiveIntent
+        Items           = $items
+        ProbeCache      = $toolPlan.ProbeCache
+    }
+}
+
+function Get-ToolkitDepWingetPreflightErrorKey {
+    param($Plan)
+
+    if (-not $Plan) { return '' }
+    if (-not (Test-ToolkitPlanNeedsWingetBackend -Plan $Plan)) { return '' }
+    if (Test-WingetCliAvailable) { return '' }
+    return 'page.depOperation.wingetMissing'
 }
 
 function Get-ToolDepPlanSummaryOutcome {
@@ -273,9 +321,7 @@ function Complete-ToolkitDepUninstallRecord {
         $Runner
     )
 
-    if ($Runner -and $Runner.State.Cancelled) { return }
-    if ($Runner -and $null -ne $Runner.State.FailedCount -and [int]$Runner.State.FailedCount -gt 0) { return }
-    Remove-ToolDepInstalled -ToolId ([string]$Tool.id)
+    # 全局依赖模型：物理卸载成功后已在 Runner 内按指纹删除 packages 记录。
 }
 
 function Get-ToolkitDepOperationSummaryKey {
@@ -315,7 +361,7 @@ function Sync-ToolDepInstalledState {
     $versions = @{}
     foreach ($dep in @(Get-ToolDependencyPackages -Tool $Tool)) {
         $depId = Get-DependencyRecordId -Dependency $dep
-        $recorded = Get-ToolDepRecordedVersion -ToolId ([string]$Tool.id) -DependencyId $depId
+        $recorded = Get-GlobalDepRecordedVersion -Fingerprint $depId
         if (-not [string]::IsNullOrWhiteSpace($recorded)) { continue }
 
         $version = Get-ToolDepPackageRecordableVersion -Package $dep
@@ -325,7 +371,8 @@ function Sync-ToolDepInstalledState {
     }
 
     if ($versions.Count -gt 0) {
-        Set-ToolDepInstalled -ToolId ([string]$Tool.id) -DependencyVersions $versions
+        Set-ToolDepInstalled -ToolId ([string]$Tool.id) -DependencyVersions $versions `
+            -Packages @(Get-ToolDependencyPackages -Tool $Tool)
     }
 
     return (Test-ToolDepInstalled $Tool)
@@ -370,29 +417,69 @@ function Start-ToolkitDepOperation {
         [hashtable]$Shell = $null,
         [string]$SectionTitle = '',
         [switch]$AutoContinue,
-        $SharedLog = $null
+        $SharedLog = $null,
+        [array]$AllTools = $null
     )
 
     if (-not (Test-ToolHasExternalDeps $Tool)) { return $true }
 
-    if (-not (Test-WingetCliAvailable)) {
-        if ($Shell) {
-            $title = Get-ToolDepOperationSectionTitle -Tool $Tool -Intent $Intent
-            $null = Invoke-ToolkitDepOperationView -Shell $Shell -SectionTitle $title -Tool $Tool `
-                -Intent $Intent -PreflightErrorKey 'page.depOperation.wingetMissing'
-            return $false
-        }
-        Write-Host (Get-I18n -Key 'page.depOperation.wingetMissing') -ForegroundColor Red
-        return $false
-    }
-
     if ($Shell) {
         $title = if ($SectionTitle) { $SectionTitle } else { (Get-ToolDepOperationSectionTitle -Tool $Tool -Intent $Intent) }
         return Invoke-ToolkitDepOperationView -Shell $Shell -SectionTitle $title -Tool $Tool `
-            -Intent $Intent -AutoContinue:$AutoContinue -SharedLog $SharedLog
+            -Intent $Intent -AutoContinue:$AutoContinue -SharedLog $SharedLog -AllTools $AllTools
     }
 
     return Invoke-ToolkitDepOperationConsole -Tool $Tool -Intent $Intent
+}
+
+function Test-ToolkitDepPlanItemNeedsSharedUninstallConfirm {
+    param(
+        $PlanItem,
+        [ValidateSet('install', 'update', 'uninstall')]
+        [string]$Intent
+    )
+
+    if ($Intent -ne 'uninstall') { return $false }
+    if (-not $PlanItem -or -not $PlanItem.Status) { return $false }
+    if (-not $PlanItem.ShouldExecute) { return $false }
+    return [bool]$PlanItem.Status.BlockedByOtherTools
+}
+
+function Resolve-ToolkitDepSharedUninstallConfirm {
+    param(
+        $Tool,
+        $PlanItem,
+        $Log,
+        [ValidateSet('install', 'update', 'uninstall')]
+        [string]$Intent,
+        [hashtable]$Shell = $null
+    )
+
+    if (-not (Test-ToolkitDepPlanItemNeedsSharedUninstallConfirm -PlanItem $PlanItem -Intent $Intent)) {
+        return $true
+    }
+
+    $status = $PlanItem.Status
+    $confirmed = $false
+    if ($Shell) {
+        $confirmed = Confirm-ToolkitDepItemSharedUninstall -Shell $Shell -Tool $Tool -Status $status
+    }
+    else {
+        $message = Get-ToolkitSharedDepItemConfirmMessage -Tool $Tool -Status $status
+        Write-Host $message -ForegroundColor Yellow
+        Write-Host (Get-I18n -Key 'message.ynConfirmHint') -ForegroundColor DarkGray
+        $answer = Read-Host (Get-I18n -Key 'common.confirm')
+        $confirmed = ($answer -match '^[yY]$')
+    }
+
+    if ($confirmed) { return $true }
+
+    $others = @($status.OtherToolCommands) -join ', '
+    Add-ToolkitDepLogLine -Log $Log -Text (Get-I18n -Key 'page.depOperation.logSharedUninstallDeclined' -Vars @{
+        name  = [string]$status.Name
+        tools = $others
+    }) -Kind 'success' -WithTimestamp
+    return $false
 }
 
 function Start-ToolkitDepBatchOperation {
@@ -400,7 +487,7 @@ function Start-ToolkitDepBatchOperation {
         [array]$Tools,
         [hashtable]$Shell,
         [string]$SectionTitle = '',
-        [ValidateSet('install', 'update')]
+        [ValidateSet('install', 'update', 'uninstall')]
         [string]$Intent = 'install'
     )
 
@@ -419,7 +506,7 @@ function Start-ToolkitDepBatchOperation {
         $title = if ($SectionTitle) { $SectionTitle } else { (Get-ToolDepOperationSectionTitle -Tool $tool -Intent $Intent) }
         $isLast = ($toolIndex -eq $toolTotal)
         $ok = Start-ToolkitDepOperation -Tool $tool -Intent $Intent -Shell $Shell `
-            -SectionTitle $title -AutoContinue:(-not $isLast) -SharedLog $batchLog
+            -SectionTitle $title -AutoContinue:(-not $isLast) -SharedLog $batchLog -AllTools $toolList
         if (Test-ShellNavMarker $ok) {
             return $ok
         }
@@ -442,7 +529,19 @@ function Invoke-ToolkitDepOperationConsole {
         [string]$Intent
     )
 
-    $plan = Build-ToolDepSyncPlan -Tool $Tool -Intent $Intent
+    $allTools = if (Get-Command Get-ToolkitTools -ErrorAction SilentlyContinue) {
+        @(Get-ToolkitTools)
+    }
+    else {
+        @(Discover-Tools)
+    }
+    $plan = Build-ToolkitDepOperationPlan -Tool $Tool -Intent $Intent -AllTools $allTools
+    $wingetPreflightKey = Get-ToolkitDepWingetPreflightErrorKey -Plan $plan
+    if ($wingetPreflightKey) {
+        Write-Host (Get-I18n -Key $wingetPreflightKey) -ForegroundColor Red
+        return $false
+    }
+
     $log = New-ToolkitDepOperationLog
     $runner = New-ToolkitDepOperationRunner -Tool $Tool -Plan $plan -Log $log
 
@@ -455,6 +554,11 @@ function Invoke-ToolkitDepOperationConsole {
         }
         Add-ToolkitDepLogSection -Log $log -Title ([string]$item.Status.Name) `
             -Index $itemIndex -Total $itemTotal -Level 'package'
+        if (-not (Resolve-ToolkitDepSharedUninstallConfirm -Tool $Tool -PlanItem $item -Log $log `
+                -Intent $Intent)) {
+            Register-ToolkitDepRunnerItemResult -RunnerState $runner.State -Result 'success'
+            continue
+        }
         & $runner.ProcessItem $item
         if ($runner.State.Cancelled) { break }
     }
