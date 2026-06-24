@@ -89,7 +89,7 @@ Message 行在两种模板下**均占 1 行**，位于 Body 与 Footer 之间。
 
 - 列表：`Invoke-ShellSingleSelectList` / `Invoke-ShellMultiSelectList`
 - 滚动页：`Invoke-ToolkitShellContentView` → `Draw-BrandedBodyLines`
-- 依赖操作：`DepOperationView.ps1` 等在 `ListStartRow`～`ListEndRow` 内输出
+- **批量执行**：`BatchExecution.ps1`（进度条 + 状态 + 日志；`Initialize-ToolkitBatchExecutionView`）在 `ListStartRow`～`ListEndRow` 内输出
 - **横向**：正文须在 `LayoutLineMetrics.StartColumn`～`EndColumn` 内对齐（见 §四）
 
 ### Message

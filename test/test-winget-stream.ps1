@@ -99,6 +99,17 @@ $p2 = Get-WingetDepStreamLinePercent -Line '2.00 MB / 3.01 MB'
 if ($p2 -lt 60 -or $p2 -gt 70) {
     throw "expected ~66 percent from MB line, got $p2"
 }
+$transfer = Get-WingetDepStreamLineTransferLabel -Line '          ███████████████████████████▒▒▒   199 MB /  215 MB'
+if ($transfer -ne '199 MB / 215 MB') {
+    throw "expected transfer label, got [$transfer]"
+}
+$transferStatus = Format-WingetDepStreamLineTransferStatus -Line '111 MB / 111 MB'
+if ($transferStatus -notmatch '111 MB / 111 MB') {
+    throw "expected formatted transfer status, got [$transferStatus]"
+}
+if ((Get-WingetDepStreamLineTransferLabel -Line 'downloading') -ne $null) {
+    throw 'non-transfer line should not produce transfer label'
+}
 if ((Get-WingetDepStreamLinePhase -Line 'Waiting for another install to complete') -ne 'waitOther') {
     throw 'waitOther phase not detected'
 }

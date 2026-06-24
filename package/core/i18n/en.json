@@ -229,6 +229,7 @@
         "statusInstallerRunningPlain": "Installing, please wait…",
         "statusInstallerRunning": "{spinner} Installing, please wait…",
         "statusDownload": "Downloading/installing {percent}%",
+        "statusDownloadTransfer": "Download: {transfer}",
         "statusAllDone": "All done",
         "statusFailed": "Failed",
         "statusDownloadComplete": "Download complete",

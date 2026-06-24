@@ -155,6 +155,56 @@ function Get-WingetDepStreamLinePercent {
     return -1
 }
 
+function Format-WingetDepStreamSizePart {
+    param(
+        [string]$Value,
+        [string]$Unit
+    )
+
+    $num = [double]$Value
+    $text = if ([Math]::Abs($num - [Math]::Round($num)) -lt 0.001) {
+        [string][int][Math]::Round($num)
+    }
+    else {
+        [string]$Value
+    }
+
+    return "$text $Unit"
+}
+
+function Get-WingetDepStreamLineTransferLabel {
+    param([string]$Line)
+
+    if ([string]::IsNullOrWhiteSpace($Line)) { return $null }
+    $trim = Get-WingetStreamLineCleanText -Line $Line
+    if ([string]::IsNullOrWhiteSpace($trim)) { return $null }
+
+    if ($trim -match '(\d+(?:\.\d+)?)\s*(KB|MB|GB)\s*/\s*(\d+(?:\.\d+)?)\s*(KB|MB|GB)') {
+        $u1 = [string]$Matches[2].ToUpperInvariant()
+        $u2 = [string]$Matches[4].ToUpperInvariant()
+        if ($u1 -eq $u2) {
+            $cur = Format-WingetDepStreamSizePart -Value $Matches[1] -Unit $u1
+            $total = Format-WingetDepStreamSizePart -Value $Matches[3] -Unit $u2
+            return "$cur / $total"
+        }
+    }
+
+    return $null
+}
+
+function Format-WingetDepStreamLineTransferStatus {
+    param([string]$Line)
+
+    $transfer = Get-WingetDepStreamLineTransferLabel -Line $Line
+    if ([string]::IsNullOrWhiteSpace($transfer)) { return $null }
+
+    if (Get-Command Get-I18n -ErrorAction SilentlyContinue) {
+        return Get-I18n -Key 'page.depOperation.statusDownloadTransfer' -Vars @{ transfer = $transfer }
+    }
+
+    return "下载进度：$transfer"
+}
+
 function New-WingetDepAsyncStreamCollector {
     return @{
         Queue = [System.Collections.Concurrent.ConcurrentQueue[string]]::new()

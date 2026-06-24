@@ -230,6 +230,7 @@
                 "statusInstallerRunningPlain": "正在安装，请稍候…",
                 "statusInstallerRunning": "{spinner} 正在安装，请稍候…",
                 "statusDownload": "下载/安装中 {percent}%",
+                "statusDownloadTransfer": "下载进度：{transfer}",
                 "statusAllDone": "全部完成",
                 "statusFailed": "处理失败",
                 "statusDownloadComplete": "下载完成",

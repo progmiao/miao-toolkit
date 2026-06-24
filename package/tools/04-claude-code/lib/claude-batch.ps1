@@ -1,4 +1,4 @@
-# claude-code — 批量操作视图（WinGet / 插件 / 配置）
+# claude-code — 批量执行（WinGet / 插件 / 配置）
 
 function Write-ClaudeCodeBatchLogLine {
     param(
@@ -151,6 +151,79 @@ function Invoke-ClaudeCodeBatchOperation {
     }
 }
 
+function New-ClaudeCodeWingetOutputState {
+    param(
+        [ValidateSet('install', 'upgrade', 'uninstall')]
+        [string]$Verb
+    )
+
+    $executeAction = if ($Verb -eq 'uninstall') { 'Uninstall' } else { 'Install' }
+    return @{
+        LastLoggedPercent        = -1
+        LoggedPhases             = @{}
+        SubstantiveLogCount      = 0
+        PercentStage             = ''
+        LoggedDownloadComplete   = $false
+        LoggedInstallComplete    = $false
+        WingetOutputSeen         = $false
+        WingetInstallSilent      = $true
+        ExecuteAction            = $executeAction
+        InstallerAwaitingDialog  = $false
+        InstallerPromptDismissed = $false
+        InstallStarted           = $false
+        InstallStartedTick       = 0
+        WingetOperationSucceeded = $false
+    }
+}
+
+function Update-ClaudeCodeDepProgressFromDecision {
+    param(
+        $Ui,
+        $WingetOutputState,
+        $Decision
+    )
+
+    if ($null -eq $Ui -or $null -eq $WingetOutputState -or $null -eq $Decision) { return }
+
+    if (Get-Command Update-ToolkitDepWingetProgressFromDecision -ErrorAction SilentlyContinue) {
+        Update-ToolkitDepWingetProgressFromDecision -Ui $Ui -WingetOutputState $WingetOutputState -Decision $Decision
+        return
+    }
+
+    if ([int]$Decision.Percent -lt 0) { return }
+
+    $executeAction = if ([string]$WingetOutputState['ExecuteAction'] -eq 'Uninstall') { 'Uninstall' } else { 'Install' }
+    $stage = [string]$WingetOutputState['PercentStage']
+    if ([string]::IsNullOrWhiteSpace($stage)) { $stage = 'download' }
+
+    if (-not (Get-Command Convert-ToolkitDepWingetPercentToProgress -ErrorAction SilentlyContinue)) {
+        return
+    }
+
+    $mapped = Convert-ToolkitDepWingetPercentToProgress -Percent ([int]$Decision.Percent) -Stage $stage `
+        -ExecuteAction $executeAction
+    if ($mapped -ge 0 -and (Get-Command Apply-ToolkitDepWingetProgressUpdate -ErrorAction SilentlyContinue)) {
+        Apply-ToolkitDepWingetProgressUpdate -Ui $Ui -WingetOutputState $WingetOutputState -Target $mapped
+    }
+}
+
+function Sync-ClaudeCodeDepProgressChrome {
+    param(
+        $Ui,
+        $WingetOutputState
+    )
+
+    if ($null -eq $Ui -or $null -eq $WingetOutputState -or -not $Ui.ItemInFlight) { return }
+
+    if (-not (Get-Command Sync-ToolkitDepWingetItemProgress -ErrorAction SilentlyContinue)) { return }
+
+    $elapsed = 0
+    if ([int]$Ui.ExecuteStartTick -gt 0) {
+        $elapsed = [int][Math]::Floor(([Environment]::TickCount - [int]$Ui.ExecuteStartTick) / 1000.0)
+    }
+    Sync-ToolkitDepWingetItemProgress -Ui $Ui -WingetOutputState $WingetOutputState -ElapsedSeconds $elapsed
+}
+
 function Invoke-ClaudeCodeWingetStreamWork {
     param(
         $Context,
@@ -159,20 +232,22 @@ function Invoke-ClaudeCodeWingetStreamWork {
         [string]$ToolRoot,
         [string]$SuccessLogKey,
         [string]$FailureLogKey,
-        [scriptblock]$Pump
+        [scriptblock]$Pump,
+        $WingetOutputState = $null
     )
 
     $log = $Context.Log
     $ui = $Context.Ui
     $RedrawView = $Context.RedrawView
     $label = Get-ClaudeCodeWingetPackageId
+    $fnWriteLog = ${function:Write-ClaudeCodeBatchLogLine}
 
     $sectionText = Get-I18n -Key 'page.depOperation.logSectionPackage' -Vars @{
         name  = $label
         index = 1
         total = 1
     }
-    Write-ClaudeCodeBatchLogLine -Log $log -Text $sectionText -Kind 'section' -WithTimestamp
+    & $fnWriteLog -Log $log -Text $sectionText -Kind 'section' -WithTimestamp
 
     $ui.ProgressName = $label
     $ui.ItemInFlight = $true
@@ -180,33 +255,108 @@ function Invoke-ClaudeCodeWingetStreamWork {
     Set-ToolkitDepOperationInFlightStatus -Ui $ui -MainText $label -AdvanceSpinner
     & $RedrawView
 
+    $wingetOutputState = if ($WingetOutputState) { $WingetOutputState } else { New-ClaudeCodeWingetOutputState -Verb $Verb }
+    $fnCleanLine = Get-Command Get-WingetStreamLineCleanText -ErrorAction SilentlyContinue
+    $fnIsSpinner = Get-Command Test-WingetStreamLineIsSpinnerOnly -ErrorAction SilentlyContinue
+    $fnIsProgressVisual = Get-Command Test-WingetDepStreamLineIsProgressVisual -ErrorAction SilentlyContinue
+    $fnGetPercent = Get-Command Get-WingetDepStreamLinePercent -ErrorAction SilentlyContinue
+    $fnGetTransfer = Get-Command Format-WingetDepStreamLineTransferStatus -ErrorAction SilentlyContinue
+    $fnGetOutputDecision = Get-Command Get-ToolkitDepWingetOutputDecision -ErrorAction SilentlyContinue
+    $fnApplyProgress = ${function:Update-ClaudeCodeDepProgressFromDecision}
+
     $onOutputLine = {
         param($Line)
 
         if ([string]::IsNullOrWhiteSpace($Line)) { return }
 
-        $trim = if (Get-Command Get-WingetStreamLineCleanText -ErrorAction SilentlyContinue) {
-            Get-WingetStreamLineCleanText -Line $Line
+        $raw = if ($fnCleanLine) {
+            & $fnCleanLine -Line $Line
         }
         else {
             [string]$Line
         }
-        if ([string]::IsNullOrWhiteSpace($trim)) { return }
+        if ([string]::IsNullOrWhiteSpace($raw)) { return }
 
-        Write-ClaudeCodeBatchLogLine -Log $log -Text $trim -Kind 'text'
+        if ($fnIsSpinner -and (& $fnIsSpinner -Line $raw)) {
+            $wingetOutputState['WingetOutputSeen'] = $true
+            & $Pump
+            & $RedrawView
+            return
+        }
 
-        if (Get-Command Get-WingetDepStreamLinePercent -ErrorAction SilentlyContinue) {
-            $pct = Get-WingetDepStreamLinePercent -Line $trim
-            if ($pct -ge 0 -and $pct -le 100) {
-                $ui.ItemSubPercent = $pct
+        if ($fnIsProgressVisual -and (& $fnIsProgressVisual -Line $raw)) {
+            $wingetOutputState['WingetOutputSeen'] = $true
+            $pct = if ($fnGetPercent) { [int](& $fnGetPercent -Line $raw) } else { -1 }
+            $decision = if ($fnGetOutputDecision) {
+                & $fnGetOutputDecision -Line $Line -OutputState $wingetOutputState
+            }
+            else {
+                @{ Percent = $pct; RedrawOnly = $true; LogText = $null; StatusText = $null }
+            }
+            if ($pct -ge 0) { $decision.Percent = $pct }
+            & $fnApplyProgress -Ui $ui -WingetOutputState $wingetOutputState -Decision $decision
+
+            $statusText = if ($fnGetTransfer) { & $fnGetTransfer -Line $raw } else { $null }
+            if ([string]::IsNullOrWhiteSpace($statusText)) {
+                $overallPct = [int]$ui.ItemSubPercent
+                if ($overallPct -ge 0) {
+                    $statusText = Get-I18n -Key 'page.depOperation.statusDownload' -Vars @{ percent = $overallPct }
+                }
+            }
+            if (-not [string]::IsNullOrWhiteSpace($statusText)) {
+                Set-ToolkitDepOperationInFlightStatus -Ui $ui -MainText $statusText -AdvanceSpinner
+            }
+
+            & $Pump
+            & $RedrawView
+            return
+        }
+
+        $wingetOutputState['WingetOutputSeen'] = $true
+        $decision = if ($fnGetOutputDecision) {
+            & $fnGetOutputDecision -Line $Line -OutputState $wingetOutputState
+        }
+        else {
+            @{
+                LogText    = $raw
+                StatusText = $raw
+                Percent    = -1
+                RedrawOnly = $false
             }
         }
 
-        if (Get-Command Get-WingetDepStreamLinePhase -ErrorAction SilentlyContinue) {
-            $phase = Get-WingetDepStreamLinePhase -Line $trim
-            if ($phase -and $phase -ne 'progress') {
-                Set-ToolkitDepOperationInFlightStatus -Ui $ui -MainText $trim -AdvanceSpinner
+        if ([int]$decision.Percent -ge 0 -or $decision.ProgressPhase) {
+            & $fnApplyProgress -Ui $ui -WingetOutputState $wingetOutputState -Decision $decision
+        }
+
+        if (-not [string]::IsNullOrWhiteSpace([string]$decision.StatusText)) {
+            Set-ToolkitDepOperationInFlightStatus -Ui $ui -MainText ([string]$decision.StatusText) -AdvanceSpinner
+        }
+
+        $needsRedraw = $false
+        if ($decision.PendingLogTexts) {
+            foreach ($pendingText in @($decision.PendingLogTexts)) {
+                if ([string]::IsNullOrWhiteSpace([string]$pendingText)) { continue }
+                & $fnWriteLog -Log $log -Text ([string]$pendingText) -Kind 'text' -WithTimestamp
+                $needsRedraw = $true
             }
+        }
+
+        if ($decision.LogText -and -not $decision.RedrawOnly) {
+            $logText = [string]$decision.LogText
+            $skipSpinner = ($fnIsSpinner -and (& $fnIsSpinner -Line $raw)) -and ($logText -eq $raw)
+            if (-not $skipSpinner) {
+                & $fnWriteLog -Log $log -Text $logText -Kind 'text' -WithTimestamp
+                $needsRedraw = $true
+            }
+        }
+
+        if ($needsRedraw) {
+            & $RedrawView
+        }
+        else {
+            & $Pump
+            & $RedrawView
         }
     }.GetNewClosure()
 
@@ -215,7 +365,14 @@ function Invoke-ClaudeCodeWingetStreamWork {
 
     $ok = $false
     if ($wingetResult) {
-        if ($wingetResult.PSObject.Properties['Success']) {
+        if ($wingetResult.PSObject.Properties['AlreadyLatest'] -and [bool]$wingetResult.AlreadyLatest) {
+            $ok = $true
+            & $fnWriteLog -Log $log -Text (Get-ClaudeCodeI18n -ToolRoot $ToolRoot `
+                -Key 'claude-code.cli.alreadyLatest' -Vars @{
+                    version = if (Get-ClaudeCodeInstalledVersion) { Get-ClaudeCodeInstalledVersion } else { '?' }
+                }) -Kind 'success' -WithTimestamp
+        }
+        elseif ($wingetResult.PSObject.Properties['Success']) {
             $ok = [bool]$wingetResult.Success
         }
         else {
@@ -223,8 +380,8 @@ function Invoke-ClaudeCodeWingetStreamWork {
         }
     }
 
-    if ($ok) {
-        Write-ClaudeCodeBatchLogLine -Log $log -Text (Get-ClaudeCodeI18n -ToolRoot $ToolRoot -Key $SuccessLogKey) `
+    if ($ok -and -not ($wingetResult -and $wingetResult.AlreadyLatest)) {
+        & $fnWriteLog -Log $log -Text (Get-ClaudeCodeI18n -ToolRoot $ToolRoot -Key $SuccessLogKey) `
             -Kind 'success' -WithTimestamp
     }
     else {
@@ -241,7 +398,7 @@ function Invoke-ClaudeCodeWingetStreamWork {
             }
         }
         if ([string]::IsNullOrWhiteSpace($detail)) { $detail = 'unknown error' }
-        Write-ClaudeCodeBatchLogLine -Log $log -Text (Get-ClaudeCodeI18n -ToolRoot $ToolRoot -Key $FailureLogKey `
+        & $fnWriteLog -Log $log -Text (Get-ClaudeCodeI18n -ToolRoot $ToolRoot -Key $FailureLogKey `
             -Vars @{ detail = $detail }) -Kind 'error' -WithTimestamp
     }
 
@@ -285,16 +442,15 @@ function Invoke-ClaudeCodeWingetBatchPage {
         Start-ToolkitDepOperationBatch -Ui $ui
         & $RedrawView
 
-        $streamHolder = @{ Result = $null }
-        Invoke-ToolkitDepBatchOperationRunWork -Context $ctx -Work {
-            param($Pump)
-
-            $streamHolder.Result = Invoke-ClaudeCodeWingetStreamWork -Context $ctx -Verb $Verb `
-                -ToolRoot $ToolRoot -SuccessLogKey $SuccessLogKey -FailureLogKey $FailureLogKey `
-                -Pump $Pump
-        }
-
-        $streamResult = $streamHolder.Result
+        $wingetOutputState = New-ClaudeCodeWingetOutputState -Verb $Verb
+        $fnSyncProgress = ${function:Sync-ClaudeCodeDepProgressChrome}
+        $pump = {
+            Invoke-ToolkitDepBatchOperationUiPump -Context $ctx
+            & $fnSyncProgress -Ui $ui -WingetOutputState $wingetOutputState
+        }.GetNewClosure()
+        $streamResult = Invoke-ClaudeCodeWingetStreamWork -Context $ctx -Verb $Verb `
+            -ToolRoot $ToolRoot -SuccessLogKey $SuccessLogKey -FailureLogKey $FailureLogKey `
+            -Pump $pump -WingetOutputState $wingetOutputState
         if ($streamResult -and $streamResult.Ok) { $successCount = 1 }
         else { $failedCount = 1 }
 

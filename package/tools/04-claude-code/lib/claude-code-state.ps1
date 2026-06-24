@@ -11,7 +11,7 @@ function Test-ClaudeCodeCliAvailable {
     return $false
 }
 
-function Get-ClaudeCodeCliVersion {
+function Get-ClaudeCodeCliVersionOutput {
     if (-not (Test-ClaudeCodeCliAvailable)) {
         return $null
     }
@@ -22,9 +22,6 @@ function Get-ClaudeCodeCliVersion {
             -not [string]::IsNullOrWhiteSpace($_)
         } | Select-Object -First 1)
         if ([string]::IsNullOrWhiteSpace($line)) { return $null }
-        if ($line -match '(\d+\.\d+\.\d+)') {
-            return $Matches[1]
-        }
         return $line.Trim()
     }
     catch {
@@ -32,21 +29,59 @@ function Get-ClaudeCodeCliVersion {
     }
 }
 
-function Test-ClaudeCodeInstalled {
-    if (-not (Get-Command Get-WingetPackageInstalledVersion -ErrorAction SilentlyContinue)) {
-        return (Test-ClaudeCodeCliAvailable)
+function Get-ClaudeCodeCliVersion {
+    $line = Get-ClaudeCodeCliVersionOutput
+    if ([string]::IsNullOrWhiteSpace($line)) { return $null }
+    if ($line -match '(\d+\.\d+\.\d+)') {
+        return $Matches[1]
+    }
+    return $line
+}
+
+function Get-ClaudeCodeCliInstallPath {
+    if (-not (Test-ClaudeCodeCliAvailable)) {
+        return $null
     }
 
-    $packageId = Get-ClaudeCodeWingetPackageId
-    $wingetVersion = Get-WingetPackageInstalledVersion -PackageId $packageId
-    if (-not [string]::IsNullOrWhiteSpace($wingetVersion)) {
+    try {
+        return [string](Get-Command claude -ErrorAction Stop).Source
+    }
+    catch {
+        return $null
+    }
+}
+
+function Test-ClaudeCodeWingetPackageInstalled {
+    param([string]$CoreLib = '')
+
+    if (-not [string]::IsNullOrWhiteSpace($CoreLib)) {
+        Import-ClaudeCodeWingetCore -CoreLib $CoreLib
+    }
+
+    if (-not (Get-Command Get-WingetPackageInstalledVersion -ErrorAction SilentlyContinue)) {
+        return $false
+    }
+
+    $wingetVersion = Get-WingetPackageInstalledVersion -PackageId (Get-ClaudeCodeWingetPackageId)
+    return -not [string]::IsNullOrWhiteSpace($wingetVersion)
+}
+
+function Test-ClaudeCodeInstalled {
+    param([string]$CoreLib = '')
+
+    if ($null -ne (Get-ClaudeCodeCliVersion)) {
         return $true
     }
 
-    return (Test-ClaudeCodeCliAvailable)
+    return (Test-ClaudeCodeWingetPackageInstalled -CoreLib $CoreLib)
 }
 
 function Get-ClaudeCodeInstalledVersion {
+    $cliVersion = Get-ClaudeCodeCliVersion
+    if (-not [string]::IsNullOrWhiteSpace($cliVersion)) {
+        return [string]$cliVersion
+    }
+
     if (Get-Command Get-WingetPackageInstalledVersion -ErrorAction SilentlyContinue) {
         $wingetVersion = Get-WingetPackageInstalledVersion -PackageId (Get-ClaudeCodeWingetPackageId)
         if (-not [string]::IsNullOrWhiteSpace($wingetVersion)) {
@@ -54,7 +89,15 @@ function Get-ClaudeCodeInstalledVersion {
         }
     }
 
-    return Get-ClaudeCodeCliVersion
+    return $null
+}
+
+function Resolve-ClaudeCodeWingetInstallVerb {
+    if (Test-ClaudeCodeWingetPackageInstalled) {
+        return 'upgrade'
+    }
+
+    return 'install'
 }
 
 function Test-ClaudeCodeUpdateAvailable {
@@ -87,6 +130,41 @@ function Import-ClaudeCodeWingetCore {
     if (-not (Get-Command Get-WingetPackageInstalledVersion -ErrorAction SilentlyContinue)) {
         . (Join-Path $CoreLib 'domain\Ensure-ToolDeps.ps1')
     }
+    Import-ClaudeCodeDepProgressCore -CoreLib $CoreLib
+}
+
+function Import-ClaudeCodeDepProgressCore {
+    param([string]$CoreLib)
+
+    if (Get-Command Update-ToolkitDepWingetProgressFromDecision -ErrorAction SilentlyContinue) {
+        return
+    }
+
+    $importBlock = {
+        param([string]$Root)
+
+        $batchPath = Join-Path $Root 'ui\shell\BatchExecution.ps1'
+        if (Test-Path -LiteralPath $batchPath) {
+            . $batchPath
+        }
+        if (-not (Get-Command Update-ToolkitDepWingetProgressFromDecision -ErrorAction SilentlyContinue)) {
+            $depViewPath = Join-Path $Root 'ui\shell\DepOperationView.ps1'
+            if (Test-Path -LiteralPath $depViewPath) {
+                . $depViewPath
+            }
+        }
+    }
+
+    $stack = @(Get-PSCallStack)
+    if ($stack.Count -gt 1 -and $null -ne $stack[1].InvocationInfo) {
+        $callerState = $stack[1].InvocationInfo.MyCommand.SessionState
+        if ($null -ne $callerState) {
+            $null = $callerState.InvokeScript($importBlock, $CoreLib)
+            return
+        }
+    }
+
+    & $importBlock $CoreLib
 }
 
 function New-ClaudeCodeWingetArgumentList {

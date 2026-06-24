@@ -59,6 +59,32 @@ function Test-ToolDeps {
     return $true
 }
 
+function Get-WingetPackageInstalledVersionFromListText {
+    param(
+        [string]$Text,
+        [string]$PackageId
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Text) -or [string]::IsNullOrWhiteSpace($PackageId)) {
+        return $null
+    }
+
+    $escapedId = [regex]::Escape($PackageId)
+    foreach ($line in @($Text -split "`r?`n")) {
+        $trim = [string]$line.Trim()
+        if ([string]::IsNullOrWhiteSpace($trim)) { continue }
+        if ($trim -match '(?i)(Usage:|使用方法:|无法识别参数|--output|Unknown .*argument|Windows Package Manager|Windows 程序包管理器|版权所有|Copyright \(C\)|----|名称\s+ID|Name\s+Id\s+)') {
+            continue
+        }
+        if ($trim -notmatch $escapedId) { continue }
+        if ($trim -match "$escapedId\s+(\d+(?:\.\d+)*)") {
+            return [string]$Matches[1]
+        }
+    }
+
+    return $null
+}
+
 function Get-WingetPackageInstalledVersion {
     param([string]$PackageId)
 
@@ -68,24 +94,31 @@ function Get-WingetPackageInstalledVersion {
     try {
         $output = & winget list --id $PackageId -e --disable-interactivity --accept-source-agreements --output json 2>&1 |
             Out-String
-        if (-not $output) { return $null }
-
-        $data = $output | ConvertFrom-Json
-        if ($data.Sources) {
-            foreach ($src in @($data.Sources)) {
-                foreach ($pkg in @($src.Packages)) {
-                    if ($pkg.Version) {
-                        return [string]$pkg.Version
+        if ($output -and $output -notmatch '(?i)无法识别参数.*--output|Unknown .*argument.*--output') {
+            $data = $output | ConvertFrom-Json
+            if ($data.Sources) {
+                foreach ($src in @($data.Sources)) {
+                    foreach ($pkg in @($src.Packages)) {
+                        if ($pkg.Version) {
+                            return [string]$pkg.Version
+                        }
                     }
                 }
             }
         }
     }
     catch {
-        return $null
+        # fall through to text parsing
     }
 
-    return $null
+    try {
+        $textOutput = & winget list --id $PackageId -e --disable-interactivity --accept-source-agreements 2>&1 |
+            Out-String
+        return Get-WingetPackageInstalledVersionFromListText -Text $textOutput -PackageId $PackageId
+    }
+    catch {
+        return $null
+    }
 }
 
 function Get-WingetPackageLatestVersion {

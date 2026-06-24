@@ -21,10 +21,33 @@ $shell = $page.Shell
 $sectionTitle = Get-ClaudeCodeActionSectionTitle -ToolRoot $toolRoot -Action $Action `
     -ScriptLeaf 'uninstall-cli.ps1'
 
-if (-not (Test-ClaudeCodeInstalled)) {
+Import-ClaudeCodeWingetCore -CoreLib $page.CoreLib
+
+if (-not (Test-ClaudeCodeInstalled -CoreLib $page.CoreLib)) {
     return Invoke-ClaudeCodeNoticePage -Shell $shell -SectionTitle $sectionTitle `
         -Message (Get-ClaudeCodeI18n -ToolRoot $toolRoot -Key 'claude-code.cli.notInstalled') `
         -CacheKey 'ClaudeCodeUninstallNotice'
+}
+
+if (-not (Test-ClaudeCodeWingetPackageInstalled)) {
+    if (-not (Test-ClaudeCodeCliAvailable)) {
+        return Invoke-ClaudeCodeNoticePage -Shell $shell -SectionTitle $sectionTitle `
+            -Message (Get-ClaudeCodeI18n -ToolRoot $toolRoot -Key 'claude-code.cli.notInstalled') `
+            -CacheKey 'ClaudeCodeUninstallNotice'
+    }
+
+    $installPath = Get-ClaudeCodeCliInstallPath
+    if ([string]::IsNullOrWhiteSpace($installPath)) {
+        $installPath = '?'
+    }
+    $versionLabel = Get-ClaudeCodeInstalledVersion
+    if ([string]::IsNullOrWhiteSpace($versionLabel)) {
+        $versionLabel = '?'
+    }
+    return Invoke-ClaudeCodeNoticePage -Shell $shell -SectionTitle $sectionTitle `
+        -Message (Get-ClaudeCodeI18n -ToolRoot $toolRoot -Key 'claude-code.cli.uninstallNotWingetManaged' `
+            -Vars @{ path = $installPath; version = $versionLabel }) `
+        -CacheKey 'ClaudeCodeUninstallNotWingetNotice'
 }
 
 return Invoke-ClaudeCodeWingetBatchPage -Shell $shell -SectionTitle $sectionTitle `

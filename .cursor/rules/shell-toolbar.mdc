@@ -17,7 +17,7 @@ Unless the user **explicitly** asks to change the shared toolbar component, do *
 - **On confirm bar** → Y or Esc confirms quit; N cancels
 - Do **not** map Esc to “back”, “dismiss page”, or Enter-equivalent without user approval
 
-## Allowed in feature pages (e.g. `DepOperationView.ps1`)
+## Allowed in feature pages (e.g. **批量执行** / `BatchExecution.ps1`)
 
 - Pass existing flags such as `-AllowEnter` so **Enter** returns after an operation completes
 - Fix input buffering in the **feature** layer (do not swallow Enter/Esc during winget poll)

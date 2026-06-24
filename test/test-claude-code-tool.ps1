@@ -44,6 +44,50 @@ if ($split.Name -ne 'superpowers' -or $split.Marketplace -ne 'claude-plugins-off
     throw 'Split-ClaudePluginId failed'
 }
 
+function Test-ParseClaudeVersionLine {
+    param([string]$Line)
+    if ($Line -match '(\d+\.\d+\.\d+)') { return $Matches[1] }
+    return $Line
+}
+if ('2.1.186' -ne (Test-ParseClaudeVersionLine '2.1.186 (Claude Code)')) {
+    throw 'version semver extract failed'
+}
+
+if (Get-Command Resolve-ClaudeCodeWingetInstallVerb -ErrorAction SilentlyContinue) {
+    # Dot-sourced above; verb defaults to install when winget package absent
+    $verb = Resolve-ClaudeCodeWingetInstallVerb
+    if ($verb -notin @('install', 'upgrade')) {
+        throw "unexpected winget verb: $verb"
+    }
+}
+
+$notWingetMsg = Get-ClaudeCodeI18n -ToolRoot $toolRoot -Key 'claude-code.cli.uninstallNotWingetManaged' `
+    -Vars @{ path = 'C:\test\claude.cmd'; version = '1.0.0' }
+if ($notWingetMsg -notmatch '1\.0\.0' -or $notWingetMsg -notmatch 'claude\.cmd') {
+    throw 'uninstallNotWingetManaged i18n interpolation failed'
+}
+
+$coreLib = Join-Path $root 'package\core\lib'
+. (Join-Path $coreLib 'domain\Ensure-ToolDeps.ps1')
+$listSample = @"
+名称        ID                   版本    源
+------------------------------------------------
+Claude Code Anthropic.ClaudeCode 2.1.187 winget
+"@
+$parsedVer = Get-WingetPackageInstalledVersionFromListText -Text $listSample -PackageId 'Anthropic.ClaudeCode'
+if ($parsedVer -ne '2.1.187') {
+    throw "winget list text parse failed, got [$parsedVer]"
+}
+
+if (-not (Test-ClaudeCodeInstalled -CoreLib $coreLib)) {
+    if (Get-Command winget -ErrorAction SilentlyContinue) {
+        $wingetListed = winget list --id Anthropic.ClaudeCode -e 2>&1 | Out-String
+        if ($wingetListed -match 'Anthropic\.ClaudeCode') {
+            throw 'Test-ClaudeCodeInstalled should detect WinGet package when CoreLib is provided'
+        }
+    }
+}
+
 $tmpdir = Join-Path ([IO.Path]::GetTempPath()) ("miao-cc-test-" + [Guid]::NewGuid().ToString('n'))
 New-Item -ItemType Directory -Path $tmpdir -Force | Out-Null
 $prevHome = $env:USERPROFILE

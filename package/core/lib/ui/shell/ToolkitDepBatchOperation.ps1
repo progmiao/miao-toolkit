@@ -1,4 +1,5 @@
-﻿# 批量依赖操作视图：进度区 + 日志区的公共壳（安装/卸载/后续同类操作复用）
+﻿# 批量执行 — 会话壳（Initialize / WaitLoop / 进度状态）
+# 官方组件名：**批量执行**。对外请用 Initialize-ToolkitBatchExecutionView 等；本文件为内部实现。
 
 function New-ToolkitDepOperationUiState {
     param([string]$ReadyStatusText = '')

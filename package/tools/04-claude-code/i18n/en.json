@@ -5,7 +5,7 @@
     "action": {
       "install": {
         "name": "Install CLI",
-        "description": "Install Claude Code CLI via WinGet"
+        "description": "Detect install state; install or upgrade via WinGet when missing or outdated"
       },
       "init": {
         "name": "Init config",
@@ -49,10 +49,11 @@
       "alreadyLatest": "Claude Code is up to date (v{version})",
       "notInstalled": "Claude Code CLI is not installed. Use Install first.",
       "detectStatus": "Detecting Claude Code CLI installation…",
-      "detectNotInstalled": "Not installed; preparing WinGet install",
+      "detectVersionCommand": "claude --version → {line}",
+      "detectNotInstalled": "Not installed; preparing WinGet install (latest)",
       "detectInstalled": "Current version v{version}",
       "detectUpdateStatus": "Checking for updates…",
-      "detectUpdateAvailable": "Update available; preparing upgrade",
+      "detectUpdateAvailable": "Update available; preparing install (latest)",
       "installStatusReady": "Ready to install",
       "installSuccess": "Claude Code CLI installed",
       "installFailed": "Install failed: {detail}",
@@ -60,6 +61,7 @@
       "updateSuccess": "Claude Code CLI updated",
       "updateFailed": "Update failed: {detail}",
       "uninstallStatusReady": "Ready to uninstall",
+      "uninstallNotWingetManaged": "Claude Code CLI was not installed via WinGet (path: {path}, version: {version}). This tool can only remove the WinGet package Anthropic.ClaudeCode. Uninstall it using your original method (e.g. npm or Volta).",
       "uninstallSuccess": "Claude Code CLI uninstalled",
       "uninstallFailed": "Uninstall failed: {detail}"
     },

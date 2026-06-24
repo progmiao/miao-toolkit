@@ -1,4 +1,5 @@
-﻿# 第三方依赖操作视图：进度条 + 状态行 + 可滚动日志
+﻿# 批量执行 — 视图绘制（进度条、状态行、日志区）
+# 官方组件名：**批量执行**。入口与 API 别名见同目录 BatchExecution.ps1。
 
 $script:ToolkitDepLogMaxLines = 500
 $script:ToolkitDepLogTimeWidth = 8
@@ -1429,6 +1430,13 @@ function Format-ToolkitDepProgressPercentSlot {
     return ('{0,3}%' -f $clamped)
 }
 
+function Test-ToolkitDepProgressShowCountSlot {
+    param([int]$Total)
+
+    if ($Total -le 0) { $Total = 1 }
+    return ($Total -gt 1)
+}
+
 function Format-ToolkitDepProgressCountSlot {
     param(
         [int]$Index,
@@ -1447,11 +1455,14 @@ function Get-ToolkitDepProgressCountSlotReservedWidth {
 }
 
 function Get-ToolkitDepProgressBarSuffixReservedWidth {
-    param([switch]$IncludeCount)
+    param(
+        [switch]$IncludeCount,
+        [int]$Total = 2
+    )
 
     $fnDisplayWidth = Resolve-DepOperationFn 'Get-DisplayWidth'
     $percentReserved = Format-ToolkitDepProgressPercentSlot -Percent 100
-    if ($IncludeCount) {
+    if ($IncludeCount -and (Test-ToolkitDepProgressShowCountSlot -Total $Total)) {
         $countReserved = Format-ToolkitDepProgressCountSlot -Index 99 -Total 99
         return & $fnDisplayWidth " $percentReserved $countReserved"
     }
@@ -1507,31 +1518,54 @@ function Format-ToolkitDepProgressBar {
         $percent = if ($ItemSubPercent -ge 0 -and $ItemSubPercent -le 100) { $ItemSubPercent } else { 0 }
         $ratio = $percent / 100.0
         $percentSlot = Format-ToolkitDepProgressPercentSlot -Percent $percent
-        $countSlot = Format-ToolkitDepProgressCountSlot -Index $ItemIndex -Total $Total
-        $suffix = " $percentSlot $countSlot"
-        $suffixWidth = Get-ToolkitDepProgressBarSuffixReservedWidth -IncludeCount
+        if (Test-ToolkitDepProgressShowCountSlot -Total $Total) {
+            $countSlot = Format-ToolkitDepProgressCountSlot -Index $ItemIndex -Total $Total
+            $suffix = " $percentSlot $countSlot"
+            $suffixWidth = Get-ToolkitDepProgressBarSuffixReservedWidth -IncludeCount -Total $Total
+        }
+        else {
+            $suffix = " $percentSlot"
+            $suffixWidth = Get-ToolkitDepProgressBarSuffixReservedWidth -Total $Total
+        }
         $barInner = [Math]::Max(1, $contentMax - 2 - $suffixWidth)
     }
     else {
-        $countText = "$Current/$Total"
         $effective = [double]$Current
         if ($ItemSubPercent -ge 0 -and $ItemSubPercent -le 100 -and $Current -lt $Total) {
             $effective = $Current + ($ItemSubPercent / 100.0)
         }
 
         $ratio = [Math]::Min(1.0, [Math]::Max(0.0, $effective / [double]$Total))
-        $suffix = " $countText  $Name"
+
+        if (Test-ToolkitDepProgressShowCountSlot -Total $Total) {
+            $countText = "$Current/$Total"
+            $suffix = " $countText  $Name"
+        }
+        else {
+            $percent = [int][Math]::Min(100, [Math]::Floor($ratio * 100.0))
+            $percentSlot = Format-ToolkitDepProgressPercentSlot -Percent $percent
+            if ([string]::IsNullOrWhiteSpace($Name)) {
+                $suffix = " $percentSlot"
+            }
+            else {
+                $suffix = " $percentSlot  $Name"
+            }
+            $countText = ''
+        }
     }
 
     if (-not $useItemProgress) {
         $suffixWidth = & $fnDisplayWidth $suffix
         $barInner = $contentMax - 2 - $suffixWidth
-        if ($barInner -lt 1) {
+        if ($barInner -lt 1 -and (Test-ToolkitDepProgressShowCountSlot -Total $Total)) {
             $fixedPart = " $countText  "
             $fixedWidth = 2 + (& $fnDisplayWidth $fixedPart)
             $nameMax = [Math]::Max(1, $contentMax - $fixedWidth - 2)
             $suffix = "$fixedPart$(& $fnTruncate $Name $nameMax)"
             $suffixWidth = & $fnDisplayWidth $suffix
+            $barInner = [Math]::Max(1, $contentMax - 2 - $suffixWidth)
+        }
+        elseif ($barInner -lt 1) {
             $barInner = [Math]::Max(1, $contentMax - 2 - $suffixWidth)
         }
     }
@@ -1719,6 +1753,16 @@ function Get-ToolkitDepWingetOutputDecision {
     }
 
     if ($percent -ge 0) {
+        $transferStatus = Format-WingetDepStreamLineTransferStatus -Line $Line
+        if ($transferStatus) {
+            if ([string]::IsNullOrWhiteSpace([string]$OutputState.PercentStage)) {
+                $OutputState.PercentStage = 'download'
+            }
+            $decision.RedrawOnly = $true
+            $decision.StatusText = $transferStatus
+            return $decision
+        }
+
         if (Test-ToolkitDepWingetOutputAwaitingUser -OutputState $OutputState) {
             $decision.RedrawOnly = $true
             $decision.StatusText = Get-ToolkitDepWingetPromptStatusText -OutputState $OutputState -GetI18n $fnGetI18n
@@ -2791,8 +2835,15 @@ function Invoke-ToolkitDepOperationView {
                     $decision.Percent = $pct
                 }
                 Update-ToolkitDepWingetProgressFromDecision -Ui $ui -WingetOutputState $wingetOutputState -Decision $decision
-                if ($decision.StatusText -and -not $decision.RedrawOnly) {
-                    Set-ToolkitDepOperationInFlightStatus -Ui $ui -MainText ([string]$decision.StatusText)
+                $statusText = Format-WingetDepStreamLineTransferStatus -Line $raw
+                if ([string]::IsNullOrWhiteSpace($statusText) -and $pct -ge 0) {
+                    $statusText = & $fnGetI18n -Key 'page.depOperation.statusDownload' -Vars @{ percent = $pct }
+                }
+                elseif ([string]::IsNullOrWhiteSpace($statusText) -and $decision.StatusText) {
+                    $statusText = [string]$decision.StatusText
+                }
+                if (-not [string]::IsNullOrWhiteSpace($statusText)) {
+                    Set-ToolkitDepOperationInFlightStatus -Ui $ui -MainText $statusText -AdvanceSpinner
                 }
                 & $refreshDepLoadingStatus
                 & $RedrawDepChrome

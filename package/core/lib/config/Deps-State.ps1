@@ -432,3 +432,4 @@ function Test-ToolDepUninstallBlockedByOtherTools {
     return ($others.Count -gt 0)
 }
 
+

@@ -36,7 +36,7 @@ function Import-ToolActionMenuCore {
             'config\Deps-State.ps1'
             'domain\Invoke-ToolDepPackage.ps1'
             'domain\Invoke-ToolkitDepOperation.ps1'
-            'ui\shell\DepOperationView.ps1'
+            'ui\shell\BatchExecution.ps1'
             'domain\Invoke-ToolkitDeps.ps1'
         )) {
         . (Join-Path $CoreLib $rel)

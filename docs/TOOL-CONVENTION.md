@@ -261,3 +261,31 @@ Format-I18nPressEnterBack
 | 进入工具（菜单或 `miao node`） | **不**自动装；菜单按 deps-state 展示 |
 
 用户装完 Miao 后本地已有全部工具脚本；Volta 等第三方程序按上表策略安装，**非**装 Miao 时一并安装。
+
+## 七、批量执行（Shell 公共组件）
+
+多步或多项连续执行、并展示进度与日志时，使用 core **批量执行** 组件（`package/core/lib/ui/shell/BatchExecution.ps1`）。
+
+| 项 | 说明 |
+|----|------|
+| **叫什么** | 对话与文档中统一称 **批量执行**；勿用「进度条+日志公共组件」等口语代称 |
+| **适用** | 初始化 batch、WinGet/插件多选后 Enter 执行、依赖批量安装等 |
+| **不适用** | 单选列表页、纯 Message 提示页、表单输入页 |
+| **入口 API** | `Initialize-ToolkitBatchExecutionView` → 执行 → `Invoke-ToolkitBatchExecutionWaitLoop` |
+| **辅助** | `Start-ToolkitBatchExecution`、`Set-ToolkitBatchExecutionCompleteUi`、`Clear-ToolkitBatchExecutionView` |
+| **日志** | 工具内自建 `Write-*LogLine` 写入 `$ctx.Log`，或复用 `Add-ToolkitDepLogLine` |
+| **兼容** | 旧名 `*DepBatchOperation*` / `*DepOperationView*` 仍可用；新工具优先 `*BatchExecution*` |
+
+典型用法（工具 `lib/*-run.ps1` 或 `init.ps1`）：
+
+```powershell
+. (Join-Path $coreLib 'ui\shell\BatchExecution.ps1')
+$ctx = Initialize-ToolkitBatchExecutionView -Shell $Shell -SectionTitle $title `
+    -ProgressTotal $total -ReadyStatusText $ready
+Start-ToolkitBatchExecution -Ui $ctx.Ui
+# …循环执行，更新 $ctx.Ui.ProgressCurrent，写日志…
+Set-ToolkitBatchExecutionCompleteUi -Ui $ctx.Ui -Intent install ...
+Invoke-ToolkitBatchExecutionWaitLoop -Context $ctx
+Clear-ToolkitBatchExecutionView -Context $ctx
+```
+

@@ -34,8 +34,7 @@ function Get-MiaoToolDepsModulePaths {
 
         'domain\Invoke-ToolkitDepOperation.ps1'
 
-        'ui\shell\DepOperationView.ps1'
-        'ui\shell\ToolkitDepBatchOperation.ps1'
+        'ui\shell\BatchExecution.ps1'
 
         'domain\Invoke-ToolkitDeps.ps1'
 
@@ -83,6 +82,28 @@ function Get-MiaoModuleFunctionNames {
 
     return @($names | Select-Object -Unique)
 
+}
+
+
+
+function Get-MiaoModuleExportNames {
+    param(
+        [string[]]$Paths,
+        [string[]]$RelativePaths,
+        [string]$LibRoot
+    )
+
+    $exportNames = @(Get-MiaoModuleFunctionNames -Paths $Paths)
+
+    if ($RelativePaths -contains 'ui\shell\BatchExecution.ps1') {
+        $nested = @(
+            'ui\shell\ToolkitDepBatchOperation.ps1'
+            'ui\shell\DepOperationView.ps1'
+        ) | ForEach-Object { Join-Path $LibRoot $_ }
+        $exportNames = @($exportNames + (Get-MiaoModuleFunctionNames -Paths $nested) | Select-Object -Unique)
+    }
+
+    return @($exportNames)
 }
 
 
@@ -150,8 +171,8 @@ function Import-MiaoModule {
 
         'Install' { @($toolDepsPaths + 'pages\install.ps1', 'pages\toolbox-deps.ps1') }
 
-        'Init' { @('ui\shell\ToolkitDepBatchOperation.ps1', 'ui\shell\DepOperationView.ps1', 'pages\init.ps1') }
-        'Cache' { @('ui\shell\ToolkitDepBatchOperation.ps1', 'ui\shell\DepOperationView.ps1', 'pages\init.ps1') }
+        'Init' { @('ui\shell\BatchExecution.ps1', 'pages\init.ps1') }
+        'Cache' { @('ui\shell\BatchExecution.ps1', 'pages\init.ps1') }
 
     }
 
@@ -159,7 +180,7 @@ function Import-MiaoModule {
 
     $fullPaths = @($paths | ForEach-Object { Join-Path $lib $_ })
 
-    $exportNames = @(Get-MiaoModuleFunctionNames -Paths $fullPaths)
+    $exportNames = @(Get-MiaoModuleExportNames -Paths $fullPaths -RelativePaths $paths -LibRoot $lib)
 
     if (-not $global:MiaoModuleExports) {
         $global:MiaoModuleExports = @{}
