@@ -1,4 +1,4 @@
-﻿# 第三方依赖 Plan + 编排（install/update/uninstall 统一）
+# 第三方依赖 Plan + 编排（install/update/uninstall 统一）
 
 function Get-ToolkitDepEffectiveIntent {
     param(
@@ -7,7 +7,7 @@ function Get-ToolkitDepEffectiveIntent {
         [string]$Intent
     )
 
-    if ($Intent -eq 'update' -and -not (Test-ToolDepInstalled $Tool)) {
+    if ($Intent -eq 'update' -and -not (Get-ToolDepInstalled $Tool)) {
         return 'install'
     }
     return $Intent
@@ -356,7 +356,7 @@ function Get-ToolkitDepOperationSummaryKey {
 function Sync-ToolDepInstalledState {
     param($Tool)
 
-    if (-not (Test-ToolHasExternalDeps $Tool)) { return $true }
+    if (-not (Get-ToolHasExternalDeps $Tool)) { return $true }
 
     $versions = @{}
     foreach ($dep in @(Get-ToolDependencyPackages -Tool $Tool)) {
@@ -375,18 +375,7 @@ function Sync-ToolDepInstalledState {
             -Packages @(Get-ToolDependencyPackages -Tool $Tool)
     }
 
-    return (Test-ToolDepInstalled $Tool)
-}
-
-function Get-ToolSectionTitle {
-    param($Tool)
-
-    $unrecognized = Get-I18n -Key 'common.unrecognized'
-    if ($Tool.name -and [string]$Tool.name -ne $unrecognized) {
-        return [string]$Tool.name
-    }
-    if ($Tool.command) { return [string]$Tool.command }
-    return [string]$Tool.id
+    return (Get-ToolDepInstalled $Tool)
 }
 
 function Get-ToolDepOperationSectionTitle {
@@ -421,7 +410,7 @@ function Start-ToolkitDepOperation {
         [array]$AllTools = $null
     )
 
-    if (-not (Test-ToolHasExternalDeps $Tool)) { return $true }
+    if (-not (Get-ToolHasExternalDeps $Tool)) { return $true }
 
     if ($Shell) {
         $title = if ($SectionTitle) { $SectionTitle } else { (Get-ToolDepOperationSectionTitle -Tool $Tool -Intent $Intent) }

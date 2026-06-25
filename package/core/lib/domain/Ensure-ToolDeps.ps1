@@ -35,7 +35,7 @@ function Get-ToolDependencyMenus {
     return $null
 }
 
-function Test-ToolHasExternalDeps {
+function Get-ToolHasExternalDeps {
     param($Tool)
 
     if ($Tool.requiresInstall -eq $false) { return $false }
@@ -46,7 +46,7 @@ function Test-ToolDeps {
     param($Tool)
 
     if ($Tool.requiresInstall -eq $false) { return $true }
-    if (-not (Test-ToolHasExternalDeps $Tool)) { return $true }
+    if (-not (Get-ToolHasExternalDeps $Tool)) { return $true }
 
     foreach ($dep in @(Get-ToolDependencyPackages -Tool $Tool)) {
         if (-not $dep.checkCommand) { continue }
@@ -349,11 +349,11 @@ function Test-ToolDepPackageRemovedAfterAction {
 function Get-ToolDependencyStatus {
     param($Tool)
 
-    if (-not (Test-ToolHasExternalDeps $Tool)) {
+    if (-not (Get-ToolHasExternalDeps $Tool)) {
         return 'installed'
     }
 
-    if (Test-ToolDepInstalled $Tool) {
+    if (Get-ToolDepInstalled $Tool) {
         return 'installed'
     }
 
@@ -367,7 +367,7 @@ function Invoke-ToolInstall {
         [string]$SectionTitle = ''
     )
 
-    if (-not (Test-ToolHasExternalDeps $Tool)) { return $true }
+    if (-not (Get-ToolHasExternalDeps $Tool)) { return $true }
 
     return Start-ToolkitDepOperation -Tool $Tool -Intent install -Shell $Shell `
         -SectionTitle $SectionTitle
@@ -380,7 +380,7 @@ function Invoke-ToolUpdate {
         [string]$SectionTitle = ''
     )
 
-    if (-not (Test-ToolHasExternalDeps $Tool)) { return $true }
+    if (-not (Get-ToolHasExternalDeps $Tool)) { return $true }
 
     return Start-ToolkitDepOperation -Tool $Tool -Intent update -Shell $Shell `
         -SectionTitle $SectionTitle
@@ -393,5 +393,5 @@ function Ensure-ToolDeps {
         return $true
     }
 
-    return (Test-ToolDepInstalled $Tool)
+    return (Get-ToolDepInstalled $Tool)
 }

@@ -50,16 +50,16 @@ function Get-SysActions {
 }
 
 function Get-SysListRows {
-    return ConvertTo-ShellListRows -Items @(Get-SysActions) -KeepSource -MapCells {
-        param($Action, [int]$Index)
-        $name = if ($Action.name) { [string]$Action.name } else { (Get-I18n -Key 'common.unrecognized') }
-        $description = if ($Action.description) { [string]$Action.description } else { '' }
-        @(
-            (Get-ShellListItemCommand $Action)
+    return @(Get-SysActions | ForEach-Object {
+        $action = $_
+        $name = if ($action.name) { [string]$action.name } else { (Get-I18n -Key 'common.unrecognized') }
+        $description = if ($action.description) { [string]$action.description } else { '' }
+        New-ShellListRow -Id ([string]$action.command) -Cells @(
+            (Get-ShellListItemCommand $action)
             $name
             $description
-        )
-    } -GetEnabled { param($Action, [int]$Index) [bool]$Action.enabled }
+        ) -Payload $action -Enabled ([bool]$action.enabled)
+    })
 }
 
 function Invoke-SysPage {
@@ -74,22 +74,25 @@ function Invoke-SysPage {
         $currentLocale = Get-CurrentLocale
         if (-not $Shell.HeaderLocale -or $Shell.HeaderLocale -ne $currentLocale) {
             $Shell['HeaderLocale'] = $currentLocale
-            Clear-ShellSingleSelectListCache -Shell $Shell -CacheKey 'Sys'
+            Clear-ShellListCache -Shell $Shell -CacheKey 'Sys'
         }
 
-        $picked = Invoke-ShellSingleSelectList -Shell $Shell `
-            -SectionTitle (Get-I18n -Key 'page.sys.sectionTitle') `
-            -Rows (Get-SysListRows) `
-            -CacheKey 'Sys' `
-            -ColumnLayout (New-ShellListColumnLayout -Preset MenuList) `
-            -ToolbarConfig $toolbar
+        $result = Invoke-ToolkitShellList @{
+            Mode         = 'Single'
+            Shell        = $Shell
+            SectionTitle = (Get-I18n -Key 'page.sys.sectionTitle')
+            Rows         = (Get-SysListRows)
+            CacheKey     = 'Sys'
+            Toolbar      = $toolbar
+        }
 
-        if ($null -eq $picked) {
+        $nav = Get-ShellListSelectNavMarker $result
+        if ($nav) { return $nav }
+        if ($result.Action -ne 'Pick' -or @($result.Payloads).Count -eq 0) {
             return (Get-ShellNavMarker -Action 'back')
         }
-        if (Test-ShellNavMarker $picked) {
-            return $picked
-        }
+
+        $picked = $result.Payloads[0]
 
         switch ($picked.command) {
             'help' {

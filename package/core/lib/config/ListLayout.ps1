@@ -13,12 +13,26 @@ $script:ToolkitToolListColumnWidths = @{
     name        = 18
     description = 32
 }
+# 历史常量；单选焦点已与多选对齐为插入式 " $mark "，不再预留 leading 空位
 $script:ShellSingleSelectListLeadingSpaces = 2
 
 function Get-ShellSingleSelectListLeadingSpaces {
     $n = [int]$script:ShellSingleSelectListLeadingSpaces
     if ($n -lt 1) { return 1 }
     return $n
+}
+
+function Get-ShellListRowPrefixReserve {
+    param(
+        [ValidateSet('Single', 'Multi')]
+        [string]$Mode = 'Single',
+        [int]$KeyWidth = 2
+    )
+
+    $colGap = Get-MenuColumnGap
+    $checkReserve = if ($Mode -eq 'Multi') { 3 } else { 0 }
+    # 前缀 " $mark" (+ Multi: " $check ") + " $num" — 焦点 > 插入时内容右移，与多选一致
+    return 1 + 1 + $checkReserve + 1 + [Math]::Max(1, [int]$KeyWidth) + $colGap
 }
 
 function Expand-ToolkitBrandInnerWidth {
@@ -73,8 +87,7 @@ function Resolve-ShellToolListColumnLayout {
     $metrics = Get-ToolkitShellLayoutLineMetrics -Shell $Shell -BrandInnerWidth $BrandInnerWidth
     $maxRowWidth = [int]$metrics.EndColumn
     $colGap = Get-MenuColumnGap
-    $leading = Get-ShellSingleSelectListLeadingSpaces
-    $prefixW = $leading + 1 + 1 + $NumWidth + $colGap
+    $prefixW = Get-ShellListRowPrefixReserve -Mode Single -KeyWidth $NumWidth
     $fixedW = [int]$base.command + $colGap + [int]$base.name + $colGap
     $descW = $maxRowWidth - $prefixW - $fixedW
     if ($descW -lt 6) { $descW = 6 }

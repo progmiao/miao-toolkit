@@ -1,4 +1,4 @@
-﻿$ErrorActionPreference = 'Stop'
+$ErrorActionPreference = 'Stop'
 $lib = Join-Path (Split-Path $PSScriptRoot -Parent) 'package\core\lib'
 . (Join-Path $lib 'bootstrap\Load-Core.ps1') -LibDirectory $lib
 
@@ -10,8 +10,8 @@ if (-not (Get-Command Invoke-LangCommand -ErrorAction SilentlyContinue)) {
 Write-Host 'OK: Lang'
 
 Import-MiaoModule -Name Install
-if (-not (Get-Command Test-ToolDepInstalled -ErrorAction SilentlyContinue)) {
-    Write-Host 'FAIL: Test-ToolDepInstalled'
+if (-not (Get-Command Get-ToolDepInstalled -ErrorAction SilentlyContinue)) {
+    Write-Host 'FAIL: Get-ToolDepInstalled'
     exit 1
 }
 Write-Host 'OK: Install'

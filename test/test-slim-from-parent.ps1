@@ -13,9 +13,10 @@ $child = {
     $tool = Get-ToolFromDirectory -ToolRoot $ToolRoot
     $menuItems = @(Get-ToolMenuItems -BusinessActions @($config.actions) -Tool $tool)
     $rows = ConvertTo-ToolMenuListRows -ToolRoot $ToolRoot -MenuItems $menuItems
-    $layout = New-ShellListColumnLayout -Preset MenuList
-    $normalized = @(Normalize-ShellListRows -Rows $rows -ColumnLayout $layout)
-    $built = Get-ShellSingleSelectListRowCache -Shell @{} -CacheKey 'Node' -Rows $normalized -ColumnLayout $layout
+    $listLayout = New-ShellListLayout -Widths @(12, 18, 0)
+    $columnLayout = Resolve-ShellListLayoutColumnLayout -Layout $listLayout
+    $normalized = @(Normalize-ShellListRows -Rows $rows -Layout $listLayout)
+    $built = Get-ShellSingleSelectListRowCache -Shell @{} -CacheKey 'Node' -Rows $normalized -ColumnLayout $columnLayout
     $handlers = New-ShellSingleSelectListDrawHandlers -RowCache $built.RowCache -ColGap $built.ColGap
     & $handlers['GetLabel'] $normalized[0] 0 | Out-Null
 }

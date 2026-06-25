@@ -1,19 +1,16 @@
-﻿# 首页：工具列表（单选列表 + 系统工具栏）
+﻿# 首页：工具列表（统一 Shell 列表 + 系统工具栏）
 
 function Get-HomeToolListRows {
     param([array]$Tools)
 
-    return ConvertTo-ShellListRows -Items $Tools -KeepSource -MapCells {
-        param($Tool, [int]$Index)
-        @(
-            (Get-ToolCommandName -Tool $Tool)
-            [string]$Tool.name
-            [string]$Tool.description
-        )
-    } -GetNumber {
-        param($Tool, [int]$Index)
-        return [int]$Tool.no
-    }
+    return @($Tools | ForEach-Object {
+        $tool = $_
+        New-ShellListRow -Id ([string]$tool.id) -Cells @(
+            (Get-ToolCommandName -Tool $tool)
+            [string]$tool.name
+            [string]$tool.description
+        ) -Payload $tool -Number ([int]$tool.no)
+    })
 }
 
 function Invoke-HomePage {
@@ -26,22 +23,24 @@ function Invoke-HomePage {
         $currentLocale = Get-CurrentLocale
         $layoutWidth = Get-ToolkitShellLayoutBarInnerWidth -Shell $Shell
         if (-not $Shell.HeaderLocale -or $Shell.HeaderLocale -ne $currentLocale) {
-            Clear-ShellSingleSelectListCache -Shell $Shell -CacheKey 'Home'
+            Clear-ShellListCache -Shell $Shell -CacheKey 'Home'
             $Shell['HeaderLocale'] = $currentLocale
             $null = Sync-ToolkitSessionInitState -Shell $Shell -Refresh
         }
         elseif ([int]$Shell.HomeListLayoutWidth -ne $layoutWidth) {
-            Clear-ShellSingleSelectListCache -Shell $Shell -CacheKey 'Home'
+            Clear-ShellListCache -Shell $Shell -CacheKey 'Home'
         }
         $Shell['HomeListLayoutWidth'] = $layoutWidth
     }
 
-    return Invoke-ShellSingleSelectList -Shell $Shell `
-        -SectionTitle (Get-I18n -Key 'page.home.toolList') `
-        -Rows (Get-HomeToolListRows -Tools $Tools) `
-        -CacheKey 'Home' `
-        -ColumnLayout (New-ShellListColumnLayout -Preset ToolList) `
-        -ToolbarConfig (New-ShellSystemToolbarConfig -HideBack)
+    return Invoke-ToolkitShellList @{
+        Mode         = 'Single'
+        Shell        = $Shell
+        SectionTitle = (Get-I18n -Key 'page.home.toolList')
+        Rows         = (Get-HomeToolListRows -Tools $Tools)
+        CacheKey     = 'Home'
+        Toolbar      = (New-ShellSystemToolbarConfig -HideBack)
+    }
 }
 
 function Show-ToolkitMenu {

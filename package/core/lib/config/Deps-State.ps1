@@ -108,7 +108,7 @@ function Migrate-LegacyDepsStateToGlobal {
 
     $packages = @{}
     foreach ($tool in @($Tools)) {
-        if (-not (Test-ToolHasExternalDeps $tool)) { continue }
+        if (-not (Get-ToolHasExternalDeps $tool)) { continue }
 
         $toolKey = [string]$tool.id
         if (-not $Document.ContainsKey($toolKey)) { continue }
@@ -237,6 +237,9 @@ function Save-DepsStateDocument {
 
 function Clear-DepsStateCache {
     $script:DepsStateCache = $null
+    if (Get-Command Clear-WingetPackageVersionCache -ErrorAction SilentlyContinue) {
+        Clear-WingetPackageVersionCache
+    }
 }
 
 function Clear-ToolkitHomeStatusCache {
@@ -356,13 +359,97 @@ function Remove-ToolDepInstalled {
     # 兼容旧调用：全局模型下不再按 toolId 删除；保留空操作避免破坏 CLI 测试。
 }
 
-function Test-GlobalDepSatisfied {
+function Clear-WingetPackageVersionCache {
+    $script:WingetPackageVersionCache = @{}
+}
+
+function Get-ToolDepInstalledSessionCache {
+    param([string]$ToolId)
+
+    if (-not $script:ToolDepInstalledSessionCache) { return $null }
+    if (-not $script:ToolDepInstalledSessionCache.ContainsKey($ToolId)) { return $null }
+    return [bool]$script:ToolDepInstalledSessionCache[$ToolId]
+}
+
+function Set-ToolDepInstalledSessionCache {
+    param(
+        $Tool,
+        [bool]$Installed
+    )
+
+    if (-not $script:ToolDepInstalledSessionCache) {
+        $script:ToolDepInstalledSessionCache = @{}
+    }
+
+    $toolId = if ($Tool.id) { [string]$Tool.id } elseif ($Tool.command) { [string]$Tool.command } else { '' }
+    if ([string]::IsNullOrWhiteSpace($toolId)) { return }
+    $script:ToolDepInstalledSessionCache[$toolId] = [bool]$Installed
+}
+
+function Clear-ToolDepInstalledSessionCache {
+    param([string]$ToolId = '')
+
+    if ([string]::IsNullOrWhiteSpace($ToolId)) {
+        $script:ToolDepInstalledSessionCache = @{}
+        return
+    }
+
+    if ($script:ToolDepInstalledSessionCache) {
+        [void]$script:ToolDepInstalledSessionCache.Remove($ToolId)
+    }
+}
+
+function Get-ToolDepInstalledRecord {
+    # 菜单/列表：只读 init 快照、deps-state 与会话记录，不做远程或命令探测。
+    param($Tool)
+
+    if (-not (Get-ToolHasExternalDeps $Tool)) { return $true }
+
+    $toolId = if ($Tool.id) { [string]$Tool.id } elseif ($Tool.command) { [string]$Tool.command } else { '' }
+    if (-not [string]::IsNullOrWhiteSpace($toolId)) {
+        $sessionCached = Get-ToolDepInstalledSessionCache -ToolId $toolId
+        if ($null -ne $sessionCached) {
+            return [bool]$sessionCached
+        }
+    }
+
+    if (Get-Command Get-ToolkitToolInitStateForTool -ErrorAction SilentlyContinue) {
+        if (Get-Command Test-ToolkitSessionInitReady -ErrorAction SilentlyContinue) {
+            if (Test-ToolkitSessionInitReady) {
+                $state = Get-ToolkitToolInitStateForTool -Tool $Tool
+                if ($null -ne $state) {
+                    if (-not $state.hasDeps) { return $true }
+                    return [bool]$state.installed
+                }
+            }
+        }
+    }
+
+    $packages = @(Get-ToolDependencyPackages -Tool $Tool)
+    if ($packages.Count -eq 0) { return $true }
+
+    foreach ($dep in $packages) {
+        $fp = Get-DependencyFingerprint -Dependency $dep
+        $recorded = Get-GlobalDepRecordedVersion -Fingerprint $fp
+        if ([string]::IsNullOrWhiteSpace($recorded)) {
+            return $false
+        }
+    }
+
+    return $true
+}
+
+function Get-GlobalDepInstallRecord {
     param($Package)
 
     $fp = Get-DependencyFingerprint -Dependency $Package
     $recorded = Get-GlobalDepRecordedVersion -Fingerprint $fp
     $checkCommand = if ($Package.checkCommand) { [string]$Package.checkCommand } else { '' }
     $commandAvailable = Test-ToolDepCommandAvailable -CheckCommand $checkCommand
+
+    if ($commandAvailable) {
+        return $true
+    }
 
     $packageId = if ($Package.install -and $Package.install.packageId) { [string]$Package.install.packageId } else { '' }
     $wingetInstalled = $false
@@ -371,21 +458,21 @@ function Test-GlobalDepSatisfied {
         $wingetInstalled = -not [string]::IsNullOrWhiteSpace($wingetVer)
     }
 
-    if ($commandAvailable -or $wingetInstalled) {
-        if (-not [string]::IsNullOrWhiteSpace($recorded)) { return $true }
+    if ($wingetInstalled) {
         return $true
     }
 
     return -not [string]::IsNullOrWhiteSpace($recorded)
 }
 
-function Test-ToolDepInstalled {
+function Get-ToolDepInstalled {
+    # 执行页/安装后：命令与 winget 等实时探测是否已安装。
     param($Tool)
 
-    if (-not (Test-ToolHasExternalDeps $Tool)) { return $true }
+    if (-not (Get-ToolHasExternalDeps $Tool)) { return $true }
 
     foreach ($dep in @(Get-ToolDependencyPackages -Tool $Tool)) {
-        if (-not (Test-GlobalDepSatisfied -Package $dep)) {
+        if (-not (Get-GlobalDepInstallRecord -Package $dep)) {
             return $false
         }
     }

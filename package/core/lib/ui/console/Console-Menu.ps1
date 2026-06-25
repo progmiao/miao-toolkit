@@ -1932,8 +1932,10 @@ function Format-MenuNumberedRow {
     $numValue = if ($DisplayNumber -gt 0) { $DisplayNumber } else { $GlobalIndex + 1 }
     $num = Format-ListDisplayNumber -Number $numValue -NumWidth $NumWidth
     $mark = if ($Selected) { '>' } else { ' ' }
-    $lead = ' ' * (Get-ShellSingleSelectListLeadingSpaces)
-    return "$lead$mark $num  $Label"
+    if ($Selected) {
+        return " $mark $num  $Label"
+    }
+    return "$mark $num  $Label"
 }
 
 function Draw-PaginatedMenuRow {

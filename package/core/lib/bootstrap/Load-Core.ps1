@@ -16,6 +16,8 @@ $lib = $LibDirectory
 . (Join-Path $lib 'config\I18n.ps1')
 . (Join-Path $lib 'config\ToolkitInit.ps1')
 . (Join-Path $lib 'domain\Discover-Tools.ps1')
+. (Join-Path $lib 'domain\Ensure-ToolDeps.ps1')
+. (Join-Path $lib 'config\Deps-State.ps1')
 . (Join-Path $lib 'domain\Mock-Tools.ps1')
 . (Join-Path $lib 'ui\console\Console-Menu.ps1')
 . (Join-Path $lib 'ui\legacy\Show-BrandedPage.ps1')
@@ -31,8 +33,11 @@ foreach ($name in @(
         'Confirm.ps1'
         'Footer.ps1'
         'SystemToolbar.ps1'
+        'ShellListModel.ps1'
+        'ShellListLayout.ps1'
         'SingleSelectList.ps1'
         'MultiSelectList.ps1'
+        'ToolkitShellList.ps1'
         'Page-Host.ps1'
         'Session.ps1'
     )) {
@@ -60,66 +65,19 @@ foreach ($fnName in @(
         'Finalize-ToolkitShellBodyView'
         'Prepare-ToolkitShellBodyDraw'
         'Sync-ToolkitShellLayoutLineMetrics'
-        'Invoke-ShellSingleSelectList'
-        'Invoke-ShellMultiSelectList'
-        'Clear-ShellSingleSelectListCache'
-        'Clear-ShellMultiSelectListCache'
-        'New-ShellListColumnLayout'
-        'Normalize-ShellListRows'
-        'Build-ShellSingleSelectListRowCache'
-        'Build-ShellSingleSelectListRowSpec'
-        'Write-ShellSingleSelectListRow'
-        'Invoke-ShellSingleSelectListDrawRow'
-        'New-ShellSingleSelectListDrawHandlers'
-        'Format-MenuTableCell'
-        'New-ShellListRowBodySegments'
-        'Prepare-ConsoleRowWrite'
-        'Get-SafeWriteLineWidth'
-        'Set-ConsoleCursorAfterRowWrite'
-        'Get-DisplayWidth'
-        'Truncate-DisplayText'
-        'Resolve-ToolMenuActionName'
-        'Resolve-ToolMenuActionDescription'
-        'Get-ToolMenuItemCommand'
-        'Get-ShellListItemCommand'
-        'Show-PaginatedMenu'
-        'Redraw-PaginatedMenuPage'
-        'Update-PaginatedMenuSelection'
-        'Select-MenuPageSelectionIndex'
-        'Set-MenuListScrollOffset'
-        'Test-MenuNumberBufferPrefix'
-        'Test-MenuSearchBufferPrefix'
-        'Get-MenuMaxDisplayNumber'
-        'Set-MenuInputCursorPosition'
-        'Get-MenuMaxDisplayNumber'
-        'Initialize-ShellMultiSelectListDependencies'
-        'Get-ShellMultiSelectMenuCommand'
-        'Format-ShellMultiSelectCheckMark'
-        'Build-ShellMultiSelectListRowSpec'
-        'Invoke-ShellMultiSelectListDrawRow'
-        'Build-ShellMultiSelectListRowCache'
-        'Get-ShellMultiSelectListRowCache'
-        'Clear-ShellMultiSelectListCache'
-        'New-ShellMultiSelectListDrawHandlers'
-        'Get-ShellMultiSelectCheckedSet'
-        'Test-ShellMultiSelectIndexChecked'
-        'Find-ShellMultiSelectFirstFocusIndex'
-        'Resolve-ShellMultiSelectListPick'
-        'Show-ShellMultiSelectListMenu'
-        'Get-ShellSingleSelectListRowCache'
-        'Format-ListDisplayNumber'
-        'Resolve-ListNumberIndexDefault'
         'Initialize-PathsFromToolRoot'
         'Import-MiaoToolDepsModule'
         'ConvertTo-ToolMenuListRows'
         'Get-ToolMenuItems'
         'Get-ToolFromDirectory'
         'Get-ToolSectionTitle'
+        'Get-ToolDepInstalledRecord'
+        'Get-ToolDepInstalled'
         'Assign-ToolMenuNumbers'
         'Get-BundledToolsRoot'
         'Get-ExternalToolsRoot'
         'Update-ToolDependencyMenuProbe'
-        'Test-ToolDependencyMenuAction'
+        'Get-ToolDependencyMenuAction'
         'Invoke-ToolDependencyMenuAction'
         'Invoke-ToolActionMenu'
         'Invoke-ToolBusinessAction'
@@ -129,6 +87,8 @@ foreach ($fnName in @(
         Set-Item -Path "function:global:$fnName" -Value $cmd.ScriptBlock -Force | Out-Null
     }
 }
+
+Export-MiaoShellListGlobals -LibRoot $lib
 
 $script:MiaoCoreLoaded = $true
 $global:MiaoCoreLoaded = $true

@@ -20,8 +20,11 @@ function Import-ToolActionMenuCore {
     . (Join-Path $CoreLib 'ui\console\Console-Menu.ps1')
     . (Join-Path $CoreLib 'ui\shell\Nav.ps1')
     . (Join-Path $CoreLib 'ui\shell\SystemToolbar.ps1')
+    . (Join-Path $CoreLib 'ui\shell\ShellListModel.ps1')
+    . (Join-Path $CoreLib 'ui\shell\ShellListLayout.ps1')
     . (Join-Path $CoreLib 'ui\shell\SingleSelectList.ps1')
     . (Join-Path $CoreLib 'ui\shell\MultiSelectList.ps1')
+    . (Join-Path $CoreLib 'ui\shell\ToolkitShellList.ps1')
     . (Join-Path $CoreLib 'ui\shell\Draw.ps1')
     . (Join-Path $CoreLib 'ui\shell\Header.ps1')
     . (Join-Path $CoreLib 'ui\shell\Title.ps1')
@@ -61,6 +64,10 @@ function Invoke-ToolBusinessAction {
         [hashtable]$ActionScriptParams = @{}
     )
 
+    if (Get-Command Import-MiaoToolDepsModule -CommandType Function -ErrorAction SilentlyContinue) {
+        Import-MiaoToolDepsModule
+    }
+
     $scriptPath = Join-Path $ToolRoot ($Action.script -replace '/', [IO.Path]::DirectorySeparatorChar)
     if (-not (Test-Path $scriptPath)) {
         Write-MessageBlock -Title '错误' -Lines @("缺少脚本: $($Action.script)") -TitleColor Red
@@ -76,6 +83,9 @@ function Invoke-ToolBusinessAction {
     }
 
     $result = . $scriptPath @invokeParams
+    if (Test-ShellNavMarker $result 'back') {
+        return $result
+    }
     if (Test-ShellNavMarker $result 'quit') {
         return $result
     }
@@ -130,38 +140,49 @@ function Invoke-ToolActionMenu {
     $listCacheKey = Resolve-ToolActionMenuCacheKey -Tool $tool
     $sectionTitle = Get-ToolSectionTitle -Tool $tool
     $dependencyUpdateAvailable = $false
+    $menuPass = 0
 
     while ($true) {
+        $menuPass++
         Sync-MiaoLocaleFromShell -Shell $ToolkitShell
         $tool = Get-ToolFromDirectory -ToolRoot $ToolRoot
 
-        $probeChanged = Update-ToolDependencyMenuProbe -Tool $tool -Shell $ToolkitShell `
-            -UpdateMenuAvailable ([ref]$dependencyUpdateAvailable)
+        $depInstalled = Get-ToolDepInstalledRecord -Tool $tool
+        $probeChanged = $false
+        if ($menuPass -gt 1) {
+            $probeChanged = Update-ToolDependencyMenuProbe -Tool $tool -Shell $ToolkitShell `
+                -UpdateMenuAvailable ([ref]$dependencyUpdateAvailable) `
+                -AllowProbeSync -DepInstalled $depInstalled
+        }
 
         $menuItems = @(Get-ToolMenuItems -BusinessActions @($Config.actions) -Tool $tool `
-            -DependencyUpdateAvailable:$dependencyUpdateAvailable)
+            -DependencyUpdateAvailable:$dependencyUpdateAvailable -DepInstalled $depInstalled)
 
         $currentLocale = Get-CurrentLocale
         if ($probeChanged -or -not $ToolkitShell.HeaderLocale -or $ToolkitShell.HeaderLocale -ne $currentLocale) {
-            Clear-ShellSingleSelectListCache -Shell $ToolkitShell -CacheKey $listCacheKey
+            Clear-ShellListCache -Shell $ToolkitShell -CacheKey $listCacheKey
             $sectionTitle = Get-ToolSectionTitle -Tool $tool
         }
 
-        $picked = Invoke-ShellSingleSelectList -Shell $ToolkitShell `
-            -SectionTitle $sectionTitle `
-            -Rows (ConvertTo-ToolMenuListRows -ToolRoot $ToolRoot -MenuItems $menuItems) `
-            -CacheKey $listCacheKey `
-            -ColumnLayout (New-ShellListColumnLayout -Preset ToolList) `
-            -ToolbarConfig $toolbar
-
-        if (-not $picked) {
+        $listResult = Invoke-ToolkitShellList @{
+            Mode         = 'Single'
+            Shell        = $ToolkitShell
+            SectionTitle = $sectionTitle
+            Rows         = (ConvertTo-ToolMenuListRows -ToolRoot $ToolRoot -MenuItems $menuItems)
+            CacheKey     = $listCacheKey
+            Toolbar      = $toolbar
+        }
+        $nav = Get-ShellListSelectNavMarker $listResult
+        if ($nav) {
+            return $nav
+        }
+        if ($listResult.Action -ne 'Pick' -or @($listResult.Payloads).Count -eq 0) {
             return (Get-ShellNavMarker -Action 'back')
         }
-        if (Test-ShellNavMarker $picked) {
-            return $picked
-        }
+        $picked = $listResult.Payloads[0]
 
-        if (Test-ToolDependencyMenuAction $picked) {
+        if (Get-ToolDependencyMenuAction $picked) {
+            Import-MiaoToolDepsModule
             $depResult = Invoke-ToolDependencyMenuAction -Tool $tool -Action $picked -Shell $ToolkitShell
             if (Test-ShellNavMarker $depResult) {
                 return $depResult
@@ -169,12 +190,16 @@ function Invoke-ToolActionMenu {
             Clear-DepsStateCache
             Reset-ToolDependencyUpgradeProbe -Tool $tool -Shell $ToolkitShell
             $dependencyUpdateAvailable = $false
-            Clear-ShellSingleSelectListCache -Shell $ToolkitShell -CacheKey $listCacheKey
+            Set-ToolDepInstalledSessionCache -Tool $tool -Installed (Get-ToolDepInstalled $tool)
+            Clear-ShellListCache -Shell $ToolkitShell -CacheKey $listCacheKey
             continue
         }
 
         $code = Invoke-ToolBusinessAction -ToolRoot $ToolRoot -Action $picked `
             -ToolkitShell $ToolkitShell -ActionScriptParams $mergedActionParams
+        if (Test-ShellNavMarker $code 'back') {
+            continue
+        }
         if (Test-ShellNavMarker $code) {
             return $code
         }

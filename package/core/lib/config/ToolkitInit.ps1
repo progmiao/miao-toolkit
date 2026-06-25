@@ -1,4 +1,4 @@
-﻿# 工具箱初始化快照：品牌区、工具目录、首页列表、各工具依赖状态（仅探测，不安装）
+# 工具箱初始化快照：品牌区、工具目录、首页列表、各工具依赖状态（仅探测，不安装）
 
 $script:ToolkitToolsMemoryCache = $null
 $script:ToolkitDiskListRowCaches = @{}
@@ -180,10 +180,14 @@ function Export-ToolkitRowCacheBuilt {
             if ($entry.Source.command) { $sourceKey = [string]$entry.Source.command }
             elseif ($entry.Source.id) { $sourceKey = [string]$entry.Source.id }
         }
-        elseif ($i -lt $Rows.Count -and $Rows[$i].Source) {
-            $src = $Rows[$i].Source
-            if ($src.command) { $sourceKey = [string]$src.command }
-            elseif ($src.id) { $sourceKey = [string]$src.id }
+        elseif ($i -lt $Rows.Count) {
+            $src = $null
+            if ($Rows[$i].Payload) { $src = $Rows[$i].Payload }
+            elseif ($Rows[$i].Source) { $src = $Rows[$i].Source }
+            if ($src) {
+                if ($src.command) { $sourceKey = [string]$src.command }
+                elseif ($src.id) { $sourceKey = [string]$src.id }
+            }
         }
 
         $segments = @()
@@ -392,6 +396,9 @@ function Sync-ToolkitSessionInitState {
 
     if ($valid) {
         Initialize-ToolkitHomeBundle -Shell $Shell | Out-Null
+        if (Get-Command Get-ToolkitToolInitStateMap -ErrorAction SilentlyContinue) {
+            $null = Get-ToolkitToolInitStateMap
+        }
     }
 
     return $valid
@@ -673,9 +680,12 @@ function Invoke-ToolkitInitBuild {
         if ($maxNumber -lt $rows.Count) { $maxNumber = $rows.Count }
         if ($maxNumber -lt 1) { $maxNumber = 1 }
         $numWidth = Get-ListNumberDisplayWidth -MaxNumber $maxNumber
-        $columnLayout = Resolve-ShellToolListColumnLayout -NumWidth $numWidth `
-            -BrandInnerWidth (Get-ToolkitShellStandardBrandInnerWidth) -Preset 'ToolList'
-        $layoutKey = "$($columnLayout.Preset)|$($columnLayout.Widths -join ',')"
+        $initShell = @{ LayoutBrandInnerWidth = (Get-ToolkitShellStandardBrandInnerWidth) }
+        $listLayout = New-ShellListLayout
+        $resolvedLayout = Resolve-ShellListLayout -Shell $initShell -Layout $listLayout `
+            -NumWidth $numWidth -Mode Single
+        $columnLayout = Resolve-ShellListLayoutColumnLayout -Layout $resolvedLayout
+        $layoutKey = ($columnLayout.Widths -join ',')
         $rowsKey = Get-ShellListRowsCacheKey -Rows $rows
         $built = Build-ShellSingleSelectListRowCache -Rows $rows -ColumnLayout $columnLayout
         $payload = Export-ToolkitRowCacheBuilt -Built $built -Rows $rows
@@ -692,13 +702,13 @@ function Invoke-ToolkitInitBuild {
     $toolsState = [ordered]@{}
     foreach ($tool in $allTools) {
         Invoke-InitBuildUiPump
-        $hasDeps = Test-ToolHasExternalDeps $tool
+        $hasDeps = Get-ToolHasExternalDeps $tool
         if (-not $hasDeps) {
             $installed = $true
             $meets = $true
         }
         else {
-            $installed = Test-ToolDepInstalled $tool
+            $installed = Get-ToolDepInstalled $tool
             $probeCache = @{}
             $meets = $true
             foreach ($pkg in @(Get-ToolDependencyPackages -Tool $tool)) {

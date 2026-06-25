@@ -1,4 +1,4 @@
-﻿$ErrorActionPreference = 'Stop'
+$ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
 $lib = Join-Path $root 'package\core\lib'
 $bin = Join-Path $root 'package\bin'
@@ -29,7 +29,7 @@ if ($item.ShouldExecute) {
 }
 
 Complete-ToolkitDepUninstallRecord -Tool $tool -Runner $runner
-if (Test-ToolDepInstalled -Tool $tool) {
+if (Get-ToolDepInstalled -Tool $tool) {
     throw 'install record should be cleared after uninstall completes'
 }
 

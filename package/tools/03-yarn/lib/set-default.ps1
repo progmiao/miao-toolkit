@@ -69,19 +69,19 @@ function Invoke-YarnSetDefaultPage {
     $flashMessage = ''
 
     while ($true) {
-        $picked = Invoke-YarnInstalledVersionSingleSelectPage -Shell $Shell -ToolRoot $toolRoot `
+        $listResult = Invoke-YarnInstalledVersionSingleSelectPage -Shell $Shell -ToolRoot $toolRoot `
             -I18nPrefix 'yarn.default' -CacheKey 'YarnDefault' -InitialFlashMessage $flashMessage `
             -SectionTitle $yarnActionSectionTitle
         $flashMessage = ''
 
-        if (Test-ShellNavMarker $picked) {
-            return $picked
+        if ($nav = Get-ShellListSelectNavMarker $listResult) {
+            return $nav
         }
-        if ($null -eq $picked) {
+        if ($listResult.Action -ne 'Pick' -or @($listResult.Rows).Count -eq 0) {
             return (Get-ShellNavMarker -Action 'back')
         }
 
-        $ver = Resolve-YarnInstalledVersionFromPick -Picked $picked
+        $ver = Resolve-YarnInstalledVersionFromPick -Picked $listResult.Rows[0]
         if ([string]::IsNullOrWhiteSpace($ver)) {
             continue
         }

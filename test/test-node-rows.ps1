@@ -15,9 +15,11 @@ foreach ($row in $rows) {
     Write-Host ("Num=$($row.Number) Cells=[$($row.Cells -join '|')]")
 }
 
-$layout = New-ShellListColumnLayout -Preset MenuList
-Write-Host "Widths=$($layout.Widths -join ',')"
-$built = Build-ShellSingleSelectListRowCache -Rows $rows -ColumnLayout $layout
+$listLayout = New-ShellListLayout -Widths @(12, 18, 0)
+Write-Host "Widths=$($listLayout.Widths -join ',')"
+$columnLayout = Resolve-ShellListLayoutColumnLayout -Layout $listLayout
+$normalized = @(Normalize-ShellListRows -Rows $rows -Layout $listLayout)
+$built = Build-ShellSingleSelectListRowCache -Rows $normalized -ColumnLayout $columnLayout
 foreach ($part in $built.RowCache) {
     Write-Host "BodyPlain=[$($part.BodyPlain)] Segments=$($part.BodySegments.Count)"
 }

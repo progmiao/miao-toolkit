@@ -69,19 +69,19 @@ function Invoke-PnpmSetDefaultPage {
     $flashMessage = ''
 
     while ($true) {
-        $picked = Invoke-PnpmInstalledVersionSingleSelectPage -Shell $Shell -ToolRoot $toolRoot `
+        $listResult = Invoke-PnpmInstalledVersionSingleSelectPage -Shell $Shell -ToolRoot $toolRoot `
             -I18nPrefix 'pnpm.default' -CacheKey 'PnpmDefault' -InitialFlashMessage $flashMessage `
             -SectionTitle $PnpmActionSectionTitle
         $flashMessage = ''
 
-        if (Test-ShellNavMarker $picked) {
-            return $picked
+        if ($nav = Get-ShellListSelectNavMarker $listResult) {
+            return $nav
         }
-        if ($null -eq $picked) {
+        if ($listResult.Action -ne 'Pick' -or @($listResult.Rows).Count -eq 0) {
             return (Get-ShellNavMarker -Action 'back')
         }
 
-        $ver = Resolve-PnpmInstalledVersionFromPick -Picked $picked
+        $ver = Resolve-PnpmInstalledVersionFromPick -Picked $listResult.Rows[0]
         if ([string]::IsNullOrWhiteSpace($ver)) {
             continue
         }

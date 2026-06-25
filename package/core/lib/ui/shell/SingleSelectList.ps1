@@ -1,135 +1,4 @@
-﻿# 单选列表：ShellListRow + 列布局 + 行号/选中/翻页 + 列表导航底栏行
-
-function New-ShellListColumnLayout {
-    param(
-        [ValidateSet('', 'ToolList', 'MenuList')]
-        [string]$Preset = '',
-        [int[]]$Widths = @()
-    )
-
-    if ($Preset -eq 'ToolList' -or $Preset -eq 'MenuList') {
-        $cols = Get-ToolListColumnWidths
-        $Widths = @([int]$cols.command, [int]$cols.name, [int]$cols.description)
-    }
-
-    if ($Widths.Count -lt 1) {
-        throw 'New-ShellListColumnLayout requires -Preset or -Widths.'
-    }
-
-    return @{
-        Preset = $Preset
-        Widths = @($Widths)
-    }
-}
-
-function ConvertTo-ShellListRows {
-    param(
-        [array]$Items,
-        [Parameter(Mandatory)]
-        [scriptblock]$MapCells,
-        [scriptblock]$GetNumber = $null,
-        [scriptblock]$GetSearchKey = $null,
-        [scriptblock]$GetEnabled = $null,
-        [switch]$KeepSource
-    )
-
-    $rows = New-Object 'System.Collections.Generic.List[object]'
-    $index = 0
-    foreach ($item in $Items) {
-        $cells = @(& $MapCells $item $index)
-        if ($null -eq $cells) { $cells = @() }
-        $cells = @($cells | ForEach-Object { [string]$_ })
-
-        $number = $index + 1
-        if ($GetNumber) {
-            $number = [int](& $GetNumber $item $index)
-        }
-
-        $searchKey = ''
-        if ($GetSearchKey) {
-            $searchKey = [string](& $GetSearchKey $item $index)
-        }
-
-        $enabled = $true
-        if ($GetEnabled) {
-            $enabled = [bool](& $GetEnabled $item $index)
-        }
-
-        $row = [ordered]@{
-            Number    = $number
-            Cells     = $cells
-            Enabled   = $enabled
-            SearchKey = $searchKey
-        }
-        if ($KeepSource) {
-            $row['Source'] = $item
-        }
-
-        $rows.Add([pscustomobject]$row)
-        $index++
-    }
-
-    return @($rows.ToArray())
-}
-
-function Normalize-ShellListRows {
-    param(
-        [array]$Rows,
-        [hashtable]$ColumnLayout
-    )
-
-    $widthCount = $ColumnLayout.Widths.Count
-    $normalized = New-Object 'System.Collections.Generic.List[object]'
-    $index = 0
-
-    foreach ($row in $Rows) {
-        if ($null -eq $row.Cells) {
-            throw 'ShellListRow requires Cells.'
-        }
-        $cells = @($row.Cells | ForEach-Object { [string]$_ })
-        if ($cells.Count -ne $widthCount) {
-            throw "ShellListRow.Cells count ($($cells.Count)) does not match column layout ($widthCount)."
-        }
-
-        $number = $index + 1
-        if ($null -ne $row.Number -and [int]$row.Number -gt 0) {
-            $number = [int]$row.Number
-        }
-
-        $enabled = $true
-        if ($null -ne $row.PSObject.Properties['Enabled']) {
-            $enabled = [bool]$row.Enabled
-        }
-
-        $searchKey = ''
-        if ($null -ne $row.PSObject.Properties['SearchKey']) {
-            $searchKey = [string]$row.SearchKey
-        }
-
-        $normalizedRow = [pscustomobject]@{
-            Number    = $number
-            Cells     = $cells
-            Enabled   = $enabled
-            SearchKey = $searchKey
-            Source    = $row.Source
-        }
-        $normalized.Add($normalizedRow)
-        $index++
-    }
-
-    return @($normalized.ToArray())
-}
-
-function Get-ShellListRowsCacheKey {
-    param([array]$Rows)
-
-    if ($Rows.Count -eq 0) { return '' }
-    return (($Rows | ForEach-Object {
-        $src = if ($null -ne $_.Source) { Get-ShellListItemCommand $_.Source } else { '' }
-        $key = if ($null -ne $_.PSObject.Properties['SearchKey']) { [string]$_.SearchKey } else { '' }
-        "$($_.Number):${key}:$($_.Cells -join '|'):$($_.Enabled):$src"
-    }) -join ';')
-}
+﻿# 单选列表：行绘制与缓存（入口 Invoke-ToolkitShellList -Mode Single）
 
 function New-ShellListRowBodySegments {
     param(
@@ -171,12 +40,16 @@ function Build-ShellSingleSelectListRowCache {
         $enabledColor = if ($row.Enabled) { $lineColor } else { [System.ConsoleColor]::DarkGray }
         $bodySegments = New-ShellListRowBodySegments -FormattedCells $formatted -Gap $colGap -LineColor $enabledColor
 
+        $source = $null
+        if ($null -ne $row.PSObject.Properties['Payload']) { $source = $row.Payload }
+        elseif ($null -ne $row.PSObject.Properties['Source']) { $source = $row.Source }
+
         $rowCache[$i] = [pscustomobject]@{
             BodyPlain    = $bodyPlain
             BodySegments = $bodySegments
             LineColor    = $enabledColor
             Enabled      = [bool]$row.Enabled
-            Source       = $row.Source
+            Source       = $source
             Number       = [int]$row.Number
         }
     }
@@ -200,10 +73,10 @@ function Build-ShellSingleSelectListRowSpec {
 
     $num = Format-ListDisplayNumber -Number $DisplayNumber -NumWidth $NumWidth
     $mark = if ($Selected) { '>' } else { ' ' }
-    $lead = ' ' * (Get-ShellSingleSelectListLeadingSpaces)
-    $prefix = "$lead$mark $num$Gap"
+    $lineColor = $RowCacheEntry.LineColor
 
     if ($Selected) {
+        $prefix = " $mark $num$Gap"
         return @{
             Text       = $prefix + $RowCacheEntry.BodyPlain
             Foreground = [System.ConsoleColor]::Black
@@ -211,9 +84,17 @@ function Build-ShellSingleSelectListRowSpec {
         }
     }
 
+    # 与多选 checkSeg 一致：未选中不加前导空格，选中时 " $mark" 才插入 > 并右移内容
+    $markSeg = @{ Text = "$mark "; Color = $lineColor }
+    $keySeg = @{ Text = "$num$Gap"; Color = $lineColor }
+    $bodySegs = @()
+    if ($null -ne $RowCacheEntry.BodySegments) {
+        $bodySegs = @($RowCacheEntry.BodySegments)
+    }
+
     return @{
-        Segments          = @(@{ Text = $prefix; Color = $RowCacheEntry.LineColor }) + $(if ($null -ne $RowCacheEntry.BodySegments) { @($RowCacheEntry.BodySegments) } else { @() })
-        DefaultForeground = $RowCacheEntry.LineColor
+        Segments          = @($markSeg, $keySeg) + $bodySegs
+        DefaultForeground = $lineColor
     }
 }
 
@@ -357,91 +238,6 @@ function New-ShellSingleSelectListDrawHandlers {
     }
 }
 
-function Get-ShellListRowDisplayNumber {
-    param(
-        $Row,
-        [int]$Index
-    )
-
-    if ($null -eq $Row) { return $Index + 1 }
-    if ($null -ne $Row.PSObject.Properties['Number'] -and [int]$Row.Number -gt 0) {
-        return [int]$Row.Number
-    }
-    return $Index + 1
-}
-
-function Resolve-ShellListRowNumberIndex {
-    param(
-        [array]$Rows,
-        [int]$Number
-    )
-
-    if ($Number -lt 1) { return -1 }
-    for ($i = 0; $i -lt $Rows.Count; $i++) {
-        if ([int](Get-ShellListRowDisplayNumber -Row $Rows[$i] -Index $i) -eq $Number) {
-            return $i
-        }
-    }
-    return -1
-}
-
-function Get-ShellListRowSearchKey {
-    param(
-        $Row,
-        [int]$Index
-    )
-
-    if ($null -eq $Row) { return '' }
-    if ($null -ne $Row.PSObject.Properties['SearchKey'] -and -not [string]::IsNullOrEmpty([string]$Row.SearchKey)) {
-        return [string]$Row.SearchKey
-    }
-    return [string](Get-ShellListRowDisplayNumber -Row $Row -Index $Index)
-}
-
-function Normalize-ShellListSearchKeyDigits {
-    param([string]$Text)
-
-    if ([string]::IsNullOrEmpty($Text)) { return '' }
-    return ($Text -replace '\D', '')
-}
-
-function Test-ShellListSearchKeyPrefixMatch {
-    param(
-        [string]$SearchKey,
-        [string]$Buffer,
-        [switch]$DigitsOnly
-    )
-
-    if ([string]::IsNullOrEmpty($Buffer)) { return $true }
-
-    if ($DigitsOnly) {
-        if ($Buffer -notmatch '^[0-9]+$') { return $false }
-        return (Normalize-ShellListSearchKeyDigits $SearchKey).StartsWith($Buffer)
-    }
-
-    if ($Buffer -notmatch '^[0-9.]+$') { return $false }
-    return $SearchKey.StartsWith($Buffer)
-}
-
-function Resolve-ShellListRowSearchKeyPrefixIndex {
-    param(
-        [array]$Rows,
-        [string]$Prefix,
-        [scriptblock]$TestItemEnabled = $null,
-        [switch]$SearchKeyDigitsOnly
-    )
-
-    if ([string]::IsNullOrEmpty($Prefix)) { return -1 }
-    for ($i = 0; $i -lt $Rows.Count; $i++) {
-        if ($TestItemEnabled -and -not (& $TestItemEnabled $Rows[$i] $i)) { continue }
-        $key = Get-ShellListRowSearchKey -Row $Rows[$i] -Index $i
-        if (Test-ShellListSearchKeyPrefixMatch -SearchKey $key -Buffer $Prefix -DigitsOnly:$SearchKeyDigitsOnly) {
-            return $i
-        }
-    }
-    return -1
-}
-
 function Get-ShellSingleSelectListRowCache {
     param(
         [hashtable]$Shell,
@@ -499,161 +295,6 @@ function Get-ShellSingleSelectListRowCache {
     }
 
     return $built
-}
-
-function Resolve-ShellSingleSelectListPick {
-    param($Picked)
-
-    if (-not $Picked) { return $null }
-    if (Test-ShellNavMarker $Picked) { return $Picked }
-    if ($null -ne $Picked.Source) { return $Picked.Source }
-    return $Picked
-}
-
-function Test-ShellListRowEnabled {
-    param($Row, [int]$Index)
-
-    if ($null -eq $Row) { return $false }
-    if ($null -eq $Row.PSObject.Properties['Enabled']) { return $true }
-    return [bool]$Row.Enabled
-}
-
-function Invoke-ShellSingleSelectList {
-    param(
-        [Parameter(Mandatory)]
-        [hashtable]$Shell,
-        [Parameter(Mandatory)]
-        [string]$SectionTitle,
-        [Parameter(Mandatory)]
-        [AllowEmptyCollection()]
-        [array]$Rows,
-        [Parameter(Mandatory)]
-        [string]$CacheKey,
-        [Parameter(Mandatory)]
-        [hashtable]$ColumnLayout,
-        [Parameter(Mandatory)]
-        [hashtable]$ToolbarConfig,
-        [string]$CountLabel = '',
-        [switch]$SkipBodyInit,
-        [string]$InitialCatalogLine = '',
-        [string]$InitialFlashMessage = ''
-    )
-
-    if ([string]::IsNullOrWhiteSpace($CountLabel)) {
-        $CountLabel = Get-I18n -Key 'common.piece'
-    }
-
-    Sync-MiaoLocaleFromShell -Shell $Shell
-
-    $maxNumberPreview = 0
-    for ($i = 0; $i -lt $Rows.Count; $i++) {
-        $row = $Rows[$i]
-        $n = if ($null -ne $row.PSObject.Properties['Number'] -and [int]$row.Number -gt 0) {
-            [int]$row.Number
-        }
-        elseif ($null -ne $row.PSObject.Properties['Source'] -and $row.Source) {
-            [int](Get-ListItemDisplayNumberDefault -Item $row.Source -Index $i)
-        }
-        else {
-            $i + 1
-        }
-        if ($n -gt $maxNumberPreview) { $maxNumberPreview = $n }
-    }
-    if ($maxNumberPreview -lt $Rows.Count) { $maxNumberPreview = $Rows.Count }
-    if ($maxNumberPreview -lt 1) { $maxNumberPreview = 1 }
-    $numWidthPreview = Get-ListNumberDisplayWidth -MaxNumber $maxNumberPreview
-    if ($ColumnLayout.Preset -eq 'ToolList' -or $ColumnLayout.Preset -eq 'MenuList') {
-        $ColumnLayout = Resolve-ShellToolListColumnLayout -Shell $Shell -NumWidth $numWidthPreview `
-            -Preset $ColumnLayout.Preset
-    }
-
-    $normalized = @(Normalize-ShellListRows -Rows $Rows -ColumnLayout $ColumnLayout)
-
-    if (-not $SkipBodyInit) {
-        Set-ToolkitShellBodyCatalogLine -Shell $Shell -CatalogLine $InitialCatalogLine
-        Initialize-ToolkitShellBodyView -Shell $Shell `
-            -SectionTitle $SectionTitle `
-            -FooterTemplate ListWithToolbar
-    }
-    else {
-        Set-ToolkitShellBodyCatalogLine -Shell $Shell -CatalogLine $InitialCatalogLine
-        Render-ToolkitShellCatalogRow -Shell $Shell
-    }
-
-    $header = New-ToolkitMenuHeader -HideSectionTitle
-    $built = Get-ShellSingleSelectListRowCache -Shell $Shell -CacheKey $CacheKey `
-        -Rows $normalized -ColumnLayout $ColumnLayout
-    $rowCache = $built.RowCache
-    $gapField = "${CacheKey}ListColGap"
-    $colGap = if ($Shell[$gapField]) { $Shell[$gapField] } else { $built.ColGap }
-    $maxNumber = 0
-    for ($i = 0; $i -lt $normalized.Count; $i++) {
-        $n = [int](Get-ShellListRowDisplayNumber -Row $normalized[$i] -Index $i)
-        if ($n -gt $maxNumber) { $maxNumber = $n }
-    }
-    if ($maxNumber -lt 1) { $maxNumber = $normalized.Count }
-    $numWidth = Get-ListNumberDisplayWidth -MaxNumber $maxNumber
-    $contentMetrics = Get-ToolkitShellLayoutLineMetrics -Shell $Shell
-    $handlers = New-ShellSingleSelectListDrawHandlers -RowCache $rowCache -ColGap $colGap `
-        -LayoutLineWidth ([int]$contentMetrics.EndColumn) `
-        -LayoutStartColumn ([int]$contentMetrics.StartColumn)
-    if (-not $handlers['GetLabel'] -or -not $handlers['DrawListRow']) {
-        throw 'Invoke-ShellSingleSelectList: list draw handlers are not available.'
-    }
-
-    $getDisplayNumber = {
-        param($Row, [int]$Index)
-        if ($null -eq $Row) { return $Index + 1 }
-        if ($null -ne $Row.PSObject.Properties['Number'] -and [int]$Row.Number -gt 0) {
-            return [int]$Row.Number
-        }
-        return $Index + 1
-    }
-
-    $resolveMenuNumber = {
-        param([array]$Items, [int]$Number)
-        if ($Number -lt 1) { return -1 }
-        for ($i = 0; $i -lt $Items.Count; $i++) {
-            $row = $Items[$i]
-            $displayNumber = if ($null -ne $row.PSObject.Properties['Number'] -and [int]$row.Number -gt 0) {
-                [int]$row.Number
-            }
-            else {
-                $i + 1
-            }
-            if ($displayNumber -eq $Number) { return $i }
-        }
-        return -1
-    }
-
-    $testRowEnabled = {
-        param($Row, [int]$Index)
-        if ($null -eq $Row) { return $false }
-        if ($null -eq $Row.PSObject.Properties['Enabled']) { return $true }
-        return [bool]$Row.Enabled
-    }
-
-    $letterKeys = if ($ToolbarConfig.LetterKeys) { $ToolbarConfig.LetterKeys } else { @{} }
-
-    $picked = Show-PaginatedMenu -Header $header -Items $normalized -CountLabel $CountLabel `
-        -GetItemLabel $handlers['GetLabel'] `
-        -TestItemEnabled $testRowEnabled `
-        -HideColHeader -FooterLayout Split `
-        -GetItemDisplayNumber $getDisplayNumber `
-        -ResolveMenuNumber $resolveMenuNumber `
-        -NumberDisplayWidth $numWidth `
-        -DrawListRow $handlers['DrawListRow'] `
-        -GetListRowSpec $handlers['GetListRowSpec'] `
-        -MenuSplitActionSegments @($ToolbarConfig.Segments) `
-        -LetterKeys $letterKeys `
-        -ToolkitShell $Shell `
-        -AllowBack:($ToolbarConfig.AllowBack) `
-        -CompactNavStatus `
-        -AllowSpaceConfirm `
-        -InitialCatalogLine $InitialCatalogLine `
-        -InitialFlashMessage $InitialFlashMessage
-
-    return Resolve-ShellSingleSelectListPick -Picked $picked
 }
 
 function Clear-ShellSingleSelectListCache {

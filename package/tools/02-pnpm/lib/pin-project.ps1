@@ -106,7 +106,7 @@ function Invoke-PnpmPinProjectPage {
         if ($usePreparedList) {
             $voltaInfo = $preparedList.VoltaInfo
             $rows = $preparedList.Rows
-            $columnLayout = $preparedList.ColumnLayout
+            $listLayout = $preparedList.ListLayout
             $sorted = $preparedList.Sorted
             $usePreparedList = $false
         }
@@ -119,8 +119,8 @@ function Invoke-PnpmPinProjectPage {
             $rows = Build-PnpmPinRows -Items $sorted -InstalledMap $voltaInfo.Map `
                 -DefaultVersion $voltaInfo.Default -ActiveVersion (Get-ActivePnpmVersion) `
                 -PinnedVersion $pinContext.PinnedVersion
-            $columnLayout = New-ShellListColumnLayout -Widths @($widths.Version, $widths.Tags)
-            Clear-ShellSingleSelectListCache -Shell $Shell -CacheKey 'PnpmPin'
+            $listLayout = New-ShellListLayout -Widths @($widths.Version, $widths.Tags)
+            Clear-ShellListCache -Shell $Shell -CacheKey 'PnpmPin'
         }
 
         if ($sorted.Count -eq 0) {
@@ -141,17 +141,18 @@ function Invoke-PnpmPinProjectPage {
             -VoltaInfo $voltaInfo
         $messageLine = if ([string]::IsNullOrWhiteSpace($flashMessage)) { $statusMessage } else { $flashMessage }
 
-        $picked = Invoke-PnpmPinVersionSingleSelectPage -Shell $Shell -ToolRoot $toolRoot `
-            -Rows $rows -ColumnLayout $columnLayout -InitialCatalogLine $catalogLine `
+        $listResult = Invoke-PnpmPinVersionSingleSelectPage -Shell $Shell -ToolRoot $toolRoot `
+            -Rows $rows -ListLayout $listLayout -InitialCatalogLine $catalogLine `
             -InitialFlashMessage $messageLine -SectionTitle $PnpmActionSectionTitle
         $flashMessage = ''
 
-        if (Test-ShellNavMarker $picked) {
-            return $picked
+        if ($nav = Get-ShellListSelectNavMarker $listResult) {
+            return $nav
         }
-        if ($null -eq $picked) {
+        if ($listResult.Action -ne 'Pick' -or @($listResult.Rows).Count -eq 0) {
             return (Get-ShellNavMarker -Action 'back')
         }
+        $picked = $listResult.Rows[0]
 
         $ver = Resolve-PnpmInstalledVersionFromPick -Picked $picked
         if ([string]::IsNullOrWhiteSpace($ver)) {

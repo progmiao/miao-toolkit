@@ -66,28 +66,59 @@ function Start-ToolkitShellSession {
                     }
 
                     $menuTools = Get-ToolkitMenuTools -RealTools $Tools
-                    $picked = Invoke-HomePage -Tools $menuTools -Shell $shell
+                    $homeResult = Invoke-HomePage -Tools $menuTools -Shell $shell
 
-                    if (Test-ShellNavMarker $picked 'quit') {
-                        $sessionExitCode = Invoke-MiaoShellQuit
-                        $quitSession = $true
-                        break
+                    if (Test-ShellListSelectResult $homeResult) {
+                        $homeNav = Get-ShellListSelectNavMarker $homeResult
+                        if ($homeNav) {
+                            if (Test-ShellNavMarker $homeNav 'quit') {
+                                $sessionExitCode = Invoke-MiaoShellQuit
+                                $quitSession = $true
+                                break
+                            }
+                            if (Test-ShellNavMarker $homeNav 'sys') {
+                                $shell.Layout['BodyDirty'] = $true
+                                $viewStack.Add('Sys')
+                                continue
+                            }
+                            if (Test-ShellNavMarker $homeNav 'help') {
+                                $shell.Layout['BodyDirty'] = $true
+                                $viewStack.Add('Help')
+                                continue
+                            }
+                            continue
+                        }
+                        if ($homeResult.Action -ne 'Pick' -or @($homeResult.Payloads).Count -eq 0) {
+                            $sessionExitCode = Invoke-MiaoShellQuit
+                            $quitSession = $true
+                            break
+                        }
+                        $picked = $homeResult.Payloads[0]
                     }
-                    if ($null -eq $picked) {
-                        $sessionExitCode = Invoke-MiaoShellQuit
-                        $quitSession = $true
-                        break
+                    else {
+                        $picked = $homeResult
+                        if (Test-ShellNavMarker $picked 'quit') {
+                            $sessionExitCode = Invoke-MiaoShellQuit
+                            $quitSession = $true
+                            break
+                        }
+                        if ($null -eq $picked) {
+                            $sessionExitCode = Invoke-MiaoShellQuit
+                            $quitSession = $true
+                            break
+                        }
+                        if (Test-ShellNavMarker $picked 'sys') {
+                            $shell.Layout['BodyDirty'] = $true
+                            $viewStack.Add('Sys')
+                            continue
+                        }
+                        if (Test-ShellNavMarker $picked 'help') {
+                            $shell.Layout['BodyDirty'] = $true
+                            $viewStack.Add('Help')
+                            continue
+                        }
                     }
-                    if (Test-ShellNavMarker $picked 'sys') {
-                        $shell.Layout['BodyDirty'] = $true
-                        $viewStack.Add('Sys')
-                        continue
-                    }
-                    if (Test-ShellNavMarker $picked 'help') {
-                        $shell.Layout['BodyDirty'] = $true
-                        $viewStack.Add('Help')
-                        continue
-                    }
+
                     if (Test-IsMockTool $picked) {
                         Write-FixedLine $shell.Layout.ListStartRow `
                             " $(Get-I18n -Key 'message.mockToolNoEntry')" -Color DarkGray

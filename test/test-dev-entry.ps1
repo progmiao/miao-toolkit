@@ -24,7 +24,10 @@ $menuTools = Get-ToolkitMenuTools -RealTools $tools
 $rows = Get-HomeToolListRows -Tools $menuTools
 if ($rows.Count -lt 1) { throw 'home rows empty' }
 
-$built = Build-ShellSingleSelectListRowCache -Rows $rows -ColumnLayout (New-ShellListColumnLayout -Preset ToolList)
+$listLayout = New-ShellListLayout
+$columnLayout = Resolve-ShellListLayoutColumnLayout -Layout $listLayout
+$normalized = @(Normalize-ShellListRows -Rows $rows -Layout $listLayout)
+$built = Build-ShellSingleSelectListRowCache -Rows $normalized -ColumnLayout $columnLayout
 $handlers = New-ShellSingleSelectListDrawHandlers -RowCache $built.RowCache -ColGap $built.ColGap
 & $handlers['GetLabel'] $rows[0] 0 | Out-Null
 

@@ -40,24 +40,31 @@ if ($items.Count -eq 0) {
 }
 
 $null = Ensure-ToolkitShellLayoutBrandInnerWidth -Shell $shell
-$rows = Build-ClaudePluginRows -Items $items -ToolRoot $toolRoot
-$toolbar = New-ShellSystemToolbarConfig
-$picked = Invoke-ShellMultiSelectList -Shell $shell -SectionTitle $sectionTitle `
-    -Rows $rows -CacheKey 'ClaudeCodeAddMarketplace' `
-    -ColumnLayout (New-ShellListColumnLayout -Preset ToolList) `
-    -ToolbarConfig $toolbar `
-    -CountLabel (Get-ClaudeCodeI18n -ToolRoot $toolRoot -Key 'claude-code.marketplace.countUnit')
+$rows = @($items | ForEach-Object {
+    New-ShellListRow -Id ([string]$_.PluginId) -Cells @(
+        [string]$_.PluginId
+        [string]$_.Description
+    ) -Payload $_ -Enabled $true
+})
+$layout = New-ShellListLayout -Widths @(36, 0)
+$listResult = Invoke-ToolkitShellList @{
+    Mode         = 'Multi'
+    Shell        = $shell
+    SectionTitle = $sectionTitle
+    Rows         = $rows
+    CacheKey     = 'ClaudeCodeAddMarketplace'
+    Layout       = $layout
+    Toolbar      = (New-ShellSystemToolbarConfig)
+    CountLabel   = (Get-ClaudeCodeI18n -ToolRoot $toolRoot -Key 'claude-code.marketplace.countUnit')
+}
 
-if ($null -eq $picked -or @($picked).Count -eq 0) {
+$nav = Get-ShellListSelectNavMarker $listResult
+if ($nav) { return $nav }
+if ($listResult.Action -ne 'Pick' -or @($listResult.Ids).Count -eq 0) {
     return (Get-ShellNavMarker -Action 'back')
 }
 
-$sources = @($picked | ForEach-Object {
-    if ($_.Source -and $_.Source.Source) { [string]$_.Source.Source }
-    elseif ($_.Source -and $_.Source.PluginId) { [string]$_.Source.PluginId }
-    elseif ($_.PluginId) { [string]$_.PluginId }
-    else { [string]$_.SearchKey }
-} | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+$sources = @($listResult.Ids | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
 
 return Invoke-ClaudeCodeBatchOperation -Shell $shell -SectionTitle $sectionTitle `
     -ReadyStatusText (Get-ClaudeCodeI18n -ToolRoot $toolRoot -Key 'claude-code.marketplace.statusReady') `

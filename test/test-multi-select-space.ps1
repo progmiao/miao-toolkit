@@ -17,20 +17,20 @@ $child = {
     . (Join-Path $CoreLib 'ui\shell\Footer.ps1')
     . (Join-Path $CoreLib 'ui\shell\Layout.ps1')
 
-    $rows = ConvertTo-ShellListRows -Items @(
-        [pscustomobject]@{ Version = '22.0.0' }
-        [pscustomobject]@{ Version = '20.0.0' }
-    ) -KeepSource -MapCells {
-        param($Item, [int]$Index)
-        @([string]$Item.Version)
-    } -GetEnabled {
-        param($Item, [int]$Index)
-        $Index -eq 0
-    }
+    . (Join-Path $CoreLib 'ui\shell\ShellListModel.ps1')
+    . (Join-Path $CoreLib 'ui\shell\ShellListLayout.ps1')
 
-    $layout = New-ShellListColumnLayout -Widths @(20)
-    $normalized = @(Normalize-ShellListRows -Rows $rows -ColumnLayout $layout)
-    $built = Build-ShellMultiSelectListRowCache -Rows $normalized -ColumnLayout $layout
+    $rows = @(
+        (New-ShellListRow -Id '22.0.0' -Cells @('22.0.0') `
+            -Payload ([pscustomobject]@{ Version = '22.0.0' }) -SearchKey '22.0.0' -Enabled $true)
+        (New-ShellListRow -Id '20.0.0' -Cells @('20.0.0') `
+            -Payload ([pscustomobject]@{ Version = '20.0.0' }) -SearchKey '20.0.0' -Enabled $false)
+    )
+
+    $listLayout = New-ShellListLayout -Widths @(20)
+    $columnLayout = Resolve-ShellListLayoutColumnLayout -Layout $listLayout
+    $normalized = @(Normalize-ShellListRows -Rows $rows -Layout $listLayout)
+    $built = Build-ShellMultiSelectListRowCache -Rows $normalized -ColumnLayout $columnLayout
 
     $shell = Initialize-ToolkitShell
     $checked = Get-ShellMultiSelectCheckedSet -Shell $shell -CacheKey 'Test'

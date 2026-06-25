@@ -127,7 +127,7 @@ package/tools/<sortOrder>-<command>/   # 例：01-node、02-pnpm；前缀仅表�
 | 未安装 | 仅 `install`（安装） |
 | 已安装 | 业务 `actions` →（后台探测到可更新时）`update` → `uninstall` |
 
-- **是否已装**：只读 `%APPDATA%\Miao\deps-state.json`（`Test-ToolDepInstalled`），进入工具时不查 winget。
+- **是否已装**：只读 `%APPDATA%\Miao\deps-state.json`（`Get-ToolDepInstalled`），进入工具时不查 winget。
 - **是否可更新**：`Start-ToolDependencyUpgradeProbe` 后台 Job 调用 `Test-ToolDependencyNeedsUpgrade`，**不阻塞**首屏菜单；探测完成后下一轮菜单刷新时追加 `update`。
 - **列表命令列**：`install` / `update` / `uninstall`（与 `miao install|update|uninstall <tool>` 一致；与业务子命令 `miao node install` 等同名但 `_kind` 不同）。
 - **执行**：菜单 `install` / `update` → `Invoke-ToolInstall` → `install.ps1`；`uninstall` → `uninstall.ps1`。

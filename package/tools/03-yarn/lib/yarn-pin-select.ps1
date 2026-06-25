@@ -62,21 +62,15 @@ function Build-YarnPinRows {
         [string]$PinnedVersion
     )
 
-    return ConvertTo-ShellListRows -Items $Items -KeepSource -GetSearchKey {
-        param($Item, [int]$Index)
-        [string]$Item.Version
-    } -MapCells {
-        param($Item, [int]$Index)
-        @(
-            [string]$Item.Version
-            (Get-YarnPinTagsLabel -Item $Item -InstalledMap $InstalledMap `
+    return @($Items | ForEach-Object {
+        $item = $_
+        New-ShellListRow -Id ([string]$item.Version) -Cells @(
+            [string]$item.Version
+            (Get-YarnPinTagsLabel -Item $item -InstalledMap $InstalledMap `
                 -DefaultVersion $DefaultVersion -ActiveVersion $ActiveVersion `
                 -PinnedVersion $PinnedVersion)
-        )
-    } -GetEnabled {
-        param($Item, [int]$Index)
-        $true
-    }
+        ) -Payload $item -SearchKey ([string]$item.Version) -Enabled $true
+    })
 }
 
 function Format-YarnPinCatalogLineMessage {
@@ -165,10 +159,11 @@ function Prepare-YarnPinListContent {
     $rows = Build-YarnPinRows -Items $sorted -InstalledMap $voltaInfo.Map `
         -DefaultVersion $voltaInfo.Default -ActiveVersion $activeVersion `
         -PinnedVersion $PinnedVersion
-    $columnLayout = New-ShellListColumnLayout -Widths @($widths.Version, $widths.Tags)
+    $listLayout = New-ShellListLayout -Widths @($widths.Version, $widths.Tags)
 
-    Clear-ShellSingleSelectListCache -Shell $Shell -CacheKey 'YarnPin'
-    $normalized = @(Normalize-ShellListRows -Rows $rows -ColumnLayout $columnLayout)
+    Clear-ShellListCache -Shell $Shell -CacheKey 'YarnPin'
+    $normalized = @(Normalize-ShellListRows -Rows $rows -Layout $listLayout)
+    $columnLayout = Resolve-ShellListLayoutColumnLayout -Layout $listLayout
     $null = Get-ShellSingleSelectListRowCache -Shell $Shell -CacheKey 'YarnPin' `
         -Rows $normalized -ColumnLayout $columnLayout
 
@@ -178,7 +173,7 @@ function Prepare-YarnPinListContent {
         VoltaInfo     = $voltaInfo
         ActiveVersion = $activeVersion
         Sorted        = $sorted
-        ColumnLayout  = $columnLayout
+        ListLayout    = $listLayout
     }
 }
 
@@ -187,28 +182,32 @@ function Invoke-YarnPinVersionSingleSelectPage {
         [hashtable]$Shell,
         [string]$ToolRoot,
         [array]$Rows,
-        [hashtable]$ColumnLayout,
+        [hashtable]$ListLayout,
         [string]$InitialCatalogLine = '',
         [string]$InitialFlashMessage = '',
         [Parameter(Mandatory)]
         [string]$SectionTitle
     )
 
-    $toolbar = New-ShellSystemToolbarConfig
-    $invokeSingleSelect = Get-Command Invoke-ShellSingleSelectList -CommandType Function -ErrorAction Stop
-    return & $invokeSingleSelect -Shell $Shell -SectionTitle $sectionTitle `
-        -Rows $Rows -CacheKey 'YarnPin' `
-        -ColumnLayout $ColumnLayout `
-        -ToolbarConfig $toolbar `
-        -CountLabel (Get-YarnPinI18n -ToolRoot $ToolRoot -Key 'yarn.pin.countUnit') `
-        -InitialCatalogLine $InitialCatalogLine `
-        -InitialFlashMessage $InitialFlashMessage
+    return Invoke-ToolkitShellList @{
+        Mode                 = 'Single'
+        Shell                = $Shell
+        SectionTitle         = $SectionTitle
+        Rows                 = $Rows
+        CacheKey             = 'YarnPin'
+        Layout               = $ListLayout
+        Toolbar              = (New-ShellSystemToolbarConfig)
+        CountLabel           = (Get-YarnPinI18n -ToolRoot $ToolRoot -Key 'yarn.pin.countUnit')
+        InitialCatalogLine   = $InitialCatalogLine
+        InitialFlashMessage  = $InitialFlashMessage
+    }
 }
 
 function Resolve-YarnPinPickSourceItem {
     param($Picked)
 
     if ($null -eq $Picked) { return $null }
+    if ($null -ne $Picked.Payload) { return $Picked.Payload }
     if ($null -ne $Picked.Source) { return $Picked.Source }
     return $Picked
 }

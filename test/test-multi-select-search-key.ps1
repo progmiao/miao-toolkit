@@ -4,6 +4,8 @@ $lib = Join-Path (Split-Path $PSScriptRoot -Parent) 'package\core\lib'
 . (Join-Path $lib 'config\ListLayout.ps1')
 . (Join-Path $lib 'config\I18n.ps1')
 . (Join-Path $lib 'ui\console\Console-Menu.ps1')
+. (Join-Path $lib 'ui\shell\ShellListModel.ps1')
+. (Join-Path $lib 'ui\shell\ShellListLayout.ps1')
 . (Join-Path $lib 'ui\shell\SingleSelectList.ps1')
 . (Join-Path $lib 'ui\shell\MultiSelectList.ps1')
 
@@ -11,35 +13,25 @@ if (8 -ne (Get-ShellMultiSelectSearchKeyWidth)) {
     throw 'SearchKey width should be 8'
 }
 
-$rows = ConvertTo-ShellListRows -Items @(
-    [pscustomobject]@{ Version = '22.14.0' }
-    [pscustomobject]@{ Version = '20.19.4' }
-    [pscustomobject]@{ Version = '22.2.9' }
-) -KeepSource -GetSearchKey {
-    param($Item, [int]$Index)
-    [string]$Item.Version
-} -MapCells {
-    param($Item, [int]$Index)
-    @('[LTS]')
-} -GetEnabled {
-    param($Item, [int]$Index)
-    $true
-}
+$rows = @(
+    (New-ShellListRow -Id '22.14.0' -Cells @('[LTS]') `
+        -Payload ([pscustomobject]@{ Version = '22.14.0' }) -SearchKey '22.14.0' -Enabled $true)
+    (New-ShellListRow -Id '20.19.4' -Cells @('[LTS]') `
+        -Payload ([pscustomobject]@{ Version = '20.19.4' }) -SearchKey '20.19.4' -Enabled $true)
+    (New-ShellListRow -Id '22.2.9' -Cells @('[LTS]') `
+        -Payload ([pscustomobject]@{ Version = '22.2.9' }) -SearchKey '22.2.9' -Enabled $true)
+)
 
 if ('22.14.0' -ne $rows[0].SearchKey) {
     throw 'row SearchKey should be version string'
 }
 
-$emptyTagRows = ConvertTo-ShellListRows -Items @(
-    [pscustomobject]@{ Version = '18.0.0' }
-) -KeepSource -GetSearchKey {
-    param($Item, [int]$Index)
-    [string]$Item.Version
-} -MapCells {
-    param($Item, [int]$Index)
-    @('')
-}
-$normalizedEmpty = @(Normalize-ShellListRows -Rows $emptyTagRows -ColumnLayout (New-ShellListColumnLayout -Widths @(20)))
+$emptyTagRows = @(
+    New-ShellListRow -Id '18.0.0' -Cells @('') `
+        -Payload ([pscustomobject]@{ Version = '18.0.0' }) -SearchKey '18.0.0' -Enabled $true
+)
+$emptyLayout = New-ShellListLayout -Widths @(20)
+$normalizedEmpty = @(Normalize-ShellListRows -Rows $emptyTagRows -Layout $emptyLayout)
 if ($normalizedEmpty.Count -ne 1 -or $normalizedEmpty[0].Cells.Count -ne 1) {
     throw 'rows with empty tag cell should normalize'
 }
@@ -80,8 +72,10 @@ if (Test-MenuSearchBufferPrefix -Items $rows -Buffer '21' -GetItemSearchKey {
     throw 'prefix 21 should not match any version'
 }
 
-$layout = New-ShellListColumnLayout -Widths @(24)
-$built = Build-ShellMultiSelectListRowCache -Rows $rows -ColumnLayout $layout
+$listLayout = New-ShellListLayout -Widths @(24)
+$columnLayout = Resolve-ShellListLayoutColumnLayout -Layout $listLayout
+$normalized = @(Normalize-ShellListRows -Rows $rows -Layout $listLayout)
+$built = Build-ShellMultiSelectListRowCache -Rows $normalized -ColumnLayout $columnLayout
 if (-not $built.RowCache[0].SearchKey) {
     throw 'multi list row cache should carry SearchKey'
 }

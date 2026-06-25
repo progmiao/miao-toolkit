@@ -22,8 +22,8 @@ if ($actions.Count -ne 10) { throw "expected 10 actions, got $($actions.Count)" 
 if ($actions[0].command -ne 'install') { throw 'first action must be install' }
 if ($actions[1].command -ne 'init') { throw 'second action must be init' }
 $expectedCommands = @(
-    'install', 'init', 'config-api', 'config-proxy', 'plugin',
-    'inst-plug', 'upd-plug', 'uninst-plug', 'update', 'uninstall'
+    'install', 'init', 'plugin', 'inst-plug', 'upd-plug', 'uninst-plug',
+    'config-api', 'config-proxy', 'update', 'uninstall'
 )
 for ($i = 0; $i -lt $expectedCommands.Count; $i++) {
     if ([string]$actions[$i].command -ne $expectedCommands[$i]) {
@@ -42,6 +42,16 @@ if ((Compare-ClaudeSemVersion -Left '1.0.0' -Right '1.0.0') -ne 0) { throw 'Comp
 $split = Split-ClaudePluginId -PluginId 'superpowers@claude-plugins-official'
 if ($split.Name -ne 'superpowers' -or $split.Marketplace -ne 'claude-plugins-official') {
     throw 'Split-ClaudePluginId failed'
+}
+
+$marketItems = @(Get-ClaudeCodePresetMarketplaces | ForEach-Object {
+    New-ClaudePluginMenuItem -PluginId ([string]$_.Source) -Description ([string]$_.Description) `
+        -Enabled $true -Source $_
+})
+$marketRows = Build-ClaudePluginRows -Items $marketItems -ToolRoot $toolRoot
+if ($marketRows.Count -lt 1) { throw 'marketplace rows empty' }
+if (@($marketRows[0].Cells).Count -ne 3) {
+    throw "marketplace row expected 3 cells, got $(@($marketRows[0].Cells).Count)"
 }
 
 function Test-ParseClaudeVersionLine {

@@ -27,29 +27,31 @@ $modeItems = @(
     [pscustomobject]@{ Mode = 'clear'; LabelKey = 'claude-code.api.modeClear' }
 )
 
-$rows = ConvertTo-ShellListRows -Items $modeItems -KeepSource -GetSearchKey {
-    param($Item, [int]$Index)
-    Get-ClaudeCodeI18n -ToolRoot $toolRoot -Key ([string]$Item.LabelKey)
-} -MapCells {
-    param($Item, [int]$Index)
-    @(
-        (Get-ClaudeCodeI18n -ToolRoot $toolRoot -Key ([string]$Item.LabelKey))
-        ''
-    )
-} -GetEnabled { param($Item, [int]$Index) $true }
+$rows = @($modeItems | ForEach-Object {
+    $item = $_
+    $label = Get-ClaudeCodeI18n -ToolRoot $toolRoot -Key ([string]$item.LabelKey)
+    New-ShellListRow -Id ([string]$item.Mode) -Cells @($label, '') -Payload $item -SearchKey $label -Enabled $true
+})
 
-Clear-ShellSingleSelectListCache -Shell $shell -CacheKey 'ClaudeCodeConfigureApi'
-$toolbar = New-ShellSystemToolbarConfig
-$picked = Invoke-ShellSingleSelectList -Shell $shell -SectionTitle $sectionTitle `
-    -Rows $rows -CacheKey 'ClaudeCodeConfigureApi' `
-    -ColumnLayout (New-ShellListColumnLayout -Preset ToolList) `
-    -ToolbarConfig $toolbar
-
-if ($null -eq $picked) {
-    return (Get-ShellNavMarker -Action 'back')
+Clear-ShellListCache -Shell $shell -CacheKey 'ClaudeCodeConfigureApi'
+$listResult = Invoke-ToolkitShellList @{
+    Mode         = 'Single'
+    Shell        = $shell
+    SectionTitle = $sectionTitle
+    Rows         = $rows
+    CacheKey     = 'ClaudeCodeConfigureApi'
+    Toolbar      = (New-ShellSystemToolbarConfig)
 }
 
-$mode = if ($picked.Source) { [string]$picked.Source.Mode } else { [string]$picked.Mode }
+if ($nav = Get-ShellListSelectNavMarker $listResult) {
+    return $nav
+}
+if ($listResult.Action -ne 'Pick' -or @($listResult.Payloads).Count -eq 0) {
+    return (Get-ShellNavMarker -Action 'back')
+}
+$picked = $listResult.Payloads[0]
+
+$mode = [string]$picked.Mode
 if ([string]::IsNullOrWhiteSpace($mode)) {
     return (Get-ShellNavMarker -Action 'back')
 }

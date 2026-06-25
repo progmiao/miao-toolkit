@@ -325,25 +325,30 @@ function Build-ClaudePluginRows {
         [scriptblock]$GetTagsLabel = $null
     )
 
-    return ConvertTo-ShellListRows -Items $Items -KeepSource -GetSearchKey {
-        param($Item, [int]$Index)
-        [string]$Item.PluginId
-    } -MapCells {
-        param($Item, [int]$Index)
+    return @($Items | ForEach-Object {
+        $item = $_
         $tags = if ($GetTagsLabel) {
-            & $GetTagsLabel $Item
+            & $GetTagsLabel $item
         }
         else {
-            [string]$Item.Tags
+            [string]$item.Tags
         }
-        @(
-            [string]$Item.PluginId
-            $tags
-        )
-    } -GetEnabled {
-        param($Item, [int]$Index)
-        [bool]$Item.Enabled
-    }
+
+        $description = [string]$item.Description
+        if ([string]::IsNullOrWhiteSpace($description)) {
+            $description = $tags
+        }
+        elseif (-not [string]::IsNullOrWhiteSpace($tags)) {
+            $description = "$description  $tags"
+        }
+
+        $command = if ($item.Version) { [string]$item.Version } else { '' }
+        New-ShellListRow -Id ([string]$item.PluginId) -Cells @(
+            [string]$command
+            [string]$item.PluginId
+            [string]$description
+        ) -Payload $item -SearchKey ([string]$item.PluginId) -Enabled ([bool]$item.Enabled)
+    })
 }
 
 function Resolve-ClaudePluginPick {

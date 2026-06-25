@@ -1,4 +1,4 @@
-﻿function Get-DependencyVersionPolicy {
+function Get-DependencyVersionPolicy {
     param($Dependency)
 
     if ($Dependency.version) {
@@ -20,8 +20,8 @@ function Test-DependencyVersionPolicyIsLatest {
 function Test-ToolDependencyNeedsUpgrade {
     param($Tool)
 
-    if (-not (Test-ToolHasExternalDeps $Tool)) { return $false }
-    if (-not (Test-ToolDepInstalled $Tool)) { return $false }
+    if (-not (Get-ToolHasExternalDeps $Tool)) { return $false }
+    if (-not (Get-ToolDepInstalled $Tool)) { return $false }
 
     $probeCache = @{}
     foreach ($dep in @(Get-ToolDependencyPackages -Tool $Tool)) {
@@ -35,8 +35,8 @@ function Test-ToolDependencyNeedsUpgrade {
 function Test-ToolDependencyNeedsImmediateLocalAttention {
     param($Tool)
 
-    if (-not (Test-ToolHasExternalDeps $Tool)) { return $false }
-    if (-not (Test-ToolDepInstalled $Tool)) { return $false }
+    if (-not (Get-ToolHasExternalDeps $Tool)) { return $false }
+    if (-not (Get-ToolDepInstalled $Tool)) { return $false }
 
     foreach ($dep in @(Get-ToolDependencyPackages -Tool $Tool)) {
         $depId = Get-DependencyRecordId -Dependency $dep
@@ -62,8 +62,8 @@ function Test-ToolDependencyNeedsImmediateLocalAttention {
 function Test-ToolDependencyNeedsLocalAttention {
     param($Tool)
 
-    if (-not (Test-ToolHasExternalDeps $Tool)) { return $false }
-    if (-not (Test-ToolDepInstalled $Tool)) { return $false }
+    if (-not (Get-ToolHasExternalDeps $Tool)) { return $false }
+    if (-not (Get-ToolDepInstalled $Tool)) { return $false }
     if (Test-ToolDependencyNeedsImmediateLocalAttention -Tool $Tool) { return $true }
 
     $probeCache = @{}
@@ -81,7 +81,7 @@ function Test-ToolDependencyNeedsLocalAttention {
 function Test-ToolDependencyShouldShowUpdateMenu {
     param($Tool)
 
-    if (-not (Test-ToolDepInstalled $Tool)) { return $false }
+    if (-not (Get-ToolDepInstalled $Tool)) { return $false }
     if (Test-ToolDependencyNeedsLocalAttention -Tool $Tool) { return $true }
     return (Test-ToolDependencyNeedsUpgrade -Tool $Tool)
 }
@@ -118,7 +118,7 @@ function Get-ToolsWithExternalDeps {
         [string[]]$ToolIds = @()
     )
 
-    $filtered = @($Tools | Where-Object { Test-ToolHasExternalDeps $_ })
+    $filtered = @($Tools | Where-Object { Get-ToolHasExternalDeps $_ })
     if ($ToolIds.Count -eq 0) {
         return @($filtered | Sort-Object { [int]$_.no })
     }
@@ -142,7 +142,7 @@ function Invoke-ToolUninstall {
         [string]$SectionTitle = ''
     )
 
-    if (-not (Test-ToolHasExternalDeps $Tool)) {
+    if (-not (Get-ToolHasExternalDeps $Tool)) {
         if (-not $Shell) {
             Write-Host (Get-I18n -Key 'page.install.noExternalDeps' -Vars @{ toolId = $Tool.id }) -ForegroundColor DarkGray
         }
@@ -198,7 +198,7 @@ function Start-ToolkitToolDepSession {
         return 1
     }
 
-    if (-not (Test-ToolHasExternalDeps $tool)) {
+    if (-not (Get-ToolHasExternalDeps $tool)) {
         Write-Host (Get-I18n -Key 'page.install.noExternalDeps' -Vars @{ toolId = $tool.id }) -ForegroundColor DarkGray
         return 1
     }
@@ -256,7 +256,7 @@ function Invoke-ToolkitUninstallDeps {
     return (Start-ToolboxDepUninstallSession -Tools $Tools -SelectAll:$resolved.SelectAll)
 }
 
-function Test-ToolDependencyMenuAction {
+function Get-ToolDependencyMenuAction {
     param($Action)
 
     return ($Action -and $Action._kind -eq 'toolDeps')
@@ -271,12 +271,15 @@ function Get-ToolDependencyProbeKey {
 function Start-ToolDependencyUpgradeProbe {
     param(
         $Tool,
-        [hashtable]$Shell
+        [hashtable]$Shell,
+        $DepInstalled = $null
     )
 
     if (-not $Shell) { return }
-    if (-not (Test-ToolHasExternalDeps $Tool)) { return }
-    if (-not (Test-ToolDepInstalled $Tool)) { return }
+    if (-not (Get-ToolHasExternalDeps $Tool)) { return }
+
+    $installed = if ($null -ne $DepInstalled) { [bool]$DepInstalled } else { Get-ToolDepInstalledRecord -Tool $Tool }
+    if (-not $installed) { return }
 
     $key = Get-ToolDependencyProbeKey -ToolId ([string]$Tool.id)
     if ($Shell.ContainsKey($key)) { return }
@@ -390,18 +393,21 @@ function Update-ToolDependencyMenuProbe {
     param(
         $Tool,
         [hashtable]$Shell,
-        [ref]$UpdateMenuAvailable
+        [ref]$UpdateMenuAvailable,
+        [switch]$AllowProbeSync,
+        $DepInstalled = $null
     )
 
     $previous = [bool]$UpdateMenuAvailable.Value
     $UpdateMenuAvailable.Value = $false
 
-    if (-not (Test-ToolHasExternalDeps $Tool)) {
+    if (-not (Get-ToolHasExternalDeps $Tool)) {
         Reset-ToolDependencyUpgradeProbe -Tool $Tool -Shell $Shell
         return ($previous -ne $false)
     }
 
-    if (-not (Test-ToolDepInstalled $Tool)) {
+    $installed = if ($null -ne $DepInstalled) { [bool]$DepInstalled } else { Get-ToolDepInstalledRecord -Tool $Tool }
+    if (-not $installed) {
         Reset-ToolDependencyUpgradeProbe -Tool $Tool -Shell $Shell
         return ($previous -ne $false)
     }
@@ -410,9 +416,11 @@ function Update-ToolDependencyMenuProbe {
         $UpdateMenuAvailable.Value = $true
     }
 
-    Start-ToolDependencyUpgradeProbe -Tool $Tool -Shell $Shell
-    if (Sync-ToolDependencyUpgradeProbe -Tool $Tool -Shell $Shell) {
-        $UpdateMenuAvailable.Value = $true
+    if ($AllowProbeSync) {
+        Start-ToolDependencyUpgradeProbe -Tool $Tool -Shell $Shell -DepInstalled $installed
+        if (Sync-ToolDependencyUpgradeProbe -Tool $Tool -Shell $Shell) {
+            $UpdateMenuAvailable.Value = $true
+        }
     }
 
     return ($UpdateMenuAvailable.Value -ne $previous)
@@ -503,7 +511,7 @@ function Get-ToolDependencyMenuCommandDisplay {
 function Get-ToolMenuItemCommand {
     param($Action)
 
-    if (Test-ToolDependencyMenuAction $Action) {
+    if (Get-ToolDependencyMenuAction $Action) {
         return Get-ToolDependencyMenuCommandDisplay
     }
 
@@ -516,7 +524,7 @@ function Resolve-ToolMenuActionName {
         $Action
     )
 
-    if (Test-ToolDependencyMenuAction $Action) {
+    if (Get-ToolDependencyMenuAction $Action) {
         return Resolve-ToolMenuI18nText -ToolRoot $ToolRoot -Key ([string]$Action.name)
     }
 
@@ -537,7 +545,7 @@ function Resolve-ToolMenuActionDescription {
         return ''
     }
 
-    if (Test-ToolDependencyMenuAction $Action) {
+    if (Get-ToolDependencyMenuAction $Action) {
         return Resolve-ToolMenuI18nText -ToolRoot $ToolRoot -Key ([string]$Action.description)
     }
 
@@ -555,24 +563,24 @@ function ConvertTo-ToolMenuListRows {
         [array]$MenuItems
     )
 
-    return ConvertTo-ShellListRows -Items $MenuItems -KeepSource -MapCells {
-        param($Action, [int]$Index)
-        @(
+    $rows = @()
+    $index = 0
+    foreach ($Action in @($MenuItems)) {
+        $number = if ($null -ne $Action.PSObject.Properties['no'] -and [int]$Action.no -gt 0) {
+            [int]$Action.no
+        }
+        else {
+            $index + 1
+        }
+        $enabled = if (Get-ToolDependencyMenuAction $Action) { $true } else { [bool]$Action.enabled }
+        $rows += New-ShellListRow -Id ([string]$Action.command) -Cells @(
             (Get-ToolMenuItemCommand $Action)
             (Resolve-ToolMenuActionName -ToolRoot $ToolRoot -Action $Action)
             (Resolve-ToolMenuActionDescription -ToolRoot $ToolRoot -Action $Action)
-        )
-    } -GetNumber {
-        param($Action, [int]$Index)
-        if ($null -ne $Action.PSObject.Properties['no'] -and [int]$Action.no -gt 0) {
-            return [int]$Action.no
-        }
-        return $Index + 1
-    } -GetEnabled {
-        param($Action, [int]$Index)
-        if (Test-ToolDependencyMenuAction $Action) { return $true }
-        return [bool]$Action.enabled
+        ) -Payload $Action -Number $number -Enabled $enabled
+        $index++
     }
+    return $rows
 }
 
 function New-ToolDependencyMenuAction {
@@ -614,14 +622,16 @@ function Get-ToolMenuItems {
     param(
         [array]$BusinessActions,
         $Tool,
-        [switch]$DependencyUpdateAvailable
+        [switch]$DependencyUpdateAvailable,
+        $DepInstalled = $null
     )
 
-    if (-not (Test-ToolHasExternalDeps $Tool)) {
+    if (-not (Get-ToolHasExternalDeps $Tool)) {
         return @($BusinessActions)
     }
 
-    if (-not (Test-ToolDepInstalled $Tool)) {
+    $installed = if ($null -ne $DepInstalled) { [bool]$DepInstalled } else { Get-ToolDepInstalled $Tool }
+    if (-not $installed) {
         return @(Get-ToolDependencyInstallMenuAction -Tool $Tool)
     }
 
@@ -641,7 +651,7 @@ function Invoke-ToolDependencyMenuAction {
         [string]$SectionTitle = ''
     )
 
-    if (-not (Test-ToolDependencyMenuAction $Action)) {
+    if (-not (Get-ToolDependencyMenuAction $Action)) {
         return 1
     }
 

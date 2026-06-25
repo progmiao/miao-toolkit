@@ -4,22 +4,23 @@ $lib = Join-Path (Split-Path $PSScriptRoot -Parent) 'package\core\lib'
 . (Join-Path $lib 'config\ListLayout.ps1')
 . (Join-Path $lib 'config\I18n.ps1')
 . (Join-Path $lib 'ui\console\Console-Menu.ps1')
+. (Join-Path $lib 'ui\shell\ShellListModel.ps1')
+. (Join-Path $lib 'ui\shell\ShellListLayout.ps1')
 . (Join-Path $lib 'ui\shell\SingleSelectList.ps1')
 . (Join-Path $lib 'ui\shell\MultiSelectList.ps1')
+. (Join-Path $lib 'ui\shell\ToolkitShellList.ps1')
 
-$rows = ConvertTo-ShellListRows -Items @(
-    [pscustomobject]@{ Version = '22.0.0' }
-    [pscustomobject]@{ Version = '20.0.0' }
-) -KeepSource -MapCells {
-    param($Item, [int]$Index)
-    @([string]$Item.Version)
-} -GetEnabled {
-    param($Item, [int]$Index)
-    $Index -eq 0
-}
+$rows = @(
+    (New-ShellListRow -Id '22.0.0' -Cells @('22.0.0') `
+        -Payload ([pscustomobject]@{ Version = '22.0.0' }) -SearchKey '22.0.0' -Enabled $true)
+    (New-ShellListRow -Id '20.0.0' -Cells @('20.0.0') `
+        -Payload ([pscustomobject]@{ Version = '20.0.0' }) -SearchKey '20.0.0' -Enabled $false)
+)
 
-$layout = New-ShellListColumnLayout -Widths @(20)
-$built = Build-ShellMultiSelectListRowCache -Rows $rows -ColumnLayout $layout
+$listLayout = New-ShellListLayout -Widths @(20)
+$columnLayout = Resolve-ShellListLayoutColumnLayout -Layout $listLayout
+$normalized = @(Normalize-ShellListRows -Rows $rows -Layout $listLayout)
+$built = Build-ShellMultiSelectListRowCache -Rows $normalized -ColumnLayout $columnLayout
 $shell = @{ TestMultiListChecked = [System.Collections.Generic.HashSet[int]]::new() }
 $checked = Get-ShellMultiSelectCheckedSet -Shell $shell -CacheKey 'Test'
 $checked.Add(0) | Out-Null
@@ -53,8 +54,8 @@ if ($specOff.Segments.Count -lt 2) {
     throw 'unselected multi-select row should use segments'
 }
 
-if (-not (Get-Command Invoke-ShellMultiSelectList -ErrorAction SilentlyContinue)) {
-    throw 'Invoke-ShellMultiSelectList should be defined'
+if (-not (Get-Command Invoke-ToolkitShellList -ErrorAction SilentlyContinue)) {
+    throw 'Invoke-ToolkitShellList should be defined'
 }
 
 # null BodySegments should not produce null segment entries

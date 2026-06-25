@@ -1,4 +1,4 @@
-﻿$ErrorActionPreference = 'Stop'
+$ErrorActionPreference = 'Stop'
 
 $root = Split-Path $PSScriptRoot -Parent
 
@@ -39,8 +39,8 @@ $voltaCheck = [string](@(Get-ToolDependencyPackages -Tool $tool)[0].checkCommand
 $before = @(Get-ToolMenuItems -BusinessActions $businessActions -Tool $tool)
 $voltaOnPath = Test-ToolDepCommandAvailable -CheckCommand $voltaCheck
 
-if (-not (Test-ToolDepInstalled -Tool $tool)) {
-    if ($before.Count -ne 1 -or -not (Test-ToolDependencyMenuAction $before[0])) {
+if (-not (Get-ToolDepInstalled -Tool $tool)) {
+    if ($before.Count -ne 1 -or -not (Get-ToolDependencyMenuAction $before[0])) {
         throw "Expected single install menu before deps satisfied, got $($before.Count) items"
     }
     if ($before[0].command -ne 'install') {
@@ -72,20 +72,20 @@ if ($after.Count -ne $expectedAfter) {
 
 }
 
-if (Test-ToolDependencyMenuAction $after[0]) {
+if (Get-ToolDependencyMenuAction $after[0]) {
 
     throw 'First item should be a business action after install'
 
 }
 
 $updateOnlyMenus = @($after | Where-Object {
-        (Test-ToolDependencyMenuAction $_) -and ($_.command -eq 'update')
+        (Get-ToolDependencyMenuAction $_) -and ($_.command -eq 'update')
     })
 if ($updateOnlyMenus.Count -gt 0) {
     throw 'Update menu should not show when deps are satisfied locally'
 }
 
-if (-not ($after | Where-Object { Test-ToolDependencyMenuAction $_ -and $_.command -eq 'uninstall' })) {
+if (-not ($after | Where-Object { Get-ToolDependencyMenuAction $_ -and $_.command -eq 'uninstall' })) {
 
     throw 'Expected uninstall menu after install'
 
@@ -99,7 +99,7 @@ if ($withUpdate.Count -ne ($businessActions.Count + 2)) {
     throw 'Expected business + uninstall + update when update is available'
 }
 $last = $withUpdate[$withUpdate.Count - 1]
-if (-not (Test-ToolDependencyMenuAction $last) -or $last.command -ne 'update') {
+if (-not (Get-ToolDependencyMenuAction $last) -or $last.command -ne 'update') {
     throw 'Update-deps menu should be appended after uninstall-deps'
 }
 

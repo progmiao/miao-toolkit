@@ -35,8 +35,7 @@ if ($multiSpace -eq $singleSpace) {
 $layout = Resolve-ShellToolListColumnLayout -NumWidth 2 -BrandInnerWidth $inner
 $metrics = Get-ToolkitShellLayoutLineMetrics -BrandInnerWidth $inner
 $colGap = Get-MenuColumnGap
-$leading = Get-ShellSingleSelectListLeadingSpaces
-$prefixW = $leading + 1 + 1 + 2 + $colGap
+$prefixW = Get-ShellListRowPrefixReserve -Mode Single -KeyWidth 2
 $fixedW = $layout.Widths[0] + $colGap + $layout.Widths[1] + $colGap
 $rowW = $prefixW + $fixedW + $layout.Widths[2]
 if ($rowW -gt $metrics.EndColumn) {

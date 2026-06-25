@@ -21,22 +21,6 @@
       "enabled": true
     },
     {
-      "command": "config-api",
-      "name": "claude-code.action.configureApi.name",
-      "description": "claude-code.action.configureApi.description",
-      "script": "lib/configure-api.ps1",
-      "param": { "switch": "ConfigureApi", "alias": "a" },
-      "enabled": true
-    },
-    {
-      "command": "config-proxy",
-      "name": "claude-code.action.configureProxy.name",
-      "description": "claude-code.action.configureProxy.description",
-      "script": "lib/configure-proxy.ps1",
-      "param": { "switch": "ConfigureProxy", "alias": "x" },
-      "enabled": true
-    },
-    {
       "command": "plugin",
       "name": "claude-code.action.addMarketplace.name",
       "description": "claude-code.action.addMarketplace.description",
@@ -66,6 +50,22 @@
       "description": "claude-code.action.uninstallPlugin.description",
       "script": "lib/uninstall-plugin.ps1",
       "param": { "switch": "UninstallPlugin", "alias": "r" },
+      "enabled": true
+    },
+    {
+      "command": "config-api",
+      "name": "claude-code.action.configureApi.name",
+      "description": "claude-code.action.configureApi.description",
+      "script": "lib/configure-api.ps1",
+      "param": { "switch": "ConfigureApi", "alias": "a" },
+      "enabled": true
+    },
+    {
+      "command": "config-proxy",
+      "name": "claude-code.action.configureProxy.name",
+      "description": "claude-code.action.configureProxy.description",
+      "script": "lib/configure-proxy.ps1",
+      "param": { "switch": "ConfigureProxy", "alias": "x" },
       "enabled": true
     },
     {

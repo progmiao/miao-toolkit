@@ -101,7 +101,24 @@ miao-toolkit/
 | 组件 | API | 职责 |
 |------|-----|------|
 | 系统工具栏 | `New-ShellSystemToolbarConfig` | 退出/返回/系统/帮助；`-HideBack` / `-HideSystem` / `-HideHelp` |
-| 单选列表 | `Invoke-ShellSingleSelectList` | `ShellListRow`（Number + Cells + Source）+ 行号/选中/翻页 + 列表导航底栏行 |
+| 列表（单选/多选） | `Invoke-ToolkitShellList` | `New-ShellListRow`（Id + Cells + Payload）+ 列布局 + 行号/选中/翻页 + 列表导航底栏行 |
+
+**列表统一 API**（`ui/shell/ToolkitShellList.ps1`）：
+
+```powershell
+$result = Invoke-ToolkitShellList @{
+    Mode = 'Single'   # 或 'Multi'
+    Shell = $Shell
+    SectionTitle = '...'
+    CacheKey = 'Home'
+    Rows = @(New-ShellListRow -Id 'x' -Cells @('a','b') -Payload $obj)
+    Layout = New-ShellListLayout -Widths @(36, 0)  # 省略则默认 12,18,flex
+}
+# 返回 @{ _kind='shellListSelect'; Action; Ids; Payloads; Rows }
+$nav = Get-ShellListSelectNavMarker $result
+```
+
+行模型与布局见 `ShellListModel.ps1`、`ShellListLayout.ps1`；绘制与缓存见 `SingleSelectList.ps1`、`MultiSelectList.ps1`（内部实现，业务层勿直接调用）。
 
 底栏布局：`ListWithToolbar`（列表页双行）/ `SystemToolbarOnly`（内容页单行）。
 

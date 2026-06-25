@@ -28,26 +28,34 @@ $child = {
     . (Join-Path $coreLib 'ui\shell\Layout.ps1')
     . (Join-Path (Join-Path $ToolRoot 'lib') 'volta-node.ps1')
 
+    . (Join-Path $coreLib 'ui\shell\ShellListModel.ps1')
+    . (Join-Path $coreLib 'ui\shell\ShellListLayout.ps1')
+
     $remote = @(
         [PSCustomObject]@{ Version = '22.0.0'; Lts = 'Iron'; Date = '2024-01-01' }
         [PSCustomObject]@{ Version = '20.0.0'; Lts = $false; Date = '2023-01-01' }
     )
-    $voltaInfo = @{ Map = @{}; Default = $null }
     $sorted = $remote
     $nameWidth = 40
 
-    $rows = ConvertTo-ShellListRows -Items $sorted -KeepSource -MapCells {
-        param($Item, [int]$Index)
-        @([string]$Item.Version)
-    } -GetEnabled { param($Item, [int]$Index) $true }
+    $rows = @($sorted | ForEach-Object {
+        $item = $_
+        New-ShellListRow -Id ([string]$item.Version) -Cells @([string]$item.Version) `
+            -Payload $item -SearchKey ([string]$item.Version) -Enabled $true
+    })
 
-    Clear-ShellMultiSelectListCache -Shell $Shell -CacheKey 'NodeBrowse'
-    $toolbar = New-ShellSystemToolbarConfig
-    $invokeMultiSelect = Get-Command Invoke-ShellMultiSelectList -CommandType Function -ErrorAction Stop
+    Clear-ShellListCache -Shell $Shell -CacheKey 'NodeBrowse'
+
+    if (-not (Get-Command Invoke-ToolkitShellList -ErrorAction SilentlyContinue)) {
+        throw 'Invoke-ToolkitShellList should be available'
+    }
 
   # Build row cache timing
+    $listLayout = New-ShellListLayout -Widths @($nameWidth)
+    $columnLayout = Resolve-ShellListLayoutColumnLayout -Layout $listLayout
+    $normalized = @(Normalize-ShellListRows -Rows $rows -Layout $listLayout)
     $sw = [Diagnostics.Stopwatch]::StartNew()
-    $built = Build-ShellMultiSelectListRowCache -Rows $rows -ColumnLayout (New-ShellListColumnLayout -Widths @($nameWidth))
+    $built = Build-ShellMultiSelectListRowCache -Rows $normalized -ColumnLayout $columnLayout
     $sw.Stop()
     Write-Host "RowCache ms=$($sw.ElapsedMilliseconds)"
 
@@ -65,7 +73,7 @@ $child = {
     Sync-ToolkitShellLayoutLineMetrics -Shell $Shell
 
     Enter-ConsoleDrawBatch
-    & $fnRedraw -Items $rows -Layout $layout -PageIndex 0 -SelectedIndex 0 -NumWidth 2 `
+    & $fnRedraw -Items $normalized -Layout $layout -PageIndex 0 -SelectedIndex 0 -NumWidth 2 `
         -GetItemLabel $handlers['GetLabel'] -TestItemEnabled { param($i, $x) $true } `
         -GetItemDisplayNumber { param($r, $i) $i + 1 } -DrawListRow $handlers['DrawListRow'] `
         -GetListRowSpec $handlers['GetListRowSpec']

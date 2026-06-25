@@ -26,6 +26,9 @@ function Import-PnpmBrowseInstallCore {
     . (Join-Path $coreLib 'ui\shell\SystemToolbar.ps1')
     . (Join-Path $coreLib 'ui\shell\SingleSelectList.ps1')
     . (Join-Path $coreLib 'ui\shell\MultiSelectList.ps1')
+    . (Join-Path $coreLib 'ui\shell\ShellListModel.ps1')
+    . (Join-Path $coreLib 'ui\shell\ShellListLayout.ps1')
+    . (Join-Path $coreLib 'ui\shell\ToolkitShellList.ps1')
     . (Join-Path $coreLib 'ui\shell\Draw.ps1')
     . (Join-Path $coreLib 'ui\shell\Layout.ps1')
     . (Join-Path $coreLib 'ui\shell\Header.ps1')
@@ -95,20 +98,15 @@ function Build-PnpmBrowseInstallRows {
         [string]$ActiveVersion
     )
 
-    return ConvertTo-ShellListRows -Items $Items -KeepSource -GetSearchKey {
-        param($Item, [int]$Index)
-        [string]$Item.Version
-    } -MapCells {
-        param($Item, [int]$Index)
-        @(
-            (Get-PnpmBrowseInstallTagsLabel -Item $Item -InstalledMap $InstalledMap `
+    return @($Items | ForEach-Object {
+        $item = $_
+        $version = Normalize-PnpmVersionLabel -Version ([string]$item.Version)
+        New-ShellListRow -Id ([string]$item.Version) -Cells @(
+            (Get-PnpmBrowseInstallTagsLabel -Item $item -InstalledMap $InstalledMap `
                 -DefaultVersion $DefaultVersion -ActiveVersion $ActiveVersion)
-        )
-    } -GetEnabled {
-        param($Item, [int]$Index)
-        $version = Normalize-PnpmVersionLabel -Version ([string]$Item.Version)
-        -not $InstalledMap.ContainsKey($version)
-    }
+        ) -Payload $item -SearchKey ([string]$item.Version) `
+            -Enabled (-not $InstalledMap.ContainsKey($version))
+    })
 }
 
 function Resolve-PnpmBrowseInstallTagsColumnWidth {
@@ -116,8 +114,7 @@ function Resolve-PnpmBrowseInstallTagsColumnWidth {
 
     $metrics = Get-ToolkitShellLayoutLineMetrics -Shell $Shell
     $versionKeyWidth = Get-ShellMultiSelectSearchKeyWidth
-    $gap = Get-MenuColumnGap
-    $prefixReserve = 2 + 3 + 1 + $versionKeyWidth + $gap
+    $prefixReserve = Get-ShellListRowPrefixReserve -Mode Multi -KeyWidth $versionKeyWidth
     $remaining = [int]$metrics.EndColumn - $prefixReserve
     $maxTags = 26
     return [Math]::Max(10, [Math]::Min($maxTags, $remaining))
@@ -288,13 +285,14 @@ function Prepare-PnpmBrowseInstallListContent {
 
     Update-PnpmBrowseInstallLoadingProgress -Shell $Shell -Progress $Progress -TargetPercent 95
     $tagsWidth = Resolve-PnpmBrowseInstallTagsColumnWidth -Shell $Shell
+    $listLayout = New-ShellListLayout -Widths @($tagsWidth)
     $rows = Build-PnpmBrowseInstallRows -Items $sorted -InstalledMap $voltaInfo.Map `
         -DefaultVersion $voltaInfo.Default -ActiveVersion $activeVersion
-    $columnLayout = New-ShellListColumnLayout -Widths @($tagsWidth)
 
-    Clear-ShellMultiSelectListCache -Shell $Shell -CacheKey 'PnpmBrowse'
+    Clear-ShellListCache -Shell $Shell -CacheKey 'PnpmBrowse'
     Initialize-ShellMultiSelectListDependencies
-    $normalized = @(Normalize-ShellListRows -Rows $rows -ColumnLayout $columnLayout)
+    $normalized = @(Normalize-ShellListRows -Rows $rows -Layout $listLayout)
+    $columnLayout = Resolve-ShellListLayoutColumnLayout -Layout $listLayout
     $null = Get-ShellMultiSelectListRowCache -Shell $Shell -CacheKey 'PnpmBrowse' `
         -Rows $normalized -ColumnLayout $columnLayout
 
@@ -305,7 +303,7 @@ function Prepare-PnpmBrowseInstallListContent {
         ActiveVersion = $activeVersion
         Sorted        = $sorted
         TagsWidth     = $tagsWidth
-        ColumnLayout  = $columnLayout
+        ListLayout    = $listLayout
     }
 }
 
@@ -471,25 +469,26 @@ function Invoke-PnpmBrowseInstallPage {
     }
 
     $preparedList = Prepare-PnpmBrowseInstallListContent -Shell $Shell -Progress $progress -Remote $remote
+    $baseVersions = $preparedList.BaseVersions
     $usePreparedList = $true
+    $skipListCacheClear = $true
 
     while ($true) {
         if ($usePreparedList) {
             $rows = $preparedList.Rows
             $sorted = $preparedList.Sorted
-            $columnLayout = $preparedList.ColumnLayout
+            $listLayout = $preparedList.ListLayout
             $usePreparedList = $false
         }
         else {
             $voltaInfo = Get-VoltaPnpmVersionInfo
             $activeVersion = Get-ActivePnpmVersion
-            $merged = Build-PnpmBrowseInstallMergedItems -BaseVersions $preparedList.BaseVersions -VoltaInfo $voltaInfo
+            $merged = Build-PnpmBrowseInstallMergedItems -BaseVersions $baseVersions -VoltaInfo $voltaInfo
             $sorted = Sort-PnpmVersionItems -Items $merged
             $tagsWidth = Resolve-PnpmBrowseInstallTagsColumnWidth -Shell $Shell
             $rows = Build-PnpmBrowseInstallRows -Items $sorted -InstalledMap $voltaInfo.Map `
                 -DefaultVersion $voltaInfo.Default -ActiveVersion $activeVersion
-            $columnLayout = New-ShellListColumnLayout -Widths @($tagsWidth)
-            Clear-ShellMultiSelectListCache -Shell $Shell -CacheKey 'PnpmBrowse'
+            $listLayout = New-ShellListLayout -Widths @($tagsWidth)
         }
 
         if ($sorted.Count -eq 0) {
@@ -500,24 +499,33 @@ function Invoke-PnpmBrowseInstallPage {
             return (Get-ShellNavMarker -Action 'back')
         }
 
+        if (-not $skipListCacheClear) {
+            Clear-ShellListCache -Shell $Shell -CacheKey 'PnpmBrowse'
+        }
+        $skipListCacheClear = $false
+
         if ($progress.Percent -lt 100) {
             Update-PnpmBrowseInstallLoadingProgress -Shell $Shell -Progress $progress -TargetPercent 100
         }
 
-        $toolbar = New-ShellSystemToolbarConfig
-        $invokeMultiSelect = Get-Command Invoke-ShellMultiSelectList -CommandType Function -ErrorAction Stop
-        $picked = & $invokeMultiSelect -Shell $Shell -SectionTitle $sectionTitle `
-            -Rows $rows -CacheKey 'PnpmBrowse' `
-            -ColumnLayout $columnLayout `
-            -ToolbarConfig $toolbar -CountLabel (Get-PnpmBrowseI18n -Key 'pnpm.browse.countUnit') `
-            -SearchKeyMode
-
-        if (Test-ShellNavMarker $picked) {
-            return $picked
+        $listResult = Invoke-ToolkitShellList @{
+            Mode         = 'Multi'
+            Shell        = $Shell
+            SectionTitle = $sectionTitle
+            Rows         = $rows
+            CacheKey     = 'PnpmBrowse'
+            Layout       = $listLayout
+            Toolbar      = (New-ShellSystemToolbarConfig)
+            CountLabel   = (Get-PnpmBrowseI18n -Key 'pnpm.browse.countUnit')
+            KeyColumn    = 'SearchKey'
         }
-        if ($null -eq $picked -or @($picked).Count -eq 0) {
+        if ($nav = Get-ShellListSelectNavMarker $listResult) {
+            return $nav
+        }
+        if ($listResult.Action -ne 'Pick') {
             return (Get-ShellNavMarker -Action 'back')
         }
+        $picked = @($listResult.Payloads)
 
         $installResult = Run-PnpmBrowseInstallOperation -Shell $Shell -Items $picked `
             -SectionTitle $PnpmActionSectionTitle

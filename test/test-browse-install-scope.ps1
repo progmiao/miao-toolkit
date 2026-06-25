@@ -7,7 +7,7 @@ foreach ($name in @(
         'Redraw-PaginatedMenuPage'
         'Update-PaginatedMenuSelection'
         'Show-ShellMultiSelectListMenu'
-        'Invoke-ShellMultiSelectList'
+        'Invoke-ToolkitShellList'
     )) {
     if (-not (Get-Command $name -Scope Global -ErrorAction SilentlyContinue)) {
         throw "expected global function: $name"

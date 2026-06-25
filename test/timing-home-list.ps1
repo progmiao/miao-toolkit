@@ -21,9 +21,10 @@ $rows = Get-HomeToolListRows -Tools $tools
 $tRows = $sw.ElapsedMilliseconds
 
 # simulate list cache path without interactive UI
-$layout = New-ShellListColumnLayout -Preset ToolList
-$normalized = @(Normalize-ShellListRows -Rows $rows -ColumnLayout $layout)
-$built = Get-ShellSingleSelectListRowCache -Shell $shell -CacheKey 'Home' -Rows $normalized -ColumnLayout $layout
+$listLayout = New-ShellListLayout
+$columnLayout = Resolve-ShellListLayoutColumnLayout -Layout $listLayout
+$normalized = @(Normalize-ShellListRows -Rows $rows -Layout $listLayout)
+$built = Get-ShellSingleSelectListRowCache -Shell $shell -CacheKey 'Home' -Rows $normalized -ColumnLayout $columnLayout
 $tCache = $sw.ElapsedMilliseconds
 
 Write-Output "Get-HomeToolListRows=${tRows}ms"

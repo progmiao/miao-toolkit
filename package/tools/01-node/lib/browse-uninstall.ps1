@@ -26,6 +26,9 @@ function Import-NodeBrowseUninstallCore {
     . (Join-Path $coreLib 'ui\shell\SystemToolbar.ps1')
     . (Join-Path $coreLib 'ui\shell\SingleSelectList.ps1')
     . (Join-Path $coreLib 'ui\shell\MultiSelectList.ps1')
+    . (Join-Path $coreLib 'ui\shell\ShellListModel.ps1')
+    . (Join-Path $coreLib 'ui\shell\ShellListLayout.ps1')
+    . (Join-Path $coreLib 'ui\shell\ToolkitShellList.ps1')
     . (Join-Path $coreLib 'ui\shell\Draw.ps1')
     . (Join-Path $coreLib 'ui\shell\Layout.ps1')
     . (Join-Path $coreLib 'ui\shell\Header.ps1')
@@ -93,19 +96,13 @@ function Build-NodeBrowseUninstallRows {
         [string]$ActiveVersion
     )
 
-    return ConvertTo-ShellListRows -Items $Items -KeepSource -GetSearchKey {
-        param($Item, [int]$Index)
-        [string]$Item.Version
-    } -MapCells {
-        param($Item, [int]$Index)
-        @(
-            (Get-NodeBrowseUninstallTagsLabel -Item $Item -InstalledMap $InstalledMap `
+    return @($Items | ForEach-Object {
+        $item = $_
+        New-ShellListRow -Id ([string]$item.Version) -Cells @(
+            (Get-NodeBrowseUninstallTagsLabel -Item $item -InstalledMap $InstalledMap `
                 -DefaultVersion $DefaultVersion -ActiveVersion $ActiveVersion)
-        )
-    } -GetEnabled {
-        param($Item, [int]$Index)
-        $true
-    }
+        ) -Payload $item -SearchKey ([string]$item.Version) -Enabled $true
+    })
 }
 
 function Resolve-NodeBrowseUninstallTagsColumnWidth {
@@ -113,8 +110,7 @@ function Resolve-NodeBrowseUninstallTagsColumnWidth {
 
     $metrics = Get-ToolkitShellLayoutLineMetrics -Shell $Shell
     $versionKeyWidth = Get-ShellMultiSelectSearchKeyWidth
-    $gap = Get-MenuColumnGap
-    $prefixReserve = 2 + 3 + 1 + $versionKeyWidth + $gap
+    $prefixReserve = Get-ShellListRowPrefixReserve -Mode Multi -KeyWidth $versionKeyWidth
     $remaining = [int]$metrics.EndColumn - $prefixReserve
     $maxTags = 26
     return [Math]::Max(10, [Math]::Min($maxTags, $remaining))
@@ -127,14 +123,16 @@ function Invoke-NodeBrowseUninstallNoticePage {
         [string]$Message
     )
 
-    Clear-ShellSingleSelectListCache -Shell $Shell -CacheKey 'NodeUninstallNotice'
-    $toolbar = New-ShellSystemToolbarConfig
-    $invokeSingleSelect = Get-Command Invoke-ShellSingleSelectList -CommandType Function -ErrorAction Stop
-    return & $invokeSingleSelect -Shell $Shell -SectionTitle $SectionTitle `
-        -Rows @() -CacheKey 'NodeUninstallNotice' `
-        -ColumnLayout (New-ShellListColumnLayout -Preset ToolList) `
-        -ToolbarConfig $toolbar `
-        -InitialFlashMessage $Message
+    Clear-ShellListCache -Shell $Shell -CacheKey 'NodeUninstallNotice'
+    return Invoke-ToolkitShellList @{
+        Mode                 = 'Single'
+        Shell                = $Shell
+        SectionTitle         = $SectionTitle
+        Rows                 = @()
+        CacheKey             = 'NodeUninstallNotice'
+        Toolbar              = (New-ShellSystemToolbarConfig)
+        InitialFlashMessage  = $Message
+    }
 }
 
 function Invoke-NodeBrowseUninstallPage {
@@ -146,8 +144,8 @@ function Invoke-NodeBrowseUninstallPage {
     if (-not (Get-Command volta -ErrorAction SilentlyContinue)) {
         $noticeResult = Invoke-NodeBrowseUninstallNoticePage -Shell $Shell -SectionTitle $sectionTitle `
             -Message (Get-NodeBrowseUninstallI18n -Key 'node.uninstall.voltaMissing')
-        if (Test-ShellNavMarker $noticeResult) {
-            return $noticeResult
+        if ($nav = Get-ShellListSelectNavMarker $noticeResult) {
+            return $nav
         }
         return (Get-ShellNavMarker -Action 'back')
     }
@@ -160,8 +158,8 @@ function Invoke-NodeBrowseUninstallPage {
         if ($installed.Count -eq 0) {
             $noticeResult = Invoke-NodeBrowseUninstallNoticePage -Shell $Shell -SectionTitle $sectionTitle `
                 -Message (Get-NodeBrowseUninstallI18n -Key 'node.uninstall.noInstalled')
-            if (Test-ShellNavMarker $noticeResult) {
-                return $noticeResult
+            if ($nav = Get-ShellListSelectNavMarker $noticeResult) {
+                return $nav
             }
             return (Get-ShellNavMarker -Action 'back')
         }
@@ -171,25 +169,30 @@ function Invoke-NodeBrowseUninstallPage {
         )
 
         $tagsWidth = Resolve-NodeBrowseUninstallTagsColumnWidth -Shell $Shell
+        $listLayout = New-ShellListLayout -Widths @($tagsWidth)
         $rows = Build-NodeBrowseUninstallRows -Items $items -InstalledMap $voltaInfo.Map `
             -DefaultVersion $voltaInfo.Default -ActiveVersion $activeVersion
 
-        Clear-ShellMultiSelectListCache -Shell $Shell -CacheKey 'NodeUninstall'
+        Clear-ShellListCache -Shell $Shell -CacheKey 'NodeUninstall'
 
-        $toolbar = New-ShellSystemToolbarConfig
-        $invokeMultiSelect = Get-Command Invoke-ShellMultiSelectList -CommandType Function -ErrorAction Stop
-        $picked = & $invokeMultiSelect -Shell $Shell -SectionTitle $sectionTitle `
-            -Rows $rows -CacheKey 'NodeUninstall' `
-            -ColumnLayout (New-ShellListColumnLayout -Widths @($tagsWidth)) `
-            -ToolbarConfig $toolbar -CountLabel (Get-NodeBrowseUninstallI18n -Key 'node.uninstall.countUnit') `
-            -SearchKeyMode
-
-        if (Test-ShellNavMarker $picked) {
-            return $picked
+        $listResult = Invoke-ToolkitShellList @{
+            Mode         = 'Multi'
+            Shell        = $Shell
+            SectionTitle = $sectionTitle
+            Rows         = $rows
+            CacheKey     = 'NodeUninstall'
+            Layout       = $listLayout
+            Toolbar      = (New-ShellSystemToolbarConfig)
+            CountLabel   = (Get-NodeBrowseUninstallI18n -Key 'node.uninstall.countUnit')
+            KeyColumn    = 'SearchKey'
         }
-        if ($null -eq $picked -or @($picked).Count -eq 0) {
+        if ($nav = Get-ShellListSelectNavMarker $listResult) {
+            return $nav
+        }
+        if ($listResult.Action -ne 'Pick') {
             return (Get-ShellNavMarker -Action 'back')
         }
+        $picked = @($listResult.Payloads)
 
         $pickedVersions = @((Get-NodeBrowseUninstallPlanVersions -Items $picked -InstalledMap $voltaInfo.Map))
         if ($pickedVersions.Count -eq 0) {

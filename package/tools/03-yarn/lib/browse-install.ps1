@@ -26,6 +26,9 @@ function Import-YarnBrowseInstallCore {
     . (Join-Path $coreLib 'ui\shell\SystemToolbar.ps1')
     . (Join-Path $coreLib 'ui\shell\SingleSelectList.ps1')
     . (Join-Path $coreLib 'ui\shell\MultiSelectList.ps1')
+    . (Join-Path $coreLib 'ui\shell\ShellListModel.ps1')
+    . (Join-Path $coreLib 'ui\shell\ShellListLayout.ps1')
+    . (Join-Path $coreLib 'ui\shell\ToolkitShellList.ps1')
     . (Join-Path $coreLib 'ui\shell\Draw.ps1')
     . (Join-Path $coreLib 'ui\shell\Layout.ps1')
     . (Join-Path $coreLib 'ui\shell\Header.ps1')
@@ -95,20 +98,15 @@ function Build-YarnBrowseInstallRows {
         [string]$ActiveVersion
     )
 
-    return ConvertTo-ShellListRows -Items $Items -KeepSource -GetSearchKey {
-        param($Item, [int]$Index)
-        [string]$Item.Version
-    } -MapCells {
-        param($Item, [int]$Index)
-        @(
-            (Get-YarnBrowseInstallTagsLabel -Item $Item -InstalledMap $InstalledMap `
+    return @($Items | ForEach-Object {
+        $item = $_
+        $version = Normalize-YarnVersionLabel -Version ([string]$item.Version)
+        New-ShellListRow -Id ([string]$item.Version) -Cells @(
+            (Get-YarnBrowseInstallTagsLabel -Item $item -InstalledMap $InstalledMap `
                 -DefaultVersion $DefaultVersion -ActiveVersion $ActiveVersion)
-        )
-    } -GetEnabled {
-        param($Item, [int]$Index)
-        $version = Normalize-YarnVersionLabel -Version ([string]$Item.Version)
-        -not $InstalledMap.ContainsKey($version)
-    }
+        ) -Payload $item -SearchKey ([string]$item.Version) `
+            -Enabled (-not $InstalledMap.ContainsKey($version))
+    })
 }
 
 function Resolve-YarnBrowseInstallTagsColumnWidth {
@@ -116,8 +114,7 @@ function Resolve-YarnBrowseInstallTagsColumnWidth {
 
     $metrics = Get-ToolkitShellLayoutLineMetrics -Shell $Shell
     $versionKeyWidth = Get-ShellMultiSelectSearchKeyWidth
-    $gap = Get-MenuColumnGap
-    $prefixReserve = 2 + 3 + 1 + $versionKeyWidth + $gap
+    $prefixReserve = Get-ShellListRowPrefixReserve -Mode Multi -KeyWidth $versionKeyWidth
     $remaining = [int]$metrics.EndColumn - $prefixReserve
     $maxTags = 26
     return [Math]::Max(10, [Math]::Min($maxTags, $remaining))
@@ -288,13 +285,14 @@ function Prepare-YarnBrowseInstallListContent {
 
     Update-YarnBrowseInstallLoadingProgress -Shell $Shell -Progress $Progress -TargetPercent 95
     $tagsWidth = Resolve-YarnBrowseInstallTagsColumnWidth -Shell $Shell
+    $listLayout = New-ShellListLayout -Widths @($tagsWidth)
     $rows = Build-YarnBrowseInstallRows -Items $sorted -InstalledMap $voltaInfo.Map `
         -DefaultVersion $voltaInfo.Default -ActiveVersion $activeVersion
-    $columnLayout = New-ShellListColumnLayout -Widths @($tagsWidth)
 
-    Clear-ShellMultiSelectListCache -Shell $Shell -CacheKey 'YarnBrowse'
+    Clear-ShellListCache -Shell $Shell -CacheKey 'YarnBrowse'
     Initialize-ShellMultiSelectListDependencies
-    $normalized = @(Normalize-ShellListRows -Rows $rows -ColumnLayout $columnLayout)
+    $normalized = @(Normalize-ShellListRows -Rows $rows -Layout $listLayout)
+    $columnLayout = Resolve-ShellListLayoutColumnLayout -Layout $listLayout
     $null = Get-ShellMultiSelectListRowCache -Shell $Shell -CacheKey 'YarnBrowse' `
         -Rows $normalized -ColumnLayout $columnLayout
 
@@ -305,7 +303,7 @@ function Prepare-YarnBrowseInstallListContent {
         ActiveVersion = $activeVersion
         Sorted        = $sorted
         TagsWidth     = $tagsWidth
-        ColumnLayout  = $columnLayout
+        ListLayout    = $listLayout
     }
 }
 
@@ -476,25 +474,26 @@ function Invoke-YarnBrowseInstallPage {
     }
 
     $preparedList = Prepare-YarnBrowseInstallListContent -Shell $Shell -Progress $progress -Remote $remote
+    $baseVersions = $preparedList.BaseVersions
     $usePreparedList = $true
+    $skipListCacheClear = $true
 
     while ($true) {
         if ($usePreparedList) {
             $rows = $preparedList.Rows
             $sorted = $preparedList.Sorted
-            $columnLayout = $preparedList.ColumnLayout
+            $listLayout = $preparedList.ListLayout
             $usePreparedList = $false
         }
         else {
             $voltaInfo = Get-VoltaYarnVersionInfo
             $activeVersion = Get-ActiveYarnVersion
-            $merged = Build-YarnBrowseInstallMergedItems -BaseVersions $preparedList.BaseVersions -VoltaInfo $voltaInfo
+            $merged = Build-YarnBrowseInstallMergedItems -BaseVersions $baseVersions -VoltaInfo $voltaInfo
             $sorted = Sort-YarnVersionItems -Items $merged
             $tagsWidth = Resolve-YarnBrowseInstallTagsColumnWidth -Shell $Shell
             $rows = Build-YarnBrowseInstallRows -Items $sorted -InstalledMap $voltaInfo.Map `
                 -DefaultVersion $voltaInfo.Default -ActiveVersion $activeVersion
-            $columnLayout = New-ShellListColumnLayout -Widths @($tagsWidth)
-            Clear-ShellMultiSelectListCache -Shell $Shell -CacheKey 'YarnBrowse'
+            $listLayout = New-ShellListLayout -Widths @($tagsWidth)
         }
 
         if ($sorted.Count -eq 0) {
@@ -505,24 +504,33 @@ function Invoke-YarnBrowseInstallPage {
             return (Get-ShellNavMarker -Action 'back')
         }
 
+        if (-not $skipListCacheClear) {
+            Clear-ShellListCache -Shell $Shell -CacheKey 'YarnBrowse'
+        }
+        $skipListCacheClear = $false
+
         if ($progress.Percent -lt 100) {
             Update-YarnBrowseInstallLoadingProgress -Shell $Shell -Progress $progress -TargetPercent 100
         }
 
-        $toolbar = New-ShellSystemToolbarConfig
-        $invokeMultiSelect = Get-Command Invoke-ShellMultiSelectList -CommandType Function -ErrorAction Stop
-        $picked = & $invokeMultiSelect -Shell $Shell -SectionTitle $sectionTitle `
-            -Rows $rows -CacheKey 'YarnBrowse' `
-            -ColumnLayout $columnLayout `
-            -ToolbarConfig $toolbar -CountLabel (Get-YarnBrowseI18n -Key 'yarn.browse.countUnit') `
-            -SearchKeyMode
-
-        if (Test-ShellNavMarker $picked) {
-            return $picked
+        $listResult = Invoke-ToolkitShellList @{
+            Mode         = 'Multi'
+            Shell        = $Shell
+            SectionTitle = $sectionTitle
+            Rows         = $rows
+            CacheKey     = 'YarnBrowse'
+            Layout       = $listLayout
+            Toolbar      = (New-ShellSystemToolbarConfig)
+            CountLabel   = (Get-YarnBrowseI18n -Key 'yarn.browse.countUnit')
+            KeyColumn    = 'SearchKey'
         }
-        if ($null -eq $picked -or @($picked).Count -eq 0) {
+        if ($nav = Get-ShellListSelectNavMarker $listResult) {
+            return $nav
+        }
+        if ($listResult.Action -ne 'Pick') {
             return (Get-ShellNavMarker -Action 'back')
         }
+        $picked = @($listResult.Payloads)
 
         $installResult = Run-YarnBrowseInstallOperation -Shell $Shell -Items $picked `
             -SectionTitle $yarnActionSectionTitle

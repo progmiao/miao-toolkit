@@ -22,14 +22,14 @@ function Get-LangLocaleSummaryText {
 }
 
 function Get-LangListRows {
-    return ConvertTo-ShellListRows -Items @(Get-LangLocaleMenuItems) -KeepSource -MapCells {
-        param($Item, [int]$Index)
-        @(
-            (Get-ShellListItemCommand $Item)
-            [string]$Item.name
-            (Get-LangLocaleSummaryText -LocaleCode $Item.command)
-        )
-    }
+    return @(Get-LangLocaleMenuItems | ForEach-Object {
+        $item = $_
+        New-ShellListRow -Id ([string]$item.command) -Cells @(
+            (Get-ShellListItemCommand $item)
+            [string]$item.name
+            (Get-LangLocaleSummaryText -LocaleCode $item.command)
+        ) -Payload $item
+    })
 }
 
 function Invoke-LangPage {
@@ -39,30 +39,32 @@ function Invoke-LangPage {
 
     $currentLocale = Get-CurrentLocale
     if (-not $Shell.HeaderLocale -or $Shell.HeaderLocale -ne $currentLocale) {
-        Clear-ShellSingleSelectListCache -Shell $Shell -CacheKey 'Lang'
+        Clear-ShellListCache -Shell $Shell -CacheKey 'Lang'
     }
 
-    $picked = Invoke-ShellSingleSelectList -Shell $Shell `
-        -SectionTitle (Format-I18nSelectLanguageSectionTitle) `
-        -Rows (Get-LangListRows) `
-        -CacheKey 'Lang' `
-        -ColumnLayout (New-ShellListColumnLayout -Preset MenuList) `
-        -ToolbarConfig $toolbar
+    $result = Invoke-ToolkitShellList @{
+        Mode         = 'Single'
+        Shell        = $Shell
+        SectionTitle = (Format-I18nSelectLanguageSectionTitle)
+        Rows         = (Get-LangListRows)
+        CacheKey     = 'Lang'
+        Toolbar      = $toolbar
+    }
 
-    if (-not $picked) {
+    $nav = Get-ShellListSelectNavMarker $result
+    if ($nav) { return $nav }
+    if ($result.Action -ne 'Pick' -or @($result.Payloads).Count -eq 0) {
         return (Get-ShellNavMarker -Action 'back')
     }
-    if (Test-ShellNavMarker $picked) {
-        return $picked
-    }
 
+    $picked = $result.Payloads[0]
     if ((Get-CurrentLocale) -ne $picked.command) {
         Set-UserLocale $picked.command
         $Shell['HeaderLocale'] = (Get-CurrentLocale)
-        Clear-ShellSingleSelectListCache -Shell $Shell -CacheKey 'Lang'
-        Clear-ShellSingleSelectListCache -Shell $Shell -CacheKey 'Home'
-        Clear-ShellSingleSelectListCache -Shell $Shell -CacheKey 'Sys'
-        Clear-ShellSingleSelectListCache -Shell $Shell -CacheKey 'Node'
+        Clear-ShellListCache -Shell $Shell -CacheKey 'Lang'
+        Clear-ShellListCache -Shell $Shell -CacheKey 'Home'
+        Clear-ShellListCache -Shell $Shell -CacheKey 'Sys'
+        Clear-ShellListCache -Shell $Shell -CacheKey 'Node'
     }
 
     return (Get-ShellNavMarker -Action 'back')

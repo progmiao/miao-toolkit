@@ -28,6 +28,9 @@ function Import-NodeBrowseInstallCore {
     . (Join-Path $coreLib 'ui\shell\SystemToolbar.ps1')
     . (Join-Path $coreLib 'ui\shell\SingleSelectList.ps1')
     . (Join-Path $coreLib 'ui\shell\MultiSelectList.ps1')
+    . (Join-Path $coreLib 'ui\shell\ShellListModel.ps1')
+    . (Join-Path $coreLib 'ui\shell\ShellListLayout.ps1')
+    . (Join-Path $coreLib 'ui\shell\ToolkitShellList.ps1')
     . (Join-Path $coreLib 'ui\shell\Draw.ps1')
     . (Join-Path $coreLib 'ui\shell\Layout.ps1')
     . (Join-Path $coreLib 'ui\shell\Header.ps1')
@@ -108,20 +111,15 @@ function Build-NodeBrowseInstallRows {
         [string]$ActiveVersion
     )
 
-    return ConvertTo-ShellListRows -Items $Items -KeepSource -GetSearchKey {
-        param($Item, [int]$Index)
-        [string]$Item.Version
-    } -MapCells {
-        param($Item, [int]$Index)
-        @(
-            (Get-NodeBrowseInstallTagsLabel -Item $Item -InstalledMap $InstalledMap `
+    return @($Items | ForEach-Object {
+        $item = $_
+        $version = Normalize-NodeVersionLabel -Version ([string]$item.Version)
+        New-ShellListRow -Id ([string]$item.Version) -Cells @(
+            (Get-NodeBrowseInstallTagsLabel -Item $item -InstalledMap $InstalledMap `
                 -DefaultVersion $DefaultVersion -ActiveVersion $ActiveVersion)
-        )
-    } -GetEnabled {
-        param($Item, [int]$Index)
-        $version = Normalize-NodeVersionLabel -Version ([string]$Item.Version)
-        -not $InstalledMap.ContainsKey($version)
-    }
+        ) -Payload $item -SearchKey ([string]$item.Version) `
+            -Enabled (-not $InstalledMap.ContainsKey($version))
+    })
 }
 
 function Resolve-NodeBrowseInstallTagsColumnWidth {
@@ -129,8 +127,7 @@ function Resolve-NodeBrowseInstallTagsColumnWidth {
 
     $metrics = Get-ToolkitShellLayoutLineMetrics -Shell $Shell
     $versionKeyWidth = Get-ShellMultiSelectSearchKeyWidth
-    $gap = Get-MenuColumnGap
-    $prefixReserve = 2 + 3 + 1 + $versionKeyWidth + $gap
+    $prefixReserve = Get-ShellListRowPrefixReserve -Mode Multi -KeyWidth $versionKeyWidth
     $remaining = [int]$metrics.EndColumn - $prefixReserve
     $maxTags = 26
     return [Math]::Max(10, [Math]::Min($maxTags, $remaining))
@@ -317,13 +314,14 @@ function Prepare-NodeBrowseInstallListContent {
 
     Update-NodeBrowseInstallLoadingProgress -Shell $Shell -Progress $Progress -TargetPercent 95
     $tagsWidth = Resolve-NodeBrowseInstallTagsColumnWidth -Shell $Shell
+    $listLayout = New-ShellListLayout -Widths @($tagsWidth)
     $rows = Build-NodeBrowseInstallRows -Items $sorted -InstalledMap $voltaInfo.Map `
         -DefaultVersion $voltaInfo.Default -ActiveVersion $activeVersion
-    $columnLayout = New-ShellListColumnLayout -Widths @($tagsWidth)
 
-    Clear-ShellMultiSelectListCache -Shell $Shell -CacheKey 'NodeBrowse'
+    Clear-ShellListCache -Shell $Shell -CacheKey 'NodeBrowse'
     Initialize-ShellMultiSelectListDependencies
-    $normalized = @(Normalize-ShellListRows -Rows $rows -ColumnLayout $columnLayout)
+    $normalized = @(Normalize-ShellListRows -Rows $rows -Layout $listLayout)
+    $columnLayout = Resolve-ShellListLayoutColumnLayout -Layout $listLayout
     $null = Get-ShellMultiSelectListRowCache -Shell $Shell -CacheKey 'NodeBrowse' `
         -Rows $normalized -ColumnLayout $columnLayout
 
@@ -334,7 +332,7 @@ function Prepare-NodeBrowseInstallListContent {
         ActiveVersion = $activeVersion
         Sorted        = $sorted
         TagsWidth     = $tagsWidth
-        ColumnLayout  = $columnLayout
+        ListLayout    = $listLayout
     }
 }
 
@@ -537,7 +535,7 @@ function Invoke-NodeBrowseInstallPage {
             $sorted = $preparedList.Sorted
             $rows = $preparedList.Rows
             $tagsWidth = $preparedList.TagsWidth
-            $columnLayout = $preparedList.ColumnLayout
+            $listLayout = $preparedList.ListLayout
             $usePreparedList = $false
         }
         else {
@@ -549,7 +547,7 @@ function Invoke-NodeBrowseInstallPage {
             $tagsWidth = Resolve-NodeBrowseInstallTagsColumnWidth -Shell $Shell
             $rows = Build-NodeBrowseInstallRows -Items $sorted -InstalledMap $voltaInfo.Map `
                 -DefaultVersion $voltaInfo.Default -ActiveVersion $activeVersion
-            $columnLayout = New-ShellListColumnLayout -Widths @($tagsWidth)
+            $listLayout = New-ShellListLayout -Widths @($tagsWidth)
         }
 
         if ($sorted.Count -eq 0) {
@@ -561,7 +559,7 @@ function Invoke-NodeBrowseInstallPage {
         }
 
         if (-not $skipListCacheClear) {
-            Clear-ShellMultiSelectListCache -Shell $Shell -CacheKey 'NodeBrowse'
+            Clear-ShellListCache -Shell $Shell -CacheKey 'NodeBrowse'
         }
         $skipListCacheClear = $false
 
@@ -569,20 +567,24 @@ function Invoke-NodeBrowseInstallPage {
             Update-NodeBrowseInstallLoadingProgress -Shell $Shell -Progress $progress -TargetPercent 100
         }
 
-        $toolbar = New-ShellSystemToolbarConfig
-        $invokeMultiSelect = Get-Command Invoke-ShellMultiSelectList -CommandType Function -ErrorAction Stop
-        $picked = & $invokeMultiSelect -Shell $Shell -SectionTitle $sectionTitle `
-            -Rows $rows -CacheKey 'NodeBrowse' `
-            -ColumnLayout $columnLayout `
-            -ToolbarConfig $toolbar -CountLabel (Get-NodeBrowseI18n -Key 'node.browse.countUnit') `
-            -SearchKeyMode
-
-        if (Test-ShellNavMarker $picked) {
-            return $picked
+        $listResult = Invoke-ToolkitShellList @{
+            Mode         = 'Multi'
+            Shell        = $Shell
+            SectionTitle = $sectionTitle
+            Rows         = $rows
+            CacheKey     = 'NodeBrowse'
+            Layout       = $listLayout
+            Toolbar      = (New-ShellSystemToolbarConfig)
+            CountLabel   = (Get-NodeBrowseI18n -Key 'node.browse.countUnit')
+            KeyColumn    = 'SearchKey'
         }
-        if ($null -eq $picked -or @($picked).Count -eq 0) {
+        if ($nav = Get-ShellListSelectNavMarker $listResult) {
+            return $nav
+        }
+        if ($listResult.Action -ne 'Pick') {
             return (Get-ShellNavMarker -Action 'back')
         }
+        $picked = @($listResult.Payloads)
 
         $installResult = Run-NodeBrowseInstallOperation -Shell $Shell -Items $picked `
             -SectionTitle $nodeActionSectionTitle

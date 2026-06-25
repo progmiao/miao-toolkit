@@ -1,4 +1,4 @@
-﻿$ErrorActionPreference = 'Stop'
+$ErrorActionPreference = 'Stop'
 $lib = Join-Path (Split-Path $PSScriptRoot -Parent) 'package\core\lib'
 . (Join-Path $lib 'bootstrap\Load-Core.ps1') -LibDirectory $lib
 Initialize-Paths -BinDirectory (Join-Path (Split-Path $PSScriptRoot -Parent) 'package\bin')
@@ -6,7 +6,7 @@ Initialize-Paths -BinDirectory (Join-Path (Split-Path $PSScriptRoot -Parent) 'pa
 Import-MiaoModule -Name Install
 
 foreach ($n in @(
-        'Test-ToolDepInstalled'
+        'Get-ToolDepInstalled'
         'Get-ToolDependencyStatus'
         'Start-ToolboxDepInstallSession'
         'Invoke-InstallPage'
@@ -34,11 +34,11 @@ if (-not (Test-Path $env:MIAO_CONFIG)) {
 }
 Clear-DepsStateCache
 Set-GlobalDepPackageVersion -Fingerprint 'winget:Volta.Volta' -Name 'volta' -Version '2.0.1'
-Write-Host "node installed: $(Test-ToolDepInstalled -Tool $node)"
+Write-Host "node installed: $(Get-ToolDepInstalled -Tool $node)"
 Write-Host "node status (with state): $(Get-ToolDependencyStatus -Tool $node)"
 
 $pnpm = $tools | Where-Object { $_.command -eq 'pnpm' } | Select-Object -First 1
-Write-Host "pnpm installed (shared volta): $(Test-ToolDepInstalled -Tool $pnpm)"
+Write-Host "pnpm installed (shared volta): $(Get-ToolDepInstalled -Tool $pnpm)"
 
 Remove-GlobalDepPackage -Fingerprint 'winget:Volta.Volta'
 Write-Host "node status (after remove global record): $(Get-ToolDependencyStatus -Tool $node)"

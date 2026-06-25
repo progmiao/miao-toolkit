@@ -26,6 +26,9 @@ function Import-YarnBrowseUninstallCore {
     . (Join-Path $coreLib 'ui\shell\SystemToolbar.ps1')
     . (Join-Path $coreLib 'ui\shell\SingleSelectList.ps1')
     . (Join-Path $coreLib 'ui\shell\MultiSelectList.ps1')
+    . (Join-Path $coreLib 'ui\shell\ShellListModel.ps1')
+    . (Join-Path $coreLib 'ui\shell\ShellListLayout.ps1')
+    . (Join-Path $coreLib 'ui\shell\ToolkitShellList.ps1')
     . (Join-Path $coreLib 'ui\shell\Draw.ps1')
     . (Join-Path $coreLib 'ui\shell\Layout.ps1')
     . (Join-Path $coreLib 'ui\shell\Header.ps1')
@@ -93,19 +96,13 @@ function Build-YarnBrowseUninstallRows {
         [string]$ActiveVersion
     )
 
-    return ConvertTo-ShellListRows -Items $Items -KeepSource -GetSearchKey {
-        param($Item, [int]$Index)
-        [string]$Item.Version
-    } -MapCells {
-        param($Item, [int]$Index)
-        @(
-            (Get-YarnBrowseUninstallTagsLabel -Item $Item -InstalledMap $InstalledMap `
+    return @($Items | ForEach-Object {
+        $item = $_
+        New-ShellListRow -Id ([string]$item.Version) -Cells @(
+            (Get-YarnBrowseUninstallTagsLabel -Item $item -InstalledMap $InstalledMap `
                 -DefaultVersion $DefaultVersion -ActiveVersion $ActiveVersion)
-        )
-    } -GetEnabled {
-        param($Item, [int]$Index)
-        $true
-    }
+        ) -Payload $item -SearchKey ([string]$item.Version) -Enabled $true
+    })
 }
 
 function Resolve-YarnBrowseUninstallTagsColumnWidth {
@@ -113,8 +110,7 @@ function Resolve-YarnBrowseUninstallTagsColumnWidth {
 
     $metrics = Get-ToolkitShellLayoutLineMetrics -Shell $Shell
     $versionKeyWidth = Get-ShellMultiSelectSearchKeyWidth
-    $gap = Get-MenuColumnGap
-    $prefixReserve = 2 + 3 + 1 + $versionKeyWidth + $gap
+    $prefixReserve = Get-ShellListRowPrefixReserve -Mode Multi -KeyWidth $versionKeyWidth
     $remaining = [int]$metrics.EndColumn - $prefixReserve
     $maxTags = 26
     return [Math]::Max(10, [Math]::Min($maxTags, $remaining))
@@ -127,14 +123,16 @@ function Invoke-YarnBrowseUninstallNoticePage {
         [string]$Message
     )
 
-    Clear-ShellSingleSelectListCache -Shell $Shell -CacheKey 'YarnUninstallNotice'
-    $toolbar = New-ShellSystemToolbarConfig
-    $invokeSingleSelect = Get-Command Invoke-ShellSingleSelectList -CommandType Function -ErrorAction Stop
-    return & $invokeSingleSelect -Shell $Shell -SectionTitle $SectionTitle `
-        -Rows @() -CacheKey 'YarnUninstallNotice' `
-        -ColumnLayout (New-ShellListColumnLayout -Preset ToolList) `
-        -ToolbarConfig $toolbar `
-        -InitialFlashMessage $Message
+    Clear-ShellListCache -Shell $Shell -CacheKey 'YarnUninstallNotice'
+    return Invoke-ToolkitShellList @{
+        Mode                 = 'Single'
+        Shell                = $Shell
+        SectionTitle         = $SectionTitle
+        Rows                 = @()
+        CacheKey             = 'YarnUninstallNotice'
+        Toolbar              = (New-ShellSystemToolbarConfig)
+        InitialFlashMessage  = $Message
+    }
 }
 
 function Invoke-YarnBrowseUninstallPage {
@@ -146,8 +144,8 @@ function Invoke-YarnBrowseUninstallPage {
     if (-not (Get-Command volta -ErrorAction SilentlyContinue)) {
         $noticeResult = Invoke-YarnBrowseUninstallNoticePage -Shell $Shell -SectionTitle $sectionTitle `
             -Message (Get-YarnBrowseUninstallI18n -Key 'yarn.uninstall.voltaMissing')
-        if (Test-ShellNavMarker $noticeResult) {
-            return $noticeResult
+        if ($nav = Get-ShellListSelectNavMarker $noticeResult) {
+            return $nav
         }
         return (Get-ShellNavMarker -Action 'back')
     }
@@ -160,8 +158,8 @@ function Invoke-YarnBrowseUninstallPage {
         if ($installed.Count -eq 0) {
             $noticeResult = Invoke-YarnBrowseUninstallNoticePage -Shell $Shell -SectionTitle $sectionTitle `
                 -Message (Get-YarnBrowseUninstallI18n -Key 'yarn.uninstall.noInstalled')
-            if (Test-ShellNavMarker $noticeResult) {
-                return $noticeResult
+            if ($nav = Get-ShellListSelectNavMarker $noticeResult) {
+                return $nav
             }
             return (Get-ShellNavMarker -Action 'back')
         }
@@ -170,27 +168,30 @@ function Invoke-YarnBrowseUninstallPage {
             $installed | ForEach-Object { New-YarnVersionMenuItem -Version $_ }
         )
         $tagsWidth = Resolve-YarnBrowseUninstallTagsColumnWidth -Shell $Shell
+        $listLayout = New-ShellListLayout -Widths @($tagsWidth)
         $rows = Build-YarnBrowseUninstallRows -Items $items -InstalledMap $voltaInfo.Map `
             -DefaultVersion $voltaInfo.Default -ActiveVersion $activeVersion
-        $columnLayout = New-ShellListColumnLayout -Widths @($tagsWidth)
 
-        Clear-ShellMultiSelectListCache -Shell $Shell -CacheKey 'YarnUninstall'
-        Initialize-ShellMultiSelectListDependencies
+        Clear-ShellListCache -Shell $Shell -CacheKey 'YarnUninstall'
 
-        $toolbar = New-ShellSystemToolbarConfig
-        $invokeMultiSelect = Get-Command Invoke-ShellMultiSelectList -CommandType Function -ErrorAction Stop
-        $picked = & $invokeMultiSelect -Shell $Shell -SectionTitle $sectionTitle `
-            -Rows $rows -CacheKey 'YarnUninstall' `
-            -ColumnLayout $columnLayout `
-            -ToolbarConfig $toolbar -CountLabel (Get-YarnBrowseUninstallI18n -Key 'yarn.uninstall.countUnit') `
-            -SearchKeyMode
-
-        if (Test-ShellNavMarker $picked) {
-            return $picked
+        $listResult = Invoke-ToolkitShellList @{
+            Mode         = 'Multi'
+            Shell        = $Shell
+            SectionTitle = $sectionTitle
+            Rows         = $rows
+            CacheKey     = 'YarnUninstall'
+            Layout       = $listLayout
+            Toolbar      = (New-ShellSystemToolbarConfig)
+            CountLabel   = (Get-YarnBrowseUninstallI18n -Key 'yarn.uninstall.countUnit')
+            KeyColumn    = 'SearchKey'
         }
-        if ($null -eq $picked -or @($picked).Count -eq 0) {
+        if ($nav = Get-ShellListSelectNavMarker $listResult) {
+            return $nav
+        }
+        if ($listResult.Action -ne 'Pick') {
             return (Get-ShellNavMarker -Action 'back')
         }
+        $picked = @($listResult.Payloads)
 
         $uninstallResult = Run-YarnBrowseUninstallOperation -Shell $Shell -Items $picked `
             -SectionTitle $yarnActionSectionTitle

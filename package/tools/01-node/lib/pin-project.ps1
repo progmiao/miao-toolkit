@@ -108,7 +108,7 @@ function Invoke-NodePinProjectPage {
         if ($usePreparedList) {
             $voltaInfo = $preparedList.VoltaInfo
             $rows = $preparedList.Rows
-            $columnLayout = $preparedList.ColumnLayout
+            $listLayout = $preparedList.ListLayout
             $sorted = $preparedList.Sorted
             $usePreparedList = $false
         }
@@ -121,8 +121,8 @@ function Invoke-NodePinProjectPage {
             $rows = Build-NodePinRows -Items $sorted -InstalledMap $voltaInfo.Map `
                 -DefaultVersion $voltaInfo.Default -ActiveVersion (Get-ActiveNodeVersion) `
                 -PinnedVersion $pinContext.PinnedVersion
-            $columnLayout = New-ShellListColumnLayout -Widths @($widths.Version, $widths.Tags)
-            Clear-ShellSingleSelectListCache -Shell $Shell -CacheKey 'NodePin'
+            $listLayout = New-ShellListLayout -Widths @($widths.Version, $widths.Tags)
+            Clear-ShellListCache -Shell $Shell -CacheKey 'NodePin'
         }
 
         if ($sorted.Count -eq 0) {
@@ -143,17 +143,18 @@ function Invoke-NodePinProjectPage {
             -VoltaInfo $voltaInfo
         $messageLine = if ([string]::IsNullOrWhiteSpace($flashMessage)) { $statusMessage } else { $flashMessage }
 
-        $picked = Invoke-NodePinVersionSingleSelectPage -Shell $Shell -ToolRoot $toolRoot `
-            -Rows $rows -ColumnLayout $columnLayout -InitialCatalogLine $catalogLine `
+        $listResult = Invoke-NodePinVersionSingleSelectPage -Shell $Shell -ToolRoot $toolRoot `
+            -Rows $rows -ListLayout $listLayout -InitialCatalogLine $catalogLine `
             -InitialFlashMessage $messageLine -SectionTitle $nodeActionSectionTitle
         $flashMessage = ''
 
-        if (Test-ShellNavMarker $picked) {
-            return $picked
+        if ($nav = Get-ShellListSelectNavMarker $listResult) {
+            return $nav
         }
-        if ($null -eq $picked) {
+        if ($listResult.Action -ne 'Pick' -or @($listResult.Rows).Count -eq 0) {
             return (Get-ShellNavMarker -Action 'back')
         }
+        $picked = $listResult.Rows[0]
 
         $ver = Resolve-NodeInstalledVersionFromPick -Picked $picked
         if ([string]::IsNullOrWhiteSpace($ver)) {

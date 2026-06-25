@@ -50,19 +50,25 @@ $rows = Build-ClaudePluginRows -Items $items -ToolRoot $toolRoot -GetTagsLabel {
     param($Item)
     Get-ClaudePluginTagsLabel -Item $Item -ToolRoot $toolRoot
 }
-$toolbar = New-ShellSystemToolbarConfig
-$picked = Invoke-ShellMultiSelectList -Shell $shell -SectionTitle $sectionTitle `
-    -Rows $rows -CacheKey 'ClaudeCodeInstallPlugin' `
-    -ColumnLayout (New-ShellListColumnLayout -Preset ToolList) `
-    -ToolbarConfig $toolbar `
-    -CountLabel (Get-ClaudeCodeI18n -ToolRoot $toolRoot -Key 'claude-code.plugin.countUnit') `
-    -SearchKeyMode
+$listResult = Invoke-ToolkitShellList @{
+    Mode         = 'Multi'
+    Shell        = $shell
+    SectionTitle = $sectionTitle
+    Rows         = $rows
+    CacheKey     = 'ClaudeCodeInstallPlugin'
+    Toolbar      = (New-ShellSystemToolbarConfig)
+    CountLabel   = (Get-ClaudeCodeI18n -ToolRoot $toolRoot -Key 'claude-code.plugin.countUnit')
+    KeyColumn    = 'SearchKey'
+}
 
-if ($null -eq $picked -or @($picked).Count -eq 0) {
+if ($nav = Get-ShellListSelectNavMarker $listResult) {
+    return $nav
+}
+if ($listResult.Action -ne 'Pick') {
     return (Get-ShellNavMarker -Action 'back')
 }
 
-$pluginIds = @(Resolve-ClaudePluginPick -Picked $picked)
+$pluginIds = @(Resolve-ClaudePluginPick -Picked @($listResult.Payloads))
 
 return Invoke-ClaudeCodeBatchOperation -Shell $shell -SectionTitle $sectionTitle `
     -ReadyStatusText (Get-ClaudeCodeI18n -ToolRoot $toolRoot -Key 'claude-code.plugin.installStatusReady') `

@@ -15,6 +15,9 @@ function Import-YarnInstalledSelectCore {
     . (Join-Path $CoreLib 'ui\shell\SystemToolbar.ps1')
     . (Join-Path $CoreLib 'ui\shell\SingleSelectList.ps1')
     . (Join-Path $CoreLib 'ui\shell\MultiSelectList.ps1')
+    . (Join-Path $CoreLib 'ui\shell\ShellListModel.ps1')
+    . (Join-Path $CoreLib 'ui\shell\ShellListLayout.ps1')
+    . (Join-Path $CoreLib 'ui\shell\ToolkitShellList.ps1')
     . (Join-Path $CoreLib 'ui\shell\Draw.ps1')
     . (Join-Path $CoreLib 'ui\shell\Layout.ps1')
     . (Join-Path $CoreLib 'ui\shell\Header.ps1')
@@ -62,20 +65,14 @@ function Build-YarnInstalledVersionRows {
         [string]$ActiveVersion
     )
 
-    return ConvertTo-ShellListRows -Items $Items -KeepSource -GetSearchKey {
-        param($Item, [int]$Index)
-        [string]$Item.Version
-    } -MapCells {
-        param($Item, [int]$Index)
-        @(
-            [string]$Item.Version
-            (Get-YarnInstalledVersionTagsLabel -Item $Item -InstalledMap $InstalledMap `
+    return @($Items | ForEach-Object {
+        $item = $_
+        New-ShellListRow -Id ([string]$item.Version) -Cells @(
+            [string]$item.Version
+            (Get-YarnInstalledVersionTagsLabel -Item $item -InstalledMap $InstalledMap `
                 -DefaultVersion $DefaultVersion -ActiveVersion $ActiveVersion)
-        )
-    } -GetEnabled {
-        param($Item, [int]$Index)
-        $true
-    }
+        ) -Payload $item -SearchKey ([string]$item.Version) -Enabled $true
+    })
 }
 
 function Resolve-YarnInstalledVersionColumnWidths {
@@ -83,8 +80,7 @@ function Resolve-YarnInstalledVersionColumnWidths {
 
     $metrics = Get-ToolkitShellLayoutLineMetrics -Shell $Shell
     $versionWidth = Get-ShellMultiSelectSearchKeyWidth
-    $gap = Get-MenuColumnGap
-    $prefixReserve = 2 + 3 + 1 + $versionWidth + $gap
+    $prefixReserve = Get-ShellListRowPrefixReserve -Mode Single -KeyWidth $versionWidth
     $remaining = [int]$metrics.EndColumn - $prefixReserve
     $maxTags = 26
     $tagsWidth = [Math]::Max(10, [Math]::Min($maxTags, $remaining))
@@ -116,20 +112,25 @@ function Invoke-YarnInstalledSelectNoticePage {
         [string]$CacheKey
     )
 
-    Clear-ShellSingleSelectListCache -Shell $Shell -CacheKey $CacheKey
-    $toolbar = New-ShellSystemToolbarConfig
-    $invokeSingleSelect = Get-Command Invoke-ShellSingleSelectList -CommandType Function -ErrorAction Stop
-    return & $invokeSingleSelect -Shell $Shell -SectionTitle $SectionTitle `
-        -Rows @() -CacheKey $CacheKey `
-        -ColumnLayout (New-ShellListColumnLayout -Preset ToolList) `
-        -ToolbarConfig $toolbar `
-        -InitialFlashMessage $Message
+    Clear-ShellListCache -Shell $Shell -CacheKey $CacheKey
+    return Invoke-ToolkitShellList @{
+        Mode                 = 'Single'
+        Shell                = $Shell
+        SectionTitle         = $SectionTitle
+        Rows                 = @()
+        CacheKey             = $CacheKey
+        Toolbar              = (New-ShellSystemToolbarConfig)
+        InitialFlashMessage  = $Message
+    }
 }
 
 function Resolve-YarnInstalledVersionFromPick {
     param($Picked)
 
     if ($null -eq $Picked) { return $null }
+    if ($null -ne $Picked.Payload -and $Picked.Payload.Version) {
+        return Normalize-YarnVersionLabel -Version ([string]$Picked.Payload.Version)
+    }
     if ($null -ne $Picked.Source -and $Picked.Source.Version) {
         return Normalize-YarnVersionLabel -Version ([string]$Picked.Source.Version)
     }
@@ -185,14 +186,17 @@ function Invoke-YarnInstalledVersionSingleSelectPage {
     $rows = Build-YarnInstalledVersionRows -Items $items -InstalledMap $voltaInfo.Map `
         -DefaultVersion $voltaInfo.Default -ActiveVersion $activeVersion
 
-    Clear-ShellSingleSelectListCache -Shell $Shell -CacheKey $CacheKey
+    Clear-ShellListCache -Shell $Shell -CacheKey $CacheKey
 
-    $toolbar = New-ShellSystemToolbarConfig
-    $invokeSingleSelect = Get-Command Invoke-ShellSingleSelectList -CommandType Function -ErrorAction Stop
-    return & $invokeSingleSelect -Shell $Shell -SectionTitle $sectionTitle `
-        -Rows $rows -CacheKey $CacheKey `
-        -ColumnLayout (New-ShellListColumnLayout -Widths @($widths.Version, $widths.Tags)) `
-        -ToolbarConfig $toolbar `
-        -CountLabel (Get-YarnInstalledSelectI18n -ToolRoot $ToolRoot -Key "$I18nPrefix.countUnit") `
-        -InitialFlashMessage $InitialFlashMessage
+    return Invoke-ToolkitShellList @{
+        Mode                 = 'Single'
+        Shell                = $Shell
+        SectionTitle         = $sectionTitle
+        Rows                 = $rows
+        CacheKey             = $CacheKey
+        Layout               = (New-ShellListLayout -Widths @($widths.Version, $widths.Tags))
+        Toolbar              = (New-ShellSystemToolbarConfig)
+        CountLabel           = (Get-YarnInstalledSelectI18n -ToolRoot $ToolRoot -Key "$I18nPrefix.countUnit")
+        InitialFlashMessage  = $InitialFlashMessage
+    }
 }

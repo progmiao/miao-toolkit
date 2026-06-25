@@ -69,19 +69,19 @@ function Invoke-NodeSetDefaultPage {
     $flashMessage = ''
 
     while ($true) {
-        $picked = Invoke-NodeInstalledVersionSingleSelectPage -Shell $Shell -ToolRoot $toolRoot `
+        $listResult = Invoke-NodeInstalledVersionSingleSelectPage -Shell $Shell -ToolRoot $toolRoot `
             -I18nPrefix 'node.default' -CacheKey 'NodeDefault' -InitialFlashMessage $flashMessage `
             -SectionTitle $nodeActionSectionTitle
         $flashMessage = ''
 
-        if (Test-ShellNavMarker $picked) {
-            return $picked
+        if ($nav = Get-ShellListSelectNavMarker $listResult) {
+            return $nav
         }
-        if ($null -eq $picked) {
+        if ($listResult.Action -ne 'Pick' -or @($listResult.Rows).Count -eq 0) {
             return (Get-ShellNavMarker -Action 'back')
         }
 
-        $ver = Resolve-NodeInstalledVersionFromPick -Picked $picked
+        $ver = Resolve-NodeInstalledVersionFromPick -Picked $listResult.Rows[0]
         if ([string]::IsNullOrWhiteSpace($ver)) {
             continue
         }

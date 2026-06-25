@@ -1,4 +1,4 @@
-﻿function Get-ToolkitReservedToolCommands {
+function Get-ToolkitReservedToolCommands {
     return @(
         'install', 'update', 'uninstall', 'help', 'list', 'version', 'sys', 'helper', 'lang', 'init', 'cache'
     )
@@ -174,6 +174,17 @@ function Get-ToolFromDirectory {
 
     $toolDirName = Split-Path $ToolRoot -Leaf
     return Merge-ToolManifestFromDirectory -ToolRoot $ToolRoot -ToolDirName $toolDirName
+}
+
+function Get-ToolSectionTitle {
+    param($Tool)
+
+    $unrecognized = Get-I18n -Key 'common.unrecognized'
+    if ($Tool.name -and [string]$Tool.name -ne $unrecognized) {
+        return [string]$Tool.name
+    }
+    if ($Tool.command) { return [string]$Tool.command }
+    return [string]$Tool.id
 }
 
 function Assign-ToolMenuNumbers {
@@ -463,7 +474,7 @@ function Get-ToolsReferencingDependency {
     $refs = @()
     foreach ($tool in @($Tools)) {
         if ([string]$tool.id -eq $ExcludeToolId) { continue }
-        if (-not (Test-ToolHasExternalDeps $tool)) { continue }
+        if (-not (Get-ToolHasExternalDeps $tool)) { continue }
 
         foreach ($pkg in @(Get-ToolDependencyPackages -Tool $tool)) {
             if ((Get-DependencyFingerprint -Dependency $pkg) -eq $Fingerprint) {

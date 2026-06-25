@@ -87,7 +87,7 @@ Message 行在两种模板下**均占 1 行**，位于 Body 与 Footer 之间。
 
 ### Body
 
-- 列表：`Invoke-ShellSingleSelectList` / `Invoke-ShellMultiSelectList`
+- 列表：`Invoke-ToolkitShellList -Mode Single|Multi`（`New-ShellListRow` + `New-ShellListLayout`）
 - 滚动页：`Invoke-ToolkitShellContentView` → `Draw-BrandedBodyLines`
 - **批量执行**：`BatchExecution.ps1`（进度条 + 状态 + 日志；`Initialize-ToolkitBatchExecutionView`）在 `ListStartRow`～`ListEndRow` 内输出
 - **横向**：正文须在 `LayoutLineMetrics.StartColumn`～`EndColumn` 内对齐（见 §四）
@@ -153,7 +153,7 @@ Message 行在两种模板下**均占 1 行**，位于 Body 与 Footer 之间。
 | `Set-ToolkitShellBodyCatalogLine` / `Get-ToolkitShellBodyCatalogLine` | 持久 Catalog 文案 |
 | `Render-ToolkitShellCatalogRow` | 按 `BodyCatalogLine` 重绘 |
 
-列表页传入 `-InitialCatalogLine`（`Invoke-ShellSingleSelectList`）。
+列表页传入 `-InitialCatalogLine`（`Invoke-ToolkitShellList`）。
 
 **横向对齐字段**（`Layout.ps1`）：`LayoutLineMetrics`、`LayoutStartColumn`、`LayoutLineWidth`。
 
@@ -166,7 +166,7 @@ Message 行在两种模板下**均占 1 行**，位于 Body 与 Footer 之间。
 | Header | `Header.ps1` | `Initialize-ToolkitShell` |
 | Title | `Title.ps1` | `Write-ToolkitShellSectionTitle` |
 | Catalog | `CatalogRow.ps1` | `Set-ToolkitShellBodyCatalogLine`、`Render-ToolkitShellCatalogRow` |
-| Body | `SingleSelectList.ps1`、`MultiSelectList.ps1`、`Page-Host.ps1` | `Invoke-ShellSingleSelectList`、`Invoke-ToolkitShellContentView` |
+| Body | `ToolkitShellList.ps1`、`Page-Host.ps1` | `Invoke-ToolkitShellList`、`Invoke-ToolkitShellContentView` |
 | Message | `Footer.ps1` | `Write-ToolkitShellMessageRow` |
 | Footer | `Footer.ps1`、`SystemToolbar.ps1`、`Console-Menu.ps1` | `Write-ToolkitShellFooter`、`Update-PaginatedMenuFooter` |
 | 行号 | `Layout.ps1` | `Get-ShellLayoutMetrics`、`Update-ToolkitShellViewLayout` |

@@ -42,6 +42,24 @@ function Get-MiaoToolDepsModulePaths {
 
 }
 
+function Get-MiaoToolMenuModulePaths {
+
+    return @(
+
+        'config\Deps-State.ps1'
+
+        'domain\Ensure-ToolDeps.ps1'
+
+        'domain\Invoke-ToolkitDeps.ps1'
+
+        'domain\Invoke-Tool.ps1'
+
+        'ui\shell\ToolActionMenu.ps1'
+
+    )
+
+}
+
 
 
 function Import-MiaoToolDepsModule {
@@ -108,6 +126,50 @@ function Get-MiaoModuleExportNames {
 
 
 
+function Export-MiaoGlobalFunctions {
+    param([string[]]$FunctionNames)
+
+    foreach ($fnName in @($FunctionNames | Select-Object -Unique)) {
+        $cmd = Get-Command -Name $fnName -CommandType Function -ErrorAction SilentlyContinue
+        if ($cmd) {
+            Set-Item -Path "function:global:$fnName" -Value $cmd.ScriptBlock -Force | Out-Null
+        }
+    }
+}
+
+function Get-MiaoShellListExportNames {
+    param([string]$LibRoot = '')
+
+    if ([string]::IsNullOrWhiteSpace($LibRoot)) {
+        $LibRoot = $script:MiaoCoreLibDir
+        if ([string]::IsNullOrWhiteSpace($LibRoot)) {
+            $LibRoot = $global:MiaoCoreLibDir
+        }
+    }
+
+    $rels = @(
+        'ui\shell\ShellListModel.ps1'
+        'ui\shell\ShellListLayout.ps1'
+        'ui\shell\ToolkitShellList.ps1'
+        'ui\shell\SingleSelectList.ps1'
+        'ui\shell\MultiSelectList.ps1'
+        'config\ListLayout.ps1'
+        'ui\shell\CatalogRow.ps1'
+        'ui\shell\Layout.ps1'
+        'ui\console\Console-Menu.ps1'
+    )
+    $paths = @($rels | ForEach-Object { Join-Path $LibRoot $_ })
+    return @(Get-MiaoModuleFunctionNames -Paths $paths)
+}
+
+function Export-MiaoShellListGlobals {
+    param([string]$LibRoot = '')
+
+    Export-MiaoGlobalFunctions -FunctionNames (Get-MiaoShellListExportNames -LibRoot $LibRoot)
+}
+
+
+
 function Import-MiaoModule {
 
     param(
@@ -159,7 +221,7 @@ function Import-MiaoModule {
 
         'ToolDeps' { $toolDepsPaths }
 
-        'Tool' { @($toolDepsPaths + 'domain\Invoke-Tool.ps1', 'ui\shell\ToolActionMenu.ps1') }
+        'Tool' { @(Get-MiaoToolMenuModulePaths) }
 
         'Help' { @('pages\sys.ps1', 'pages\help.ps1') }
 
@@ -207,6 +269,10 @@ function Import-MiaoModule {
 
         }
 
+    }
+
+    if ($Name -eq 'Tool') {
+        Export-MiaoShellListGlobals -LibRoot $lib
     }
 
 

@@ -18,6 +18,9 @@ function Import-ClaudeCodeShellCore {
             'ui\shell\SystemToolbar.ps1'
             'ui\shell\SingleSelectList.ps1'
             'ui\shell\MultiSelectList.ps1'
+            'ui\shell\ShellListModel.ps1'
+            'ui\shell\ShellListLayout.ps1'
+            'ui\shell\ToolkitShellList.ps1'
             'ui\shell\Draw.ps1'
             'ui\shell\Layout.ps1'
             'ui\shell\Header.ps1'
@@ -83,14 +86,17 @@ function Invoke-ClaudeCodeNoticePage {
     )
 
     $cacheKey = if ([string]::IsNullOrWhiteSpace($CacheKey)) { 'ClaudeCodeNotice' } else { $CacheKey }
-    Clear-ShellSingleSelectListCache -Shell $Shell -CacheKey $cacheKey
+    Clear-ShellListCache -Shell $Shell -CacheKey $cacheKey
 
-    $toolbar = New-ShellSystemToolbarConfig
-    return Invoke-ShellSingleSelectList -Shell $Shell -SectionTitle $SectionTitle `
-        -Rows @() -CacheKey $cacheKey `
-        -ColumnLayout (New-ShellListColumnLayout -Preset ToolList) `
-        -ToolbarConfig $toolbar `
-        -InitialFlashMessage $Message
+    return Invoke-ToolkitShellList @{
+        Mode                 = 'Single'
+        Shell                = $Shell
+        SectionTitle         = $SectionTitle
+        Rows                 = @()
+        CacheKey             = $cacheKey
+        Toolbar              = (New-ShellSystemToolbarConfig)
+        InitialFlashMessage  = $Message
+    }
 }
 
 function Read-ClaudeCodeShellLineInput {

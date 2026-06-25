@@ -1,4 +1,4 @@
-﻿# 依赖安装/更新专页（Space 多选，Enter 确认，Esc 返回）
+# 依赖安装/更新专页（Space 多选，Enter 确认，Esc 返回）
 
 function Get-InstallPageTools {
     param(
@@ -22,7 +22,7 @@ function Get-InstallPageTools {
 function Get-InstallPageToolStatusInfo {
     param($Tool)
 
-    if (-not (Test-ToolDepInstalled $Tool)) {
+    if (-not (Get-ToolDepInstalled $Tool)) {
         return @{
             needsAction = $true
             tag         = (Get-I18n -Key 'common.notInstalled')
