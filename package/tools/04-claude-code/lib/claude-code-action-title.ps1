@@ -60,3 +60,21 @@ function Extend-ClaudeCodeActionSectionTitle {
     return Extend-ToolActionSectionTitle -BaseTitle $BaseTitle -ToolRoot $ToolRoot `
         -SubPhaseKey $SubPhaseKey
 }
+
+function Get-ClaudeCodePluginMarketplaceSectionTitle {
+    param([string]$ToolRoot)
+
+    return (Format-ToolActionSectionTitle -ToolRoot $ToolRoot `
+        -ActionNameKey 'claude-code.action.addMarketplace.name')
+}
+
+function Get-ClaudeCodePluginBatchSectionTitle {
+    param(
+        [string]$ToolRoot,
+        [string]$SubPhaseKey
+    )
+
+    $parentTitle = Get-ClaudeCodePluginMarketplaceSectionTitle -ToolRoot $ToolRoot
+    return Extend-ClaudeCodeActionSectionTitle -BaseTitle $parentTitle -ToolRoot $ToolRoot `
+        -SubPhaseKey $SubPhaseKey
+}

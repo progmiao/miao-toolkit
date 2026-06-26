@@ -95,6 +95,12 @@
       "logSuccess": "已写入 {path}",
       "logFailed": "配置失败：{detail}"
     },
+    "section": {
+      "marketplaceAddExecute": "添加市场",
+      "pluginInstallExecute": "插件安装",
+      "pluginUninstallExecute": "插件卸载",
+      "pluginUpdateExecute": "插件更新"
+    },
     "marketplace": {
       "countUnit": "个市场",
       "noPresets": "暂无预设市场",

@@ -70,7 +70,10 @@ if ($listResult.Action -ne 'Pick') {
 
 $pluginIds = @(Resolve-ClaudePluginPick -Picked @($listResult.Payloads))
 
-return Invoke-ClaudeCodeBatchOperation -Shell $shell -SectionTitle $sectionTitle `
+$batchSectionTitle = Get-ClaudeCodePluginBatchSectionTitle -ToolRoot $toolRoot `
+    -SubPhaseKey 'claude-code.section.pluginInstallExecute'
+
+return Invoke-ClaudeCodeBatchOperation -Shell $shell -SectionTitle $batchSectionTitle `
     -ReadyStatusText (Get-ClaudeCodeI18n -ToolRoot $toolRoot -Key 'claude-code.plugin.installStatusReady') `
     -Intent install -Items $pluginIds `
     -GetItemLabel { param($Item) [string]$Item } `

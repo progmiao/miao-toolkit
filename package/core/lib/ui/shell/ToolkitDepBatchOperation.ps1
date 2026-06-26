@@ -367,7 +367,7 @@ function Update-ToolkitDepOperationSpinnerStatus {
 function Set-ToolkitDepOperationBatchCompleteUi {
     param(
         $Ui,
-        [ValidateSet('install', 'update', 'uninstall', 'init')]
+        [ValidateSet('install', 'update', 'uninstall', 'init', 'configure')]
         [string]$Intent,
         [int]$TotalCount,
         [int]$SuccessCount,

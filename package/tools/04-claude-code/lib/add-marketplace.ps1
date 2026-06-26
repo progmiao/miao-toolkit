@@ -66,7 +66,10 @@ if ($listResult.Action -ne 'Pick' -or @($listResult.Ids).Count -eq 0) {
 
 $sources = @($listResult.Ids | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
 
-return Invoke-ClaudeCodeBatchOperation -Shell $shell -SectionTitle $sectionTitle `
+$batchSectionTitle = Extend-ClaudeCodeActionSectionTitle -BaseTitle $sectionTitle -ToolRoot $toolRoot `
+    -SubPhaseKey 'claude-code.section.marketplaceAddExecute'
+
+return Invoke-ClaudeCodeBatchOperation -Shell $shell -SectionTitle $batchSectionTitle `
     -ReadyStatusText (Get-ClaudeCodeI18n -ToolRoot $toolRoot -Key 'claude-code.marketplace.statusReady') `
     -Intent configure -Items $sources `
     -GetItemLabel { param($Item) [string]$Item } `

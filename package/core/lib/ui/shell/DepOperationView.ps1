@@ -953,7 +953,7 @@ function Register-ToolkitDepRunnerItemResult {
 
 function Format-ToolkitDepBatchCountsText {
     param(
-        [ValidateSet('install', 'update', 'uninstall', 'init')]
+        [ValidateSet('install', 'update', 'uninstall', 'init', 'configure')]
         [string]$Intent = 'install',
         [int]$TotalCount = 0,
         [int]$SuccessCount,
@@ -978,7 +978,7 @@ function Format-ToolkitDepBatchCountSlot {
 
 function Get-ToolkitDepBatchSummarySegments {
     param(
-        [ValidateSet('install', 'update', 'uninstall', 'init')]
+        [ValidateSet('install', 'update', 'uninstall', 'init', 'configure')]
         [string]$Intent,
         [int]$TotalCount,
         [int]$SuccessCount,

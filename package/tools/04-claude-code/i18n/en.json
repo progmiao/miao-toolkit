@@ -95,6 +95,12 @@
       "logSuccess": "Written to {path}",
       "logFailed": "Configure failed: {detail}"
     },
+    "section": {
+      "marketplaceAddExecute": "Add marketplaces",
+      "pluginInstallExecute": "Install plugins",
+      "pluginUninstallExecute": "Uninstall plugins",
+      "pluginUpdateExecute": "Update plugins"
+    },
     "marketplace": {
       "countUnit": "marketplaces",
       "noPresets": "No preset marketplaces",

@@ -69,7 +69,10 @@ if ($listResult.Action -ne 'Pick') {
 
 $pluginIds = @(Resolve-ClaudePluginPick -Picked @($listResult.Payloads))
 
-return Invoke-ClaudeCodeBatchOperation -Shell $shell -SectionTitle $sectionTitle `
+$batchSectionTitle = Get-ClaudeCodePluginBatchSectionTitle -ToolRoot $toolRoot `
+    -SubPhaseKey 'claude-code.section.pluginUninstallExecute'
+
+return Invoke-ClaudeCodeBatchOperation -Shell $shell -SectionTitle $batchSectionTitle `
     -ReadyStatusText (Get-ClaudeCodeI18n -ToolRoot $toolRoot -Key 'claude-code.plugin.uninstallStatusReady') `
     -Intent uninstall -Items $pluginIds `
     -GetItemLabel { param($Item) [string]$Item } `
