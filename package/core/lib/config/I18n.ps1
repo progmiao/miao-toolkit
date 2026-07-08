@@ -396,6 +396,12 @@ function Get-I18nArrowHint {
     return (Format-I18nKeyDisplay $Arrows) + ' ' + $label
 }
 
+function Get-I18nListNavigateHint {
+    $keys = Get-MiaoI18nKeys
+    $arrows = [string]$keys.ArrowsUpDown + [string]$keys.ArrowsLeftRight
+    return (Get-I18nArrowHint -Arrows $arrows -LabelKey 'common.navigate')
+}
+
 function Get-ToolkitI18nKeyHint {
     param(
         [string]$Key,

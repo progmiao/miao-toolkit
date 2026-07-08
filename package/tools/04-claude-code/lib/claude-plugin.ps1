@@ -1,5 +1,9 @@
 # claude-code — 插件列表解析与 CLI 操作
 
+function Get-ClaudeFeaturedPluginNameColor {
+    return [System.ConsoleColor]::Yellow
+}
+
 function ConvertFrom-ClaudePluginJson {
     param([string]$JsonText)
 
@@ -193,6 +197,7 @@ function New-ClaudePluginMenuItem {
         [string]$Description = '',
         [string]$Tags = '',
         [bool]$Enabled = $true,
+        [bool]$Featured = $false,
         $Source = $null
     )
 
@@ -202,11 +207,46 @@ function New-ClaudePluginMenuItem {
         Description = $Description
         Tags        = $Tags
         Enabled     = $Enabled
+        Featured    = $Featured
         Source      = $Source
     }
 }
 
+function Sort-ClaudePluginMenuItems {
+    param(
+        [array]$Items,
+        [hashtable]$FeaturedOrderMap = $null
+    )
+
+    if (-not $FeaturedOrderMap -or $FeaturedOrderMap.Count -le 0) {
+        return @($Items | Sort-Object PluginId)
+    }
+
+    $featuredRankBase = 1000000
+    return @($Items | Sort-Object @{
+        Expression = {
+            $id = [string]$_.PluginId
+            if ($FeaturedOrderMap.ContainsKey($id)) {
+                return [int]$FeaturedOrderMap[$id]
+            }
+            return $featuredRankBase
+        }
+    }, @{
+        Expression = { [string]$_.PluginId }
+    })
+}
+
 function Get-ClaudePluginInstallMenuItems {
+    param([string]$ToolRoot = '')
+
+    $featuredOrderMap = @{}
+    if (-not [string]::IsNullOrWhiteSpace($ToolRoot)) {
+        if (-not (Get-Command Get-ClaudeCodeFeaturedPluginOrderMap -ErrorAction SilentlyContinue)) {
+            . (Join-Path $PSScriptRoot 'claude-code-presets.ps1')
+        }
+        $featuredOrderMap = Get-ClaudeCodeFeaturedPluginOrderMap -ToolRoot $ToolRoot
+    }
+
     $json = Invoke-ClaudePluginListJson -IncludeAvailable
     $installed = @{}
     foreach ($entry in @(Get-ClaudePluginInstalledEntries -JsonData $json)) {
@@ -226,12 +266,13 @@ function Get-ClaudePluginInstallMenuItems {
         }
         else { '' }
 
+        $featured = $featuredOrderMap.ContainsKey($pluginId)
         $items += New-ClaudePluginMenuItem -PluginId $pluginId -Version $version `
-            -Description $description -Tags $tags -Enabled:(-not $installed.ContainsKey($pluginId)) `
-            -Source $entry
+            -Description $description -Tags $tags -Featured:$featured `
+            -Enabled:(-not $installed.ContainsKey($pluginId)) -Source $entry
     }
 
-    return @($items | Sort-Object PluginId)
+    return (Sort-ClaudePluginMenuItems -Items $items -FeaturedOrderMap $featuredOrderMap)
 }
 
 function Get-ClaudePluginInstalledMenuItems {
@@ -268,53 +309,93 @@ function Get-ClaudePluginInstalledMenuItems {
     return @($items | Sort-Object PluginId)
 }
 
+function Get-ClaudeCodeCliFailureDetail {
+    param($Result)
+
+    if ($Result -is [string]) {
+        return ([string]$Result).Trim()
+    }
+
+    $output = [string]$Result.Output
+    if ([string]::IsNullOrWhiteSpace($output)) {
+        if ($null -ne $Result -and $Result.PSObject.Properties['ExitCode']) {
+            return "exit $($Result.ExitCode)"
+        }
+        return 'unknown error'
+    }
+
+    $lines = @($output -split "`r?`n" | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+    foreach ($pattern in @('(?i)Failed to', 'fatal:', 'error:', '×')) {
+        $match = @($lines | Where-Object { $_ -match $pattern } | Select-Object -Last 1)
+        if ($match) {
+            return ($match[0] -replace '\s+', ' ')
+        }
+    }
+
+    $substantive = @($lines | Where-Object { $_ -notmatch '^(?i)Installing ' })
+    if ($substantive.Count -gt 0) {
+        return ($substantive[-1] -replace '\s+', ' ')
+    }
+
+    return ($lines[-1] -replace '\s+', ' ')
+}
+
 function Invoke-ClaudePluginInstall {
-    param([string]$PluginId)
+    param(
+        [string]$PluginId,
+        [scriptblock]$OnUiPoll = $null,
+        [scriptblock]$OnChromePulse = $null
+    )
 
     return Invoke-ClaudeCodeCliCommand -ArgumentList @(
         'plugin', 'install', $PluginId, '--scope', 'user'
-    )
+    ) -OnUiPoll $OnUiPoll -OnChromePulse $OnChromePulse
 }
 
 function Invoke-ClaudePluginUninstall {
-    param([string]$PluginId)
+    param(
+        [string]$PluginId,
+        [scriptblock]$OnUiPoll = $null,
+        [scriptblock]$OnChromePulse = $null
+    )
 
     return Invoke-ClaudeCodeCliCommand -ArgumentList @(
         'plugin', 'uninstall', $PluginId, '--scope', 'user'
-    )
+    ) -OnUiPoll $OnUiPoll -OnChromePulse $OnChromePulse
 }
 
 function Invoke-ClaudePluginUpdate {
-    param([string]$PluginId)
+    param(
+        [string]$PluginId,
+        [scriptblock]$OnUiPoll = $null,
+        [scriptblock]$OnChromePulse = $null
+    )
 
     return Invoke-ClaudeCodeCliCommand -ArgumentList @(
         'plugin', 'update', $PluginId, '--scope', 'user'
-    ) -TimeoutMs 300000
+    ) -TimeoutMs 300000 -OnUiPoll $OnUiPoll -OnChromePulse $OnChromePulse
 }
 
 function Invoke-ClaudePluginMarketplaceAdd {
-    param([string]$Source)
+    param(
+        [string]$Source,
+        [scriptblock]$OnUiPoll = $null,
+        [scriptblock]$OnChromePulse = $null
+    )
 
     return Invoke-ClaudeCodeCliCommand -ArgumentList @(
         'plugin', 'marketplace', 'add', $Source
-    )
+    ) -OnUiPoll $OnUiPoll -OnChromePulse $OnChromePulse
 }
 
-function Get-ClaudeCodePresetMarketplaces {
-    return @(
-        [pscustomobject]@{
-            Source      = 'obra/superpowers-marketplace'
-            Description = 'obra/superpowers-marketplace'
-        },
-        [pscustomobject]@{
-            Source      = 'anthropics/claude-code'
-            Description = 'anthropics/claude-code'
-        },
-        [pscustomobject]@{
-            Source      = 'anthropics/claude-plugins-community'
-            Description = 'anthropics/claude-plugins-community'
-        }
-    )
+function New-ClaudePluginListLayout {
+    # pluginId | detail — 各约半宽；详情列焦点时横向滚动
+    return @{
+        Widths           = @(0, 0)
+        Preset           = 'HalfSplit'
+        ScrollColumn     = 1
+        ScrollIntervalMs = 300
+    }
 }
 
 function Build-ClaudePluginRows {
@@ -334,20 +415,31 @@ function Build-ClaudePluginRows {
             [string]$item.Tags
         }
 
-        $description = [string]$item.Description
-        if ([string]::IsNullOrWhiteSpace($description)) {
-            $description = $tags
+        $detailParts = @()
+        if ($item.Version) {
+            $detailParts += [string]$item.Version
         }
-        elseif (-not [string]::IsNullOrWhiteSpace($tags)) {
-            $description = "$description  $tags"
+        $description = [string]$item.Description
+        if (-not [string]::IsNullOrWhiteSpace($description)) {
+            $detailParts += $description
+        }
+        if (-not [string]::IsNullOrWhiteSpace($tags)) {
+            $detailParts += $tags
         }
 
-        $command = if ($item.Version) { [string]$item.Version } else { '' }
+        $cellColors = $null
+        if ($item.PSObject.Properties['Featured'] -and [bool]$item.Featured) {
+            $cellColors = @(
+                (Get-ClaudeFeaturedPluginNameColor)
+                [System.ConsoleColor]::Gray
+            )
+        }
+
         New-ShellListRow -Id ([string]$item.PluginId) -Cells @(
-            [string]$command
             [string]$item.PluginId
-            [string]$description
-        ) -Payload $item -SearchKey ([string]$item.PluginId) -Enabled ([bool]$item.Enabled)
+            ([string]($detailParts -join '  '))
+        ) -Payload $item -SearchKey ([string]$item.PluginId) -Enabled ([bool]$item.Enabled) `
+            -CellColors $cellColors
     })
 }
 

@@ -26,10 +26,12 @@ function Invoke-ToolkitShellList {
     $CountLabel = if ($Config.ContainsKey('CountLabel')) { [string]$Config['CountLabel'] } else { '' }
     $KeyColumn = if ($Config.ContainsKey('KeyColumn')) { [string]$Config['KeyColumn'] } else { 'Number' }
     $SearchKeyWidth = if ($Config.ContainsKey('SearchKeyWidth')) { [int]$Config['SearchKeyWidth'] } else { 0 }
+    $Search = if ($Config.ContainsKey('Search')) { $Config['Search'] } else { $null }
     $SkipBodyInit = [bool]($Config.ContainsKey('SkipBodyInit') -and $Config['SkipBodyInit'])
     $InitialCatalogLine = if ($Config.ContainsKey('InitialCatalogLine')) { [string]$Config['InitialCatalogLine'] } else { '' }
     $InitialFlashMessage = if ($Config.ContainsKey('InitialFlashMessage')) { [string]$Config['InitialFlashMessage'] } else { '' }
     $FlashKeys = if ($Config.ContainsKey('FlashKeys')) { $Config['FlashKeys'] } else { $null }
+    $LoadingProgress = if ($Config.ContainsKey('LoadingProgress')) { $Config['LoadingProgress'] } else { $null }
 
     if ($Mode -notin @('Single', 'Multi')) {
         throw "Invoke-ToolkitShellList Config.Mode must be Single or Multi (got: $Mode)."
@@ -56,19 +58,52 @@ function Invoke-ToolkitShellList {
 
     Sync-MiaoLocaleFromShell -Shell $Shell
 
-    $maxNumberPreview = 0
-    for ($i = 0; $i -lt $Rows.Count; $i++) {
-        $n = [int](Get-ShellListRowDisplayNumber -Row $Rows[$i] -Index $i)
-        if ($n -gt $maxNumberPreview) { $maxNumberPreview = $n }
+    $hideNumberColumn = ($Mode -eq 'Multi')
+    $numWidthPreview = 0
+    if (-not $hideNumberColumn) {
+        $maxNumberPreview = 0
+        for ($i = 0; $i -lt $Rows.Count; $i++) {
+            $n = [int](Get-ShellListRowDisplayNumber -Row $Rows[$i] -Index $i)
+            if ($n -gt $maxNumberPreview) { $maxNumberPreview = $n }
+        }
+        if ($maxNumberPreview -lt $Rows.Count) { $maxNumberPreview = $Rows.Count }
+        if ($maxNumberPreview -lt 1) { $maxNumberPreview = 1 }
+        $numWidthPreview = Get-ListNumberDisplayWidth -MaxNumber $maxNumberPreview
     }
-    if ($maxNumberPreview -lt $Rows.Count) { $maxNumberPreview = $Rows.Count }
-    if ($maxNumberPreview -lt 1) { $maxNumberPreview = 1 }
-    $numWidthPreview = Get-ListNumberDisplayWidth -MaxNumber $maxNumberPreview
 
     $resolvedLayout = Resolve-ShellListLayout -Shell $Shell -Layout $Layout -NumWidth $numWidthPreview `
-        -Mode $Mode -KeyColumn $KeyColumn -SearchKeyWidth $SearchKeyWidth
+        -Mode $Mode -KeyColumn $KeyColumn -SearchKeyWidth $SearchKeyWidth -HideNumberColumn:$hideNumberColumn
     $columnLayout = Resolve-ShellListLayoutColumnLayout -Layout $resolvedLayout
+    $listScrollConfig = Resolve-ShellListScrollConfig -Layout $resolvedLayout
     $normalized = @(Normalize-ShellListRows -Rows $Rows -Layout $resolvedLayout)
+
+    $onCacheProgress = $null
+    if ($LoadingProgress) {
+        $progressRef = $LoadingProgress
+        $onCacheProgress = {
+            param([int]$Index, [int]$Total)
+            $cap = [Math]::Max(1, $Total - 1)
+            $pct = 88 + [int](7 * $Index / $cap)
+            if (Get-Command Update-ToolkitShellListLoadingProgress -ErrorAction SilentlyContinue) {
+                Update-ToolkitShellListLoadingProgress -Shell $Shell -Progress $progressRef -TargetPercent $pct
+            }
+        }.GetNewClosure()
+        if (Get-Command Update-ToolkitShellListLoadingProgress -ErrorAction SilentlyContinue) {
+            Update-ToolkitShellListLoadingProgress -Shell $Shell -Progress $LoadingProgress -TargetPercent 82
+        }
+        if ($Mode -eq 'Multi') {
+            Initialize-ShellMultiSelectListDependencies
+            $null = Get-ShellMultiSelectListRowCache -Shell $Shell -CacheKey $CacheKey `
+                -Rows $normalized -ColumnLayout $columnLayout -OnProgress $onCacheProgress
+        }
+        else {
+            $null = Get-ShellSingleSelectListRowCache -Shell $Shell -CacheKey $CacheKey `
+                -Rows $normalized -ColumnLayout $columnLayout -OnProgress $onCacheProgress
+        }
+        if (Get-Command Update-ToolkitShellListLoadingProgress -ErrorAction SilentlyContinue) {
+            Update-ToolkitShellListLoadingProgress -Shell $Shell -Progress $LoadingProgress -TargetPercent 96
+        }
+    }
 
     $catalogLine = [string]$InitialCatalogLine
     if ([string]::IsNullOrWhiteSpace($catalogLine)) {
@@ -88,11 +123,16 @@ function Invoke-ToolkitShellList {
         Render-ToolkitShellCatalogRow -Shell $Shell
     }
 
+    if ($LoadingProgress -and (Get-Command Update-ToolkitShellListLoadingProgress -ErrorAction SilentlyContinue)) {
+        Update-ToolkitShellListLoadingProgress -Shell $Shell -Progress $LoadingProgress -TargetPercent 98
+    }
+
     if ($Mode -eq 'Single') {
         $raw = Invoke-ToolkitShellListSingleCore -Shell $Shell -CacheKey $CacheKey `
             -NormalizedRows $normalized -ColumnLayout $columnLayout -ToolbarConfig $Toolbar `
             -CountLabel $CountLabel -InitialCatalogLine $catalogLine `
-            -InitialFlashMessage $InitialFlashMessage
+            -InitialFlashMessage $InitialFlashMessage -SearchConfig $Search `
+            -ListScrollConfig $listScrollConfig
         return (ConvertTo-ShellListSelectResult -RawResult $raw -Mode Single)
     }
 
@@ -100,7 +140,9 @@ function Invoke-ToolkitShellList {
     $raw = Invoke-ToolkitShellListMultiCore -Shell $Shell -CacheKey $CacheKey `
         -NormalizedRows $normalized -ColumnLayout $columnLayout -ToolbarConfig $Toolbar `
         -CountLabel $CountLabel -KeyColumn $KeyColumn -SearchKeyWidth $SearchKeyWidth `
-        -FlashNothingSelectedKey $flashNothingSelectedKey -FlashItemDisabledKey $flashItemDisabledKey
+        -SearchConfig $Search -FlashNothingSelectedKey $flashNothingSelectedKey `
+        -FlashItemDisabledKey $flashItemDisabledKey -HideNumberColumn:$hideNumberColumn `
+        -ListScrollConfig $listScrollConfig
     return (ConvertTo-ShellListSelectResult -RawResult $raw -Mode Multi)
 }
 
@@ -113,7 +155,9 @@ function Invoke-ToolkitShellListSingleCore {
         [hashtable]$ToolbarConfig,
         [string]$CountLabel,
         [string]$InitialCatalogLine,
-        [string]$InitialFlashMessage
+        [string]$InitialFlashMessage,
+        [hashtable]$SearchConfig = $null,
+        [hashtable]$ListScrollConfig = $null
     )
 
     $header = New-ToolkitMenuHeader -HideSectionTitle
@@ -132,9 +176,14 @@ function Invoke-ToolkitShellListSingleCore {
     $numWidth = Get-ListNumberDisplayWidth -MaxNumber $maxNumber
 
     $contentMetrics = Get-ToolkitShellLayoutLineMetrics -Shell $Shell
+    $scrollConfig = if ($ListScrollConfig) { $ListScrollConfig } else { Resolve-ShellListScrollConfig -Layout $null }
+    $marqueeOffset = 0
+    $marqueeLastTick = [Environment]::TickCount
+    $getMarqueeOffset = { return $marqueeOffset }.GetNewClosure()
     $handlers = New-ShellSingleSelectListDrawHandlers -RowCache $rowCache -ColGap $colGap `
         -LayoutLineWidth ([int]$contentMetrics.EndColumn) `
-        -LayoutStartColumn ([int]$contentMetrics.StartColumn)
+        -LayoutStartColumn ([int]$contentMetrics.StartColumn) `
+        -ScrollColumn ([int]$scrollConfig.ScrollColumn) -GetMarqueeOffset $getMarqueeOffset
     if (-not $handlers['GetLabel'] -or -not $handlers['DrawListRow']) {
         throw 'Invoke-ToolkitShellList: single list draw handlers are not available.'
     }
@@ -172,7 +221,9 @@ function Invoke-ToolkitShellListSingleCore {
         -CompactNavStatus `
         -AllowSpaceConfirm `
         -InitialCatalogLine $InitialCatalogLine `
-        -InitialFlashMessage $InitialFlashMessage
+        -InitialFlashMessage $InitialFlashMessage -SearchConfig $SearchConfig `
+        -ListScrollConfig $scrollConfig -MarqueeOffset ([ref]$marqueeOffset) `
+        -MarqueeLastTick ([ref]$marqueeLastTick) -MarqueeRowCache $rowCache
 }
 
 function Invoke-ToolkitShellListMultiCore {
@@ -187,7 +238,10 @@ function Invoke-ToolkitShellListMultiCore {
         [string]$KeyColumn,
         [int]$SearchKeyWidth,
         [string]$FlashNothingSelectedKey,
-        [string]$FlashItemDisabledKey
+        [string]$FlashItemDisabledKey,
+        [hashtable]$SearchConfig = $null,
+        [switch]$HideNumberColumn,
+        [hashtable]$ListScrollConfig = $null
     )
 
     $header = New-ToolkitMenuHeader -HideSectionTitle
@@ -220,10 +274,9 @@ function Invoke-ToolkitShellListMultiCore {
     }.GetNewClosure()
 
     $letterKeys = if ($ToolbarConfig.LetterKeys) { $ToolbarConfig.LetterKeys } else { @{} }
-    $searchKeyMode = ($KeyColumn -eq 'SearchKey')
 
     $numberWidth = 0
-    if (-not $searchKeyMode) {
+    if (-not $HideNumberColumn) {
         $maxNumber = 0
         for ($i = 0; $i -lt $NormalizedRows.Count; $i++) {
             $n = [int](Get-ShellListRowDisplayNumber -Row $NormalizedRows[$i] -Index $i)
@@ -235,12 +288,12 @@ function Invoke-ToolkitShellListMultiCore {
 
     $picked = Show-ShellMultiSelectListMenu -Header $header -Items $NormalizedRows -CountLabel $CountLabel `
         -TestItemEnabled $testRowEnabled -GetItemDisplayNumber $getDisplayNumber `
-        -GetItemSearchKey $getSearchKey -ResolveMenuNumber $resolveMenuNumber `
-        -NumberDisplayWidth $numberWidth -SearchKeyMode:$searchKeyMode `
-        -SearchKeyWidth $SearchKeyWidth -RowCache $rowCache -ColGap $colGap -CheckedCacheKey $CacheKey `
+        -ResolveMenuNumber $resolveMenuNumber -NumberDisplayWidth $numberWidth `
+        -RowCache $rowCache -ColGap $colGap -CheckedCacheKey $CacheKey `
         -MenuSplitActionSegments @($ToolbarConfig.Segments) -LetterKeys $letterKeys `
         -ToolkitShell $Shell -AllowBack:($ToolbarConfig.AllowBack) `
-        -FlashNothingSelectedKey $FlashNothingSelectedKey -FlashItemDisabledKey $FlashItemDisabledKey
+        -FlashNothingSelectedKey $FlashNothingSelectedKey -FlashItemDisabledKey $flashItemDisabledKey `
+        -SearchConfig $SearchConfig -HideNumberColumn:$HideNumberColumn
 
     if (Test-ShellNavMarker $picked) { return $picked }
     if ($null -eq $picked) { return $null }

@@ -626,6 +626,9 @@ function Clear-ToolkitDepBatchOperationView {
     Set-ToolkitShellToolbarLocked -Shell $Context.Shell -Locked $false
     if ($Context.Shell) {
         $Context.Shell['SuppressBelowFooterClear'] = $false
+        if ($Context.Shell.Layout) {
+            $Context.Shell.Layout['BodyDirty'] = $true
+        }
     }
     & $Context.FnClearExitExtension -Shell $Context.Shell
 }

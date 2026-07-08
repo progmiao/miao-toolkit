@@ -14,6 +14,8 @@ $toolRoot = Split-Path $PSScriptRoot -Parent
 . (Join-Path $PSScriptRoot 'claude-code-action-title.ps1')
 . (Join-Path $PSScriptRoot 'claude-code-state.ps1')
 . (Join-Path $PSScriptRoot 'claude-settings.ps1')
+. (Join-Path $PSScriptRoot 'claude-plugin.ps1')
+. (Join-Path $PSScriptRoot 'claude-code-presets.ps1')
 . (Join-Path $PSScriptRoot 'claude-batch.ps1')
 
 $page = Initialize-ClaudeCodeActionPage -ToolRoot $toolRoot -ToolkitShell $ToolkitShell `

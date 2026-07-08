@@ -31,6 +31,13 @@ function Import-ClaudeCodeShellCore {
         . (Join-Path $CoreLib $rel)
     }
 
+    foreach ($rel in @(
+            'ui\shell\ShellListSearch.ps1'
+            'ui\shell\ToolkitShellListLoad.ps1'
+        )) {
+        . (Join-Path $CoreLib $rel)
+    }
+
     if (-not (Get-Command Initialize-ToolkitBatchExecutionView -ErrorAction SilentlyContinue)) {
         Import-ClaudeCodeDepProgressCore -CoreLib $CoreLib
     }

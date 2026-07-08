@@ -13,9 +13,6 @@ param(
     [Alias('x')]
     [switch]$ConfigureProxy,
 
-    [Alias('m')]
-    [switch]$AddMarketplace,
-
     [Alias('p')]
     [switch]$InstallPlugin,
 
@@ -80,7 +77,6 @@ if ($Install.IsPresent) { $mode = 'Install' }
 elseif ($Init.IsPresent) { $mode = 'Init' }
 elseif ($ConfigureApi.IsPresent) { $mode = 'ConfigureApi' }
 elseif ($ConfigureProxy.IsPresent) { $mode = 'ConfigureProxy' }
-elseif ($AddMarketplace.IsPresent) { $mode = 'AddMarketplace' }
 elseif ($InstallPlugin.IsPresent) { $mode = 'InstallPlugin' }
 elseif ($UninstallPlugin.IsPresent) { $mode = 'UninstallPlugin' }
 elseif ($UpdatePlugin.IsPresent) { $mode = 'UpdatePlugin' }

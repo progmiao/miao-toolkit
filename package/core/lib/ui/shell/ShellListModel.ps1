@@ -27,7 +27,8 @@ function New-ShellListRow {
         $Payload = $null,
         [string]$SearchKey = '',
         [bool]$Enabled = $true,
-        [int]$Number = 0
+        [int]$Number = 0,
+        [System.ConsoleColor[]]$CellColors = $null
     )
 
     $row = [ordered]@{
@@ -37,6 +38,9 @@ function New-ShellListRow {
         SearchKey = if ([string]::IsNullOrWhiteSpace($SearchKey)) { [string]$Id } else { [string]$SearchKey }
         Enabled   = [bool]$Enabled
         Number    = [int]$Number
+    }
+    if ($CellColors) {
+        $row['CellColors'] = @($CellColors)
     }
     return [pscustomobject]$row
 }
@@ -77,9 +81,16 @@ function Get-ShellListSelectNavMarker {
 function Resolve-ShellListLayoutColumnLayout {
     param([hashtable]$Layout)
 
-    return @{
+    $result = @{
         Widths = @($Layout.Widths)
     }
+    if ($Layout -and $Layout.ContainsKey('ScrollColumn')) {
+        $result['ScrollColumn'] = [int]$Layout.ScrollColumn
+    }
+    if ($Layout -and $Layout.ContainsKey('ScrollIntervalMs')) {
+        $result['ScrollIntervalMs'] = [int]$Layout.ScrollIntervalMs
+    }
+    return $result
 }
 
 function Normalize-ShellListRows {
@@ -140,6 +151,11 @@ function Normalize-ShellListRows {
             $payload = $row.Source
         }
 
+        $cellColors = $null
+        if ($null -ne $row.PSObject.Properties['CellColors'] -and $row.CellColors) {
+            $cellColors = @($row.CellColors)
+        }
+
         $normalized.Add([pscustomobject]@{
             Id        = $id
             Number    = $number
@@ -147,6 +163,7 @@ function Normalize-ShellListRows {
             Payload   = $payload
             SearchKey = $searchKey
             Enabled   = $enabled
+            CellColors = $cellColors
         })
         $index++
     }
@@ -166,7 +183,11 @@ function Get-ShellListRowsCacheKey {
         }
         else { [string]$_.Id }
         $key = if ($null -ne $_.PSObject.Properties['SearchKey']) { [string]$_.SearchKey } else { '' }
-        "$($_.Number):${key}:$($_.Cells -join '|'):$($_.Enabled):$payloadKey"
+        $colorKey = ''
+        if ($null -ne $_.PSObject.Properties['CellColors'] -and $_.CellColors) {
+            $colorKey = (($_.CellColors | ForEach-Object { [string][int]$_ }) -join ',')
+        }
+        "$($_.Number):${key}:$($_.Cells -join '|'):$($_.Enabled):${colorKey}:$payloadKey"
     }) -join ';')
 }
 

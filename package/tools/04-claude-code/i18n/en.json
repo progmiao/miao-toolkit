@@ -9,7 +9,7 @@
       },
       "init": {
         "name": "Init config",
-        "description": "Apply required defaults before first use (e.g. disable OAuth login)"
+        "description": "Apply defaults and register preset plugin marketplaces"
       },
       "configureApi": {
         "name": "Configure API",
@@ -18,10 +18,6 @@
       "configureProxy": {
         "name": "Configure proxy",
         "description": "Set HTTP/HTTPS proxy or clear proxy settings"
-      },
-      "addMarketplace": {
-        "name": "Plugin marketplace",
-        "description": "Register common plugin marketplaces"
       },
       "installPlugin": {
         "name": "Install plugins",
@@ -70,6 +66,7 @@
       "stepDisableLogin": "Disable OAuth login",
       "stepWriteSettings": "Merge settings.json",
       "stepVerify": "Verify configuration",
+      "stepRegisterMarketplace": "Register marketplace {source}",
       "logSuccess": "{step} done",
       "logFailed": "{step} failed: {detail}"
     },
@@ -96,19 +93,14 @@
       "logFailed": "Configure failed: {detail}"
     },
     "section": {
-      "marketplaceAddExecute": "Add marketplaces",
       "pluginInstallExecute": "Install plugins",
       "pluginUninstallExecute": "Uninstall plugins",
       "pluginUpdateExecute": "Update plugins"
     },
-    "marketplace": {
-      "countUnit": "marketplaces",
-      "noPresets": "No preset marketplaces",
-      "statusReady": "Ready to add marketplaces",
-      "logSuccess": "Added {source}",
-      "logFailed": "Failed to add {source}: {detail}"
-    },
     "plugin": {
+      "loadingFetch": "{spinner} Loading plugin list…",
+      "loadingResult": "{spinner} Preparing plugin list…",
+      "loadingDraw": "{spinner} Rendering plugin list…",
       "countUnit": "plugins",
       "tagInstalled": "installed",
       "tagUpdate": "update→{version}",

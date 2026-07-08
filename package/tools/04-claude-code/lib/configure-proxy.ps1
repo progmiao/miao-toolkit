@@ -78,7 +78,7 @@ return Invoke-ClaudeCodeBatchOperation -Shell $shell -SectionTitle $sectionTitle
         Get-ClaudeCodeI18n -ToolRoot $toolRoot -Key 'claude-code.proxy.applyLabel'
     } `
     -InvokeItem {
-        param($Item)
+        param($Item, $Pump)
         $path = Apply-ClaudeCodeProxySecrets -ProxyConfig $Item.Config
         return [pscustomobject]@{
             Success = $true

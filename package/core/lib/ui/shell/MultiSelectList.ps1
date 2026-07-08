@@ -23,6 +23,9 @@ function Initialize-ShellMultiSelectListDependencies {
     if (-not (Get-Command Get-ListNumberDisplayWidth -ErrorAction SilentlyContinue)) {
         . (Join-Path $lib 'config\ListLayout.ps1')
     }
+    if (-not (Get-Command Resolve-ShellListScrollConfig -ErrorAction SilentlyContinue)) {
+        . (Join-Path $PSScriptRoot 'ShellListScroll.ps1')
+    }
 
     . (Join-Path $lib 'ui\console\Console-Menu.ps1')
 }
@@ -48,10 +51,12 @@ function Format-ShellMultiSelectCheckMark {
 function Build-ShellMultiSelectListRowCache {
     param(
         [array]$Rows,
-        [hashtable]$ColumnLayout
+        [hashtable]$ColumnLayout,
+        [scriptblock]$OnProgress = $null
     )
 
-    $built = Build-ShellSingleSelectListRowCache -Rows $Rows -ColumnLayout $ColumnLayout
+    $built = Build-ShellSingleSelectListRowCache -Rows $Rows -ColumnLayout $ColumnLayout `
+        -OnProgress $OnProgress
     if ($Rows.Count -gt 0) {
         for ($i = 0; $i -lt $Rows.Count; $i++) {
             $searchKey = ''
@@ -62,13 +67,17 @@ function Build-ShellMultiSelectListRowCache {
 
             $entry = $built.RowCache[$i]
             $built.RowCache[$i] = [pscustomobject]@{
-                BodyPlain    = $entry.BodyPlain
-                BodySegments = $entry.BodySegments
-                LineColor    = $entry.LineColor
-                Enabled      = $entry.Enabled
-                Source       = $entry.Source
-                Number       = $entry.Number
-                SearchKey    = $searchKey
+                BodyPlain      = $entry.BodyPlain
+                BodySegments   = $entry.BodySegments
+                LineColor      = $entry.LineColor
+                Enabled        = $entry.Enabled
+                Source         = $entry.Source
+                Number         = $entry.Number
+                SearchKey      = $searchKey
+                RawCells       = $entry.RawCells
+                Widths         = $entry.Widths
+                CellColors     = $entry.CellColors
+                ScrollOverflow = $entry.ScrollOverflow
             }
         }
     }
@@ -86,26 +95,69 @@ function Build-ShellMultiSelectListRowSpec {
         [string]$Gap,
         [switch]$UseSearchKeyColumn,
         [int]$KeyWidth = 0,
-        [string]$DisplayKey = ''
+        [string]$DisplayKey = '',
+        [switch]$HideNumberColumn,
+        [int]$ScrollColumn = -1,
+        [int]$MarqueeOffset = 0
     )
 
     if (-not $RowCacheEntry) { return $null }
 
+    if (-not (Get-Command Test-ShellListRowMarqueeActive -ErrorAction SilentlyContinue)) {
+        . (Join-Path $PSScriptRoot 'ShellListScroll.ps1')
+    }
+
     $enabled = [bool]$RowCacheEntry.Enabled
     $check = Format-ShellMultiSelectCheckMark -Checked $Checked -Enabled $enabled
     $mark = if ($Selected) { '>' } else { ' ' }
+    $lineColor = if ($enabled) { $RowCacheEntry.LineColor } else { [System.ConsoleColor]::DarkGray }
+    $marqueeActive = Test-ShellListRowMarqueeActive -RowCacheEntry $RowCacheEntry `
+        -ScrollColumn $ScrollColumn -Selected:$Selected
+
+    $bodySegs = @()
+    if ($marqueeActive) {
+        $body = Build-ShellListRowBodyFromCells -RawCells @($RowCacheEntry.RawCells) `
+            -Widths @($RowCacheEntry.Widths) -Gap (' ' * (Get-MenuColumnGap)) `
+            -DefaultLineColor $lineColor -CellColors $RowCacheEntry.CellColors -Enabled $enabled `
+            -ScrollColumn $ScrollColumn -MarqueeOffset $MarqueeOffset -MarqueeActive `
+            -Selected:$Selected
+        $bodySegs = @($body.BodySegments)
+    }
+    elseif ($null -ne $RowCacheEntry.BodySegments) {
+        $bodySegs = @($RowCacheEntry.BodySegments)
+    }
+
     if ($UseSearchKeyColumn) {
         $keyText = Pad-DisplayText -Text $DisplayKey -TargetWidth $KeyWidth
-        $prefix = " $mark $check $keyText$Gap"
+        $keySeg = @{ Text = "$keyText$Gap"; Color = $lineColor }
+    }
+    elseif ($HideNumberColumn) {
+        $keySeg = $null
     }
     else {
         $num = Format-ListDisplayNumber -Number $DisplayNumber -NumWidth $NumWidth
-        $prefix = " $mark $check $num$Gap"
+        $keySeg = @{ Text = "$num$Gap"; Color = $lineColor }
     }
-    $lineColor = if ($enabled) { $RowCacheEntry.LineColor } else { [System.ConsoleColor]::DarkGray }
 
-    if ($Selected) {
+    $checkSeg = if ($HideNumberColumn -and -not $UseSearchKeyColumn) {
+        @{ Text = "$mark $check"; Color = $lineColor }
+    }
+    else {
+        @{ Text = "$mark $check "; Color = $lineColor }
+    }
+
+    if ($Selected -and -not $marqueeActive) {
         $foreground = if ($enabled) { [System.ConsoleColor]::Black } else { [System.ConsoleColor]::DarkGray }
+        if ($UseSearchKeyColumn) {
+            $prefix = " $mark $check $keyText$Gap"
+        }
+        elseif ($HideNumberColumn) {
+            $prefix = " $mark $check"
+        }
+        else {
+            $num = Format-ListDisplayNumber -Number $DisplayNumber -NumWidth $NumWidth
+            $prefix = " $mark $check $num$Gap"
+        }
         return @{
             Text       = $prefix + $RowCacheEntry.BodyPlain
             Foreground = $foreground
@@ -113,22 +165,18 @@ function Build-ShellMultiSelectListRowSpec {
         }
     }
 
-    if ($UseSearchKeyColumn) {
-        $keyText = Pad-DisplayText -Text $DisplayKey -TargetWidth $KeyWidth
-        $keySeg = @{ Text = "$keyText$Gap"; Color = $lineColor }
-    }
-    else {
-        $num = Format-ListDisplayNumber -Number $DisplayNumber -NumWidth $NumWidth
-        $keySeg = @{ Text = "$num$Gap"; Color = $lineColor }
+    if ($Selected -and $marqueeActive) {
+        $segments = if ($keySeg) { @($checkSeg, $keySeg) + $bodySegs } else { @($checkSeg) + $bodySegs }
+        return @{
+            Segments          = $segments
+            DefaultForeground = [System.ConsoleColor]::Black
+            Background        = [System.ConsoleColor]::Cyan
+        }
     }
 
-    $checkSeg = @{ Text = "$mark $check "; Color = $lineColor }
-    $bodySegs = @()
-    if ($null -ne $RowCacheEntry.BodySegments) {
-        $bodySegs = @($RowCacheEntry.BodySegments)
-    }
+    $segments = if ($keySeg) { @($checkSeg, $keySeg) + $bodySegs } else { @($checkSeg) + $bodySegs }
     return @{
-        Segments          = @($checkSeg, $keySeg) + $bodySegs
+        Segments          = $segments
         DefaultForeground = $lineColor
     }
 }
@@ -164,7 +212,7 @@ function Write-ShellMultiSelectListRow {
     try { [Console]::SetCursorPosition(0, $ScreenRow) } catch { return }
 
     $width = Get-SafeWriteLineWidth -Row $ScreenRow
-    if ($Selected) {
+    if ($Selected -and $RowSpec.Text -and -not $RowSpec.Segments) {
         $region = Resolve-ConsoleContentHighlightRegion -Row $ScreenRow `
             -LayoutStartColumn $LayoutStartColumn -LayoutLineWidth $LayoutLineWidth
         Write-ConsoleRowHighlightText -Text ([string]$RowSpec.Text) -Region $region
@@ -173,14 +221,17 @@ function Write-ShellMultiSelectListRow {
     }
 
     $used = 0
-    foreach ($seg in $RowSpec.Segments) {
+    $segments = if ($RowSpec.Segments) { @($RowSpec.Segments) } else { @() }
+    foreach ($seg in $segments) {
         if (-not $seg) { continue }
         if ($used -ge $width) { break }
         $partWidth = Get-DisplayWidth $seg.Text
         $remaining = $width - $used
         $text = if ($partWidth -gt $remaining) { Truncate-DisplayText $seg.Text $remaining } else { $seg.Text }
         if ([string]::IsNullOrEmpty($text)) { break }
-        Write-Host $text -NoNewline -ForegroundColor $seg.Color
+        $fg = if ($seg.Color) { $seg.Color } else { $RowSpec.DefaultForeground }
+        $bg = if ($Selected -and $RowSpec.Background) { $RowSpec.Background } else { (Get-ConsoleSurfaceBackground) }
+        Write-Host $text -NoNewline -ForegroundColor $fg -BackgroundColor $bg
         $used += Get-DisplayWidth $text
     }
     if ($used -lt $width) {
@@ -204,7 +255,10 @@ function Invoke-ShellMultiSelectListDrawRow {
         [int]$LayoutStartColumn = 0,
         [switch]$UseSearchKeyColumn,
         [int]$KeyWidth = 0,
-        [string]$DisplayKey = ''
+        [string]$DisplayKey = '',
+        [switch]$HideNumberColumn,
+        [int]$ScrollColumn = -1,
+        [int]$MarqueeOffset = 0
     )
 
     if ($Index -lt 0 -or $Index -ge $RowCache.Count) { return }
@@ -213,7 +267,8 @@ function Invoke-ShellMultiSelectListDrawRow {
 
     $spec = Build-ShellMultiSelectListRowSpec -RowCacheEntry $part -Selected $Selected -Checked $Checked `
         -NumWidth $NumWidth -DisplayNumber $DisplayNumber -Gap $ColGap `
-        -UseSearchKeyColumn:$UseSearchKeyColumn -KeyWidth $KeyWidth -DisplayKey $DisplayKey
+        -UseSearchKeyColumn:$UseSearchKeyColumn -KeyWidth $KeyWidth -DisplayKey $DisplayKey `
+        -HideNumberColumn:$HideNumberColumn -ScrollColumn $ScrollColumn -MarqueeOffset $MarqueeOffset
     Write-ShellMultiSelectListRow -ScreenRow $ScreenRow -DisplayNumber $DisplayNumber `
         -NumWidth $NumWidth -Gap $ColGap -Selected $Selected -Checked $Checked -Enabled $Enabled `
         -RowSpec $spec -LayoutLineWidth $LayoutLineWidth -LayoutStartColumn $LayoutStartColumn
@@ -227,7 +282,10 @@ function New-ShellMultiSelectListDrawHandlers {
         [int]$LayoutLineWidth = 0,
         [int]$LayoutStartColumn = 0,
         [switch]$SearchKeyMode,
-        [int]$SearchKeyWidth = 0
+        [int]$SearchKeyWidth = 0,
+        [switch]$HideNumberColumn,
+        [int]$ScrollColumn = -1,
+        [scriptblock]$GetMarqueeOffset = $null
     )
 
     $cacheSnapshot = @($RowCache)
@@ -237,6 +295,9 @@ function New-ShellMultiSelectListDrawHandlers {
     $checkedSetSnapshot = $CheckedIndexSet
     $searchKeyModeSnapshot = [bool]$SearchKeyMode
     $searchKeyWidthSnapshot = if ($SearchKeyWidth -gt 0) { [int]$SearchKeyWidth } else { (Get-ShellMultiSelectSearchKeyWidth) }
+    $hideNumberColumnSnapshot = [bool]$HideNumberColumn
+    $scrollColumnSnapshot = [int]$ScrollColumn
+    $getOffset = $GetMarqueeOffset
 
     Initialize-ShellMultiSelectListDependencies
 
@@ -275,9 +336,12 @@ function New-ShellMultiSelectListDrawHandlers {
         if ($searchKeyModeSnapshot -and $null -ne $part.PSObject.Properties['SearchKey']) {
             $displayKey = [string]$part.SearchKey
         }
+        $offset = 0
+        if ($getOffset) { $offset = [int](& $getOffset) }
         return (Build-ShellMultiSelectListRowSpec -RowCacheEntry $part -Selected $Selected `
             -Checked $checked -NumWidth $NumWidth -DisplayNumber $DisplayNumber -Gap $gapSnapshot `
-            -UseSearchKeyColumn:$searchKeyModeSnapshot -KeyWidth $searchKeyWidthSnapshot -DisplayKey $displayKey)
+            -UseSearchKeyColumn:$searchKeyModeSnapshot -KeyWidth $searchKeyWidthSnapshot -DisplayKey $displayKey `
+            -HideNumberColumn:$hideNumberColumnSnapshot -ScrollColumn $scrollColumnSnapshot -MarqueeOffset $offset)
     }.GetNewClosure()
 
     $drawListRow = {
@@ -298,11 +362,14 @@ function New-ShellMultiSelectListDrawHandlers {
         if ($searchKeyModeSnapshot -and $part -and $null -ne $part.PSObject.Properties['SearchKey']) {
             $displayKey = [string]$part.SearchKey
         }
+        $offset = 0
+        if ($getOffset) { $offset = [int](& $getOffset) }
         Invoke-ShellMultiSelectListDrawRow -ScreenRow $ScreenRow -Index $Index `
             -RowCache $cacheSnapshot -ColGap $gapSnapshot -Selected $Selected `
             -Checked $checked -NumWidth $NumWidth -DisplayNumber $DisplayNumber `
             -Enabled $Enabled -LayoutLineWidth $contentWidthSnapshot -LayoutStartColumn $contentStartSnapshot `
-            -UseSearchKeyColumn:$searchKeyModeSnapshot -KeyWidth $searchKeyWidthSnapshot -DisplayKey $displayKey
+            -UseSearchKeyColumn:$searchKeyModeSnapshot -KeyWidth $searchKeyWidthSnapshot -DisplayKey $displayKey `
+            -HideNumberColumn:$hideNumberColumnSnapshot -ScrollColumn $scrollColumnSnapshot -MarqueeOffset $offset
     }.GetNewClosure()
 
     return @{
@@ -317,11 +384,15 @@ function Get-ShellMultiSelectListRowCache {
         [hashtable]$Shell,
         [string]$CacheKey,
         [array]$Rows,
-        [hashtable]$ColumnLayout
+        [hashtable]$ColumnLayout,
+        [scriptblock]$OnProgress = $null
     )
 
     $locale = Get-CurrentLocale
     $layoutKey = if ($ColumnLayout.Preset) { $ColumnLayout.Preset } else { ($ColumnLayout.Widths -join ',') }
+    if ($ColumnLayout.ContainsKey('ScrollColumn')) {
+        $layoutKey += "|sc$($ColumnLayout.ScrollColumn)"
+    }
     $rowsKey = Get-ShellListRowsCacheKey -Rows $Rows
     $cacheField = "${CacheKey}MultiListRowCache"
     $localeField = "${CacheKey}MultiListRowCacheLocale"
@@ -340,7 +411,8 @@ function Get-ShellMultiSelectListRowCache {
         Clear-ShellMultiSelectListCache -Shell $Shell -CacheKey $CacheKey
     }
 
-    $built = Build-ShellMultiSelectListRowCache -Rows $Rows -ColumnLayout $ColumnLayout
+    $built = Build-ShellMultiSelectListRowCache -Rows $Rows -ColumnLayout $ColumnLayout `
+        -OnProgress $OnProgress
     if ($Shell) {
         $Shell[$cacheField] = $built.RowCache
         $Shell[$localeField] = $locale
@@ -431,7 +503,10 @@ function Show-ShellMultiSelectListMenu {
         [string]$FlashNothingSelectedKey = 'common.nothingSelected',
         [string]$FlashItemDisabledKey = 'message.disabledItem',
         [string]$FlashNothingSelected = '',
-        [string]$FlashItemDisabled = ''
+        [string]$FlashItemDisabled = '',
+        [hashtable]$SearchConfig = $null,
+        [switch]$HideNumberColumn,
+        [hashtable]$ListScrollConfig = $null
     )
 
     if (-not $CountLabel) {
@@ -475,26 +550,29 @@ function Show-ShellMultiSelectListMenu {
         $resolveNumberFn = ${function:Resolve-ListNumberIndexDefault}
     }
 
-    if ($SearchKeyMode -and -not $GetItemSearchKey) {
-        $GetItemSearchKey = {
-            param($Item, [int]$Index)
-            Get-ShellListRowSearchKey -Row $Item -Index $Index
-        }
-    }
-
-    if ($SearchKeyMode) {
-        $keyWidth = if ($SearchKeyWidth -gt 0) { $SearchKeyWidth } else { (Get-ShellMultiSelectSearchKeyWidth) }
-        $numWidth = $keyWidth
-        $singleDigitSelect = $false
+    $resolvedSearchConfig = Resolve-ShellListSearchConfig -SearchConfig $SearchConfig
+    $letterInputMode = $false
+    $listScrollConfig = if ($ListScrollConfig) {
+        $ListScrollConfig
     }
     else {
-        $maxDisplayNumber = Get-MenuMaxDisplayNumber -Items $Items -GetItemDisplayNumber $GetItemDisplayNumber
-        if ($NumberDisplayWidth -gt 0) {
-            $numWidth = $NumberDisplayWidth
-        }
-        else {
-            $numWidth = Get-ListNumberDisplayWidth -MaxNumber $maxDisplayNumber
-        }
+        Resolve-ShellListScrollConfig -Layout $null
+    }
+    $marqueeOffset = 0
+    $marqueeLastTick = [Environment]::TickCount
+    $getMarqueeOffset = { return $marqueeOffset }.GetNewClosure()
+
+    $maxDisplayNumber = Get-MenuMaxDisplayNumber -Items $Items -GetItemDisplayNumber $GetItemDisplayNumber
+    if ($HideNumberColumn) {
+        $numWidth = 0
+        $singleDigitSelect = $false
+    }
+    elseif ($NumberDisplayWidth -gt 0) {
+        $numWidth = $NumberDisplayWidth
+        $singleDigitSelect = ($maxDisplayNumber -le 9)
+    }
+    else {
+        $numWidth = Get-ListNumberDisplayWidth -MaxNumber $maxDisplayNumber
         $singleDigitSelect = ($maxDisplayNumber -le 9)
     }
     $pageCount = [Math]::Max(1, [Math]::Ceiling($Items.Count / [double]$PageSize))
@@ -520,23 +598,19 @@ function Show-ShellMultiSelectListMenu {
     $contentStartColumn = [int]$layout.LayoutStartColumn
     $handlers = New-ShellMultiSelectListDrawHandlers -RowCache $RowCache -ColGap $ColGap `
         -CheckedIndexSet $checkedIndexSet -LayoutLineWidth $layoutLineWidth `
-        -LayoutStartColumn $contentStartColumn -SearchKeyMode:$SearchKeyMode `
-        -SearchKeyWidth $(if ($SearchKeyMode) { $numWidth } else { 0 })
+        -LayoutStartColumn $contentStartColumn -SearchKeyMode:$false `
+        -SearchKeyWidth 0 -HideNumberColumn:$HideNumberColumn `
+        -ScrollColumn ([int]$listScrollConfig.ScrollColumn) -GetMarqueeOffset $getMarqueeOffset
 
     function Apply-MultiSelectInputBuffer {
         param([string]$Buffer)
         if ([string]::IsNullOrEmpty($Buffer)) { return }
         if ($Items.Count -eq 0) { return }
 
-        $idx = -1
-        if ($SearchKeyMode) {
-            $idx = Resolve-ShellListRowSearchKeyPrefixIndex -Rows $Items -Prefix $Buffer `
-                -SearchKeyDigitsOnly
-        }
-        else {
-            $num = [int]$Buffer
-            $idx = & $resolveNumberFn $Items $num
-        }
+        $inputMode = if ($letterInputMode) { 'Letter' } else { 'Number' }
+        $idx = Resolve-ShellListInputBufferIndex -Rows $Items -Buffer $Buffer -InputMode $inputMode `
+            -SearchConfig $resolvedSearchConfig -GetItemDisplayNumber $GetItemDisplayNumber `
+            -TestItemEnabled $TestItemEnabled -ResolveMenuNumber $resolveNumberFn
         if ($idx -ge 0 -and $idx -lt $Items.Count) {
             Set-Variable -Name selectedIndex -Value $idx -Scope 1
             Set-Variable -Name pageIndex -Value ([Math]::Floor($idx / [double]$PageSize)) -Scope 1
@@ -568,6 +642,9 @@ function Show-ShellMultiSelectListMenu {
             MenuSplitActionSegments = $MenuSplitActionSegments
             MultiSelectNav          = $true
             CompactNavStatus        = $true
+            LetterSearchActive      = [bool]$letterInputMode
+            LetterSearchEnabled     = [bool]$resolvedSearchConfig.Enabled
+            LetterSearchToggleKey   = [string]$resolvedSearchConfig.LetterToggleKey
         }
     }
 
@@ -597,20 +674,42 @@ function Show-ShellMultiSelectListMenu {
             $oldPage = $pageIndex
             $oldScroll = $listScrollOffset
             $oldNumberBuffer = $numberBuffer
+            $oldLetterInputMode = $letterInputMode
             $flashMessage = ''
             $checkToggled = $false
 
             if ($ToolkitShell) {
                 Prepare-ToolkitShellBodyDraw -Shell $ToolkitShell
             }
-            $key = [Console]::ReadKey($true)
+            $key = Read-ShellListMenuKey -ScrollConfig $listScrollConfig
+            if ($null -eq $key) {
+                if (Invoke-ShellListMenuMarqueeTick -SelectedIndex $selectedIndex -RowCache $RowCache `
+                        -ScrollConfig $listScrollConfig -MarqueeOffset ([ref]$marqueeOffset) `
+                        -MarqueeLastTick ([ref]$marqueeLastTick) -LetterInputMode:$letterInputMode) {
+                    $marqueeBatch = Test-ShellConsoleBatchDraw
+                    if ($marqueeBatch) { Enter-ConsoleDrawBatch }
+                    Invoke-ShellSingleSelectListRedrawMarqueeRow -Layout $layout -SelectedIndex $selectedIndex `
+                        -PageIndex $pageIndex -PageSize $PageSize -ListScrollOffset $listScrollOffset `
+                        -RowCache $RowCache -GetListRowSpec $handlers['GetListRowSpec'] -NumWidth $numWidth `
+                        -GetItemDisplayNumber $GetItemDisplayNumber -TestItemEnabled $TestItemEnabled `
+                        -Items $Items -LayoutLineWidth $layoutLineWidth -LayoutStartColumn $contentStartColumn
+                    if ($marqueeBatch) { $null = Complete-ConsoleDrawBatch -ToolkitShell $ToolkitShell }
+                }
+                Start-Sleep -Milliseconds 25
+                continue
+            }
             if ($ToolkitShell) {
                 Set-CursorVisible $false
             }
 
-            if ($key.Key -eq 'Backspace') {
+            if ($resolvedSearchConfig.Enabled -and (Test-ShellListLetterSearchToggleKey -Key $key `
+                    -ToggleKey $resolvedSearchConfig.LetterToggleKey)) {
+                $letterInputMode = -not $letterInputMode
+                $numberBuffer = ''
+            }
+            elseif ($key.Key -eq 'Backspace') {
                 if (-not [string]::IsNullOrEmpty($numberBuffer)) {
-                    if ($SearchKeyMode -or -not $singleDigitSelect) {
+                    if (-not $singleDigitSelect -or $letterInputMode) {
                         $numberBuffer = $numberBuffer.Substring(0, $numberBuffer.Length - 1)
                         if (-not [string]::IsNullOrEmpty($numberBuffer)) {
                             Apply-MultiSelectInputBuffer -Buffer $numberBuffer
@@ -618,15 +717,15 @@ function Show-ShellMultiSelectListMenu {
                     }
                 }
             }
-            elseif ($SearchKeyMode -and $key.KeyChar -match '^[0-9]$') {
+            elseif ($letterInputMode -and $key.KeyChar -match '^[a-zA-Z0-9]$') {
                 $candidate = $numberBuffer + [string]$key.KeyChar
-                if (& $fnTestSearchPrefix -Items $Items -Buffer $candidate `
-                        -GetItemSearchKey $GetItemSearchKey -SearchKeyDigitsOnly) {
+                if (Test-ShellListInputBufferPrefixValid -Rows $Items -Buffer $candidate -InputMode Letter `
+                        -SearchConfig $resolvedSearchConfig -TestItemEnabled $TestItemEnabled) {
                     $numberBuffer = $candidate
                     Apply-MultiSelectInputBuffer -Buffer $numberBuffer
                 }
             }
-            elseif (-not $SearchKeyMode -and $key.KeyChar -match '^[0-9]$') {
+            elseif (-not $HideNumberColumn -and -not $letterInputMode -and $key.KeyChar -match '^[0-9]$') {
                 if ($singleDigitSelect) {
                     $digit = [string]$key.KeyChar
                     if (& $fnTestNumPrefix -Items $Items -Buffer $digit `
@@ -652,7 +751,9 @@ function Show-ShellMultiSelectListMenu {
             }
             elseif ($key.KeyChar -match '^[a-zA-Z]$') {
                 $letter = $key.KeyChar.ToString().ToLowerInvariant()
-                if ($LetterKeys -and $LetterKeys.ContainsKey($letter)) {
+                $effectiveLetterKeys = Get-ShellListEffectiveLetterKeys -LetterKeys $LetterKeys `
+                    -LetterInputMode:$letterInputMode
+                if ($effectiveLetterKeys -and $effectiveLetterKeys.ContainsKey($letter)) {
                     & $fnSetMenuCursor -Layout $layout -ToolkitShell $ToolkitShell
                     return $LetterKeys[$letter]
                 }
@@ -774,9 +875,13 @@ function Show-ShellMultiSelectListMenu {
             $scrollChanged = ($oldScroll -ne $listScrollOffset)
             $pageChanged = ($oldPage -ne $pageIndex)
             $selectionChanged = ($oldIndex -ne $selectedIndex)
+            if ($selectionChanged) {
+                $marqueeOffset = 0
+            }
             $checkChanged = $checkToggled
             $bufferChanged = ($oldNumberBuffer -ne $numberBuffer)
-            $footerChanged = $pageChanged -or $flashMessage -or $bufferChanged
+            $letterModeChanged = ($oldLetterInputMode -ne $letterInputMode)
+            $footerChanged = $pageChanged -or $flashMessage -or $bufferChanged -or $letterModeChanged
             $fullRowRedraw = $pageChanged -or $scrollChanged -or $checkChanged
             $batchNeeded = $fullRowRedraw -or $footerChanged
 

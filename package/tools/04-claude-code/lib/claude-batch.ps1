@@ -50,7 +50,9 @@ function Invoke-ClaudeCodeBatchOperation {
         [scriptblock]$GetSuccessLog,
         [scriptblock]$GetFailureLog,
         [ValidateSet('install', 'update', 'uninstall', 'init', 'configure')]
-        [string]$Intent = 'install'
+        [string]$Intent = 'install',
+        [ValidateSet('back', 'none')]
+        [string]$QuitNavAction = 'back'
     )
 
     $total = @($Items).Count
@@ -97,8 +99,12 @@ function Invoke-ClaudeCodeBatchOperation {
             Set-ToolkitDepOperationInFlightStatus -Ui $ui -MainText $label -AdvanceSpinner
             & $RedrawView
 
+            $itemPump = {
+                Invoke-ToolkitDepBatchOperationUiPump -Context $ctx
+            }.GetNewClosure()
+
             try {
-                $result = & $InvokeItem $item
+                $result = & $InvokeItem $item $itemPump
                 $ok = $true
                 if ($null -ne $result) {
                     if ($result -is [bool]) {
@@ -144,7 +150,7 @@ function Invoke-ClaudeCodeBatchOperation {
             -TotalCount $total -SuccessCount $successCount -FailedCount $failedCount `
             -ProgressCurrent $total
 
-        return Invoke-ToolkitDepBatchOperationWaitLoop -Context $ctx
+        return Invoke-ToolkitDepBatchOperationWaitLoop -Context $ctx -QuitNavAction $QuitNavAction
     }
     finally {
         Clear-ToolkitDepBatchOperationView -Context $ctx
@@ -495,38 +501,91 @@ function Invoke-ClaudeCodeInitBatchPage {
         }
     )
 
+    foreach ($preset in @(Get-ClaudeCodeMarketplacePresets -ToolRoot $ToolRoot)) {
+        $source = [string]$preset.Source
+        $label = [string]$preset.Label
+        $steps += @{
+            Key    = 'claude-code.init.stepRegisterMarketplace'
+            Vars   = @{ source = $label }
+            Source = $source
+        }
+    }
+
     return Invoke-ClaudeCodeBatchOperation -Shell $Shell -SectionTitle $SectionTitle `
         -ReadyStatusText (Get-ClaudeCodeI18n -ToolRoot $ToolRoot -Key 'claude-code.init.statusReady') `
         -Intent init -Items $steps `
         -GetItemLabel {
             param($Item)
-            Get-ClaudeCodeI18n -ToolRoot $ToolRoot -Key ([string]$Item.Key)
+            if ($Item.Vars) {
+                return Get-ClaudeCodeI18n -ToolRoot $ToolRoot -Key ([string]$Item.Key) -Vars $Item.Vars
+            }
+            return Get-ClaudeCodeI18n -ToolRoot $ToolRoot -Key ([string]$Item.Key)
         } `
         -InvokeItem {
-            param($Item)
-            $output = & $Item.Action
+            param($Item, $Pump)
+            if ($Item.Source) {
+                $output = Invoke-ClaudeCodeMarketplacePresetRegister -Source ([string]$Item.Source) `
+                    -OnUiPoll $Pump -OnChromePulse $Pump
+            }
+            else {
+                $output = & $Item.Action
+            }
             $ok = $true
+            $detail = ''
             if ($output -is [bool]) {
                 $ok = [bool]$output
+            }
+            elseif ($output -is [pscustomobject] -and $output.PSObject.Properties['Success']) {
+                $ok = [bool]$output.Success
+                if ($output.PSObject.Properties['Path']) {
+                    $detail = [string]$output.Path
+                }
             }
             elseif ($null -eq $output) {
                 $ok = $false
             }
+            elseif ($output -is [string]) {
+                $detail = $output
+            }
+            if (-not $ok -and [string]::IsNullOrWhiteSpace($detail) -and $Item.Source `
+                    -and -not (Test-ClaudeCodeCliAvailable)) {
+                $detail = (Get-ClaudeCodeI18n -ToolRoot $ToolRoot -Key 'claude-code.cli.notInstalled')
+            }
             return [pscustomobject]@{
                 Success = $ok
-                Path    = if ($output -is [string]) { $output } else { '' }
+                Path    = $detail
             }
         } `
         -GetSuccessLog {
             param($Item, $Result)
+            $stepLabel = if ($Item.Vars) {
+                Get-ClaudeCodeI18n -ToolRoot $ToolRoot -Key ([string]$Item.Key) -Vars $Item.Vars
+            }
+            else {
+                Get-ClaudeCodeI18n -ToolRoot $ToolRoot -Key ([string]$Item.Key)
+            }
             Get-ClaudeCodeI18n -ToolRoot $ToolRoot -Key 'claude-code.init.logSuccess' `
-                -Vars @{ step = (Get-ClaudeCodeI18n -ToolRoot $ToolRoot -Key ([string]$Item.Key)) }
+                -Vars @{ step = $stepLabel }
         } `
         -GetFailureLog {
             param($Item, $Result)
-            $detail = if ($Result -is [string]) { $Result } else { [string]$Result }
+            $detail = if ($Result -is [string]) {
+                $Result
+            }
+            elseif ($Result -is [pscustomobject] -and $Result.PSObject.Properties['Path']) {
+                [string]$Result.Path
+            }
+            else {
+                [string]$Result
+            }
+            $stepLabel = if ($Item.Vars) {
+                Get-ClaudeCodeI18n -ToolRoot $ToolRoot -Key ([string]$Item.Key) -Vars $Item.Vars
+            }
+            else {
+                Get-ClaudeCodeI18n -ToolRoot $ToolRoot -Key ([string]$Item.Key)
+            }
             Get-ClaudeCodeI18n -ToolRoot $ToolRoot -Key 'claude-code.init.logFailed' -Vars @{
-                step   = (Get-ClaudeCodeI18n -ToolRoot $ToolRoot -Key ([string]$Item.Key))
+                step   = $stepLabel
                 detail = $detail
             }
         }

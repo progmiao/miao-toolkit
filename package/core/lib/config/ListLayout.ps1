@@ -26,11 +26,15 @@ function Get-ShellListRowPrefixReserve {
     param(
         [ValidateSet('Single', 'Multi')]
         [string]$Mode = 'Single',
-        [int]$KeyWidth = 2
+        [int]$KeyWidth = 2,
+        [switch]$HideNumberColumn
     )
 
     $colGap = Get-MenuColumnGap
     $checkReserve = if ($Mode -eq 'Multi') { 3 } else { 0 }
+    if ($Mode -eq 'Multi' -and $HideNumberColumn) {
+        return 1 + 1 + $checkReserve + 1
+    }
     # 前缀 " $mark" (+ Multi: " $check ") + " $num" — 焦点 > 插入时内容右移，与多选一致
     return 1 + 1 + $checkReserve + 1 + [Math]::Max(1, [int]$KeyWidth) + $colGap
 }

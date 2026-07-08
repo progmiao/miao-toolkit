@@ -149,6 +149,7 @@ function Get-MiaoShellListExportNames {
 
     $rels = @(
         'ui\shell\ShellListModel.ps1'
+        'ui\shell\ShellListScroll.ps1'
         'ui\shell\ShellListLayout.ps1'
         'ui\shell\ToolkitShellList.ps1'
         'ui\shell\SingleSelectList.ps1'

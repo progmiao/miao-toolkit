@@ -61,11 +61,11 @@ function Extend-ClaudeCodeActionSectionTitle {
         -SubPhaseKey $SubPhaseKey
 }
 
-function Get-ClaudeCodePluginMarketplaceSectionTitle {
+function Get-ClaudeCodePluginSectionTitle {
     param([string]$ToolRoot)
 
     return (Format-ToolActionSectionTitle -ToolRoot $ToolRoot `
-        -ActionNameKey 'claude-code.action.addMarketplace.name')
+        -ActionNameKey 'claude-code.action.installPlugin.name')
 }
 
 function Get-ClaudeCodePluginBatchSectionTitle {
@@ -74,7 +74,7 @@ function Get-ClaudeCodePluginBatchSectionTitle {
         [string]$SubPhaseKey
     )
 
-    $parentTitle = Get-ClaudeCodePluginMarketplaceSectionTitle -ToolRoot $ToolRoot
+    $parentTitle = Get-ClaudeCodePluginSectionTitle -ToolRoot $ToolRoot
     return Extend-ClaudeCodeActionSectionTitle -BaseTitle $parentTitle -ToolRoot $ToolRoot `
         -SubPhaseKey $SubPhaseKey
 }

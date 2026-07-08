@@ -21,18 +21,18 @@ $ui = @{
 Set-ToolkitBatchExecutionCompleteUi -Ui $ui -Intent configure -TotalCount 2 -SuccessCount 2 `
     -FailedCount 0 -ProgressCurrent 2
 
-$marketplace = Get-ClaudeCodePluginMarketplaceSectionTitle -ToolRoot $toolRoot
+$pluginSection = Get-ClaudeCodePluginSectionTitle -ToolRoot $toolRoot
 $installBatch = Get-ClaudeCodePluginBatchSectionTitle -ToolRoot $toolRoot `
     -SubPhaseKey 'claude-code.section.pluginInstallExecute'
-$marketLabel = Resolve-ToolI18nLabel -ToolRoot $toolRoot -Key 'claude-code.action.addMarketplace.name'
+$pluginLabel = Resolve-ToolI18nLabel -ToolRoot $toolRoot -Key 'claude-code.action.installPlugin.name'
 $installLabel = Resolve-ToolI18nLabel -ToolRoot $toolRoot -Key 'claude-code.section.pluginInstallExecute'
 
-$expectedInstall = "$marketplace - $installLabel"
+$expectedInstall = "$pluginSection - $installLabel"
 if ($installBatch -ne $expectedInstall) {
     throw "unexpected plugin install batch title: [$installBatch] (expected [$expectedInstall])"
 }
-if ($marketplace -notmatch [regex]::Escape($marketLabel)) {
-    throw "marketplace title missing label: $marketplace"
+if ($pluginSection -notmatch [regex]::Escape($pluginLabel)) {
+    throw "plugin section title missing label: $pluginSection"
 }
 
 Write-Host 'test-claude-code-batch-title: OK'

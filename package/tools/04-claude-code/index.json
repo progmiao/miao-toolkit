@@ -21,14 +21,6 @@
       "enabled": true
     },
     {
-      "command": "plugin",
-      "name": "claude-code.action.addMarketplace.name",
-      "description": "claude-code.action.addMarketplace.description",
-      "script": "lib/add-marketplace.ps1",
-      "param": { "switch": "AddMarketplace", "alias": "m" },
-      "enabled": true
-    },
-    {
       "command": "inst-plug",
       "name": "claude-code.action.installPlugin.name",
       "description": "claude-code.action.installPlugin.description",

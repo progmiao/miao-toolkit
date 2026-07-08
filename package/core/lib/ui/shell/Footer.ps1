@@ -60,7 +60,10 @@ function Write-ToolkitShellFooter {
             -FooterLayout Split -BrandInnerWidth $barWidth `
             -MenuSplitActionSegments $MenuFooter.MenuSplitActionSegments `
             -MultiSelectNav:([bool]$MenuFooter.MultiSelectNav) `
-            -CompactNavStatus:([bool]$MenuFooter.CompactNavStatus)
+            -CompactNavStatus:([bool]$MenuFooter.CompactNavStatus) `
+            -LetterSearchActive:([bool]$MenuFooter.LetterSearchActive) `
+            -LetterSearchEnabled:([bool]$MenuFooter.LetterSearchEnabled) `
+            -LetterSearchToggleKey $(if ($MenuFooter.LetterSearchToggleKey) { [string]$MenuFooter.LetterSearchToggleKey } else { 'Slash' })
         Clear-ToolkitShellBelowFooter -Shell $Shell
         return
     }

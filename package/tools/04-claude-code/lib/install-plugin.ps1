@@ -14,6 +14,7 @@ $toolRoot = Split-Path $PSScriptRoot -Parent
 . (Join-Path $PSScriptRoot 'claude-code-action-title.ps1')
 . (Join-Path $PSScriptRoot 'claude-code-state.ps1')
 . (Join-Path $PSScriptRoot 'claude-plugin.ps1')
+. (Join-Path $PSScriptRoot 'claude-plugin-list-load.ps1')
 . (Join-Path $PSScriptRoot 'claude-batch.ps1')
 
 $page = Initialize-ClaudeCodeActionPage -ToolRoot $toolRoot -ToolkitShell $ToolkitShell `
@@ -28,15 +29,20 @@ if (-not (Test-ClaudeCodeCliAvailable)) {
         -CacheKey 'ClaudeCodeInstallPluginNotice'
 }
 
-try {
-    $items = @(Get-ClaudePluginInstallMenuItems)
+$loadResult = Invoke-ClaudePluginMenuItemsWithLoading -Shell $shell -ToolRoot $toolRoot `
+    -SectionTitle $sectionTitle -LoadMode install
+if ($loadResult.Nav) {
+    return $loadResult.Nav
 }
-catch {
+if ($loadResult.Error) {
     return Invoke-ClaudeCodeNoticePage -Shell $shell -SectionTitle $sectionTitle `
         -Message (Get-ClaudeCodeI18n -ToolRoot $toolRoot -Key 'claude-code.plugin.loadFailed' -Vars @{
-            detail = $_.Exception.Message
+            detail = $loadResult.Error.Exception.Message
         }) -CacheKey 'ClaudeCodeInstallPluginLoadFailed'
 }
+
+$items = @($loadResult.Items)
+$progress = $loadResult.Progress
 
 $installable = @($items | Where-Object { $_.Enabled })
 if ($installable.Count -eq 0) {
@@ -51,14 +57,16 @@ $rows = Build-ClaudePluginRows -Items $items -ToolRoot $toolRoot -GetTagsLabel {
     Get-ClaudePluginTagsLabel -Item $Item -ToolRoot $toolRoot
 }
 $listResult = Invoke-ToolkitShellList @{
-    Mode         = 'Multi'
-    Shell        = $shell
-    SectionTitle = $sectionTitle
-    Rows         = $rows
-    CacheKey     = 'ClaudeCodeInstallPlugin'
-    Toolbar      = (New-ShellSystemToolbarConfig)
-    CountLabel   = (Get-ClaudeCodeI18n -ToolRoot $toolRoot -Key 'claude-code.plugin.countUnit')
-    KeyColumn    = 'SearchKey'
+    Mode            = 'Multi'
+    Shell           = $shell
+    SectionTitle    = $sectionTitle
+    Rows            = $rows
+    CacheKey        = 'ClaudeCodeInstallPlugin'
+    Layout          = (New-ClaudePluginListLayout)
+    Toolbar         = (New-ShellSystemToolbarConfig)
+    CountLabel      = (Get-ClaudeCodeI18n -ToolRoot $toolRoot -Key 'claude-code.plugin.countUnit')
+    Search          = @{ Columns = @(0) }
+    LoadingProgress = $progress
 }
 
 if ($nav = Get-ShellListSelectNavMarker $listResult) {
@@ -78,8 +86,8 @@ return Invoke-ClaudeCodeBatchOperation -Shell $shell -SectionTitle $batchSection
     -Intent install -Items $pluginIds `
     -GetItemLabel { param($Item) [string]$Item } `
     -InvokeItem {
-        param($Item)
-        Invoke-ClaudePluginInstall -PluginId ([string]$Item)
+        param($Item, $Pump)
+        Invoke-ClaudePluginInstall -PluginId ([string]$Item) -OnUiPoll $Pump -OnChromePulse $Pump
     } `
     -GetSuccessLog {
         param($Item, $Result)
@@ -89,12 +97,8 @@ return Invoke-ClaudeCodeBatchOperation -Shell $shell -SectionTitle $batchSection
     } `
     -GetFailureLog {
         param($Item, $Result)
-        $detail = if ($Result -is [string]) { $Result } else { [string]$Result.Output }
-        if ([string]::IsNullOrWhiteSpace($detail)) {
-            $detail = "exit $($Result.ExitCode)"
-        }
         Get-ClaudeCodeI18n -ToolRoot $toolRoot -Key 'claude-code.plugin.installFailed' -Vars @{
             plugin = [string]$Item
-            detail = $detail
+            detail = (Get-ClaudeCodeCliFailureDetail -Result $Result)
         }
     }

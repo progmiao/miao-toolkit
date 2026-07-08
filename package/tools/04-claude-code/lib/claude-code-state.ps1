@@ -202,7 +202,9 @@ function Invoke-ClaudeCodeWingetProcess {
 function Invoke-ClaudeCodeCliCommand {
     param(
         [string[]]$ArgumentList,
-        [int]$TimeoutMs = 120000
+        [int]$TimeoutMs = 120000,
+        [scriptblock]$OnUiPoll = $null,
+        [scriptblock]$OnChromePulse = $null
     )
 
     if (-not (Test-ClaudeCodeCliAvailable)) {
@@ -222,37 +224,44 @@ function Invoke-ClaudeCodeCliCommand {
     $psi.StandardOutputEncoding = [Text.UTF8Encoding]::new($false)
     $psi.StandardErrorEncoding = [Text.UTF8Encoding]::new($false)
 
-    $process = New-Object System.Diagnostics.Process
-    $process.StartInfo = $psi
-    $stdout = New-Object System.Text.StringBuilder
-    $stderr = New-Object System.Text.StringBuilder
+    $process = $null
+    try {
+        $process = New-Object System.Diagnostics.Process
+        $process.StartInfo = $psi
+        $null = $process.Start()
 
-    $outHandler = {
-        if (-not [string]::IsNullOrEmpty($EventArgs.Data)) {
-            $null = $stdout.AppendLine($EventArgs.Data)
+        # 异步读取 stdout/stderr，避免管道塞满死锁；不用 OutputDataReceived 事件，防止批量调用时宿主崩溃
+        $stdoutTask = $process.StandardOutput.ReadToEndAsync()
+        $stderrTask = $process.StandardError.ReadToEndAsync()
+
+        $deadline = [Environment]::TickCount + [Math]::Max(1000, $TimeoutMs)
+        while (-not $process.HasExited) {
+            if ([Environment]::TickCount -ge $deadline) {
+                try { $process.Kill() } catch {}
+                throw 'claude command timed out'
+            }
+
+            if ($OnChromePulse) { & $OnChromePulse }
+            if ($OnUiPoll) { & $OnUiPoll }
+            Start-Sleep -Milliseconds 50
         }
-    }.GetNewClosure()
-    $errHandler = {
-        if (-not [string]::IsNullOrEmpty($EventArgs.Data)) {
-            $null = $stderr.AppendLine($EventArgs.Data)
+
+        $null = $process.WaitForExit()
+        $stdoutText = $stdoutTask.GetAwaiter().GetResult()
+        $stderrText = $stderrTask.GetAwaiter().GetResult()
+        $exitCode = [int]$process.ExitCode
+
+        return [pscustomobject]@{
+            ExitCode = $exitCode
+            Success  = ($exitCode -eq 0)
+            StdOut   = $stdoutText
+            StdErr   = $stderrText
+            Output   = ($stdoutText + $stderrText)
         }
-    }.GetNewClosure()
-
-    $null = $process.add_OutputDataReceived($outHandler)
-    $null = $process.add_ErrorDataReceived($errHandler)
-    $null = $process.Start()
-    $process.BeginOutputReadLine()
-    $process.BeginErrorReadLine()
-
-    if (-not $process.WaitForExit($TimeoutMs)) {
-        try { $process.Kill() } catch {}
-        throw 'claude command timed out'
     }
-
-    return [pscustomobject]@{
-        ExitCode = $process.ExitCode
-        StdOut   = $stdout.ToString()
-        StdErr   = $stderr.ToString()
-        Output   = ($stdout.ToString() + $stderr.ToString())
+    finally {
+        if ($process) {
+            try { $process.Dispose() } catch {}
+        }
     }
 }

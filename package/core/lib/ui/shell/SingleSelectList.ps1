@@ -21,36 +21,56 @@ function New-ShellListRowBodySegments {
 function Build-ShellSingleSelectListRowCache {
     param(
         [array]$Rows,
-        [hashtable]$ColumnLayout
+        [hashtable]$ColumnLayout,
+        [scriptblock]$OnProgress = $null
     )
+
+    if (-not (Get-Command Build-ShellListRowBodyFromCells -ErrorAction SilentlyContinue)) {
+        . (Join-Path $PSScriptRoot 'ShellListScroll.ps1')
+    }
 
     $widths = $ColumnLayout.Widths
     $colGap = ' ' * (Get-MenuColumnGap)
     $rowCache = New-Object 'object[]' $Rows.Count
     $lineColor = [System.ConsoleColor]::Gray
+    $scrollColumn = -1
+    if ($ColumnLayout.ContainsKey('ScrollColumn')) {
+        $scrollColumn = [int]$ColumnLayout.ScrollColumn
+    }
+    $progressStep = 25
 
     for ($i = 0; $i -lt $Rows.Count; $i++) {
+        if ($OnProgress -and ($i -eq 0 -or ($i % $progressStep) -eq 0 -or $i -eq ($Rows.Count - 1))) {
+            & $OnProgress $i $Rows.Count
+        }
         $row = $Rows[$i]
-        $formatted = New-Object 'string[]' $widths.Count
-        for ($c = 0; $c -lt $widths.Count; $c++) {
-            $formatted[$c] = Format-MenuTableCell -Text $row.Cells[$c] -Width $widths[$c]
+        $rawCells = @($row.Cells | ForEach-Object { [string]$_ })
+        $cellColors = $null
+        if ($null -ne $row.PSObject.Properties['CellColors'] -and $row.CellColors) {
+            $cellColors = @($row.CellColors)
         }
 
-        $bodyPlain = ($formatted -join $colGap)
-        $enabledColor = if ($row.Enabled) { $lineColor } else { [System.ConsoleColor]::DarkGray }
-        $bodySegments = New-ShellListRowBodySegments -FormattedCells $formatted -Gap $colGap -LineColor $enabledColor
+        $enabled = [bool]$row.Enabled
+        $enabledColor = if ($enabled) { $lineColor } else { [System.ConsoleColor]::DarkGray }
+        $body = Build-ShellListRowBodyFromCells -RawCells $rawCells -Widths $widths -Gap $colGap `
+            -DefaultLineColor $enabledColor -CellColors $cellColors -Enabled $enabled `
+            -ScrollColumn $scrollColumn
 
         $source = $null
         if ($null -ne $row.PSObject.Properties['Payload']) { $source = $row.Payload }
         elseif ($null -ne $row.PSObject.Properties['Source']) { $source = $row.Source }
 
         $rowCache[$i] = [pscustomobject]@{
-            BodyPlain    = $bodyPlain
-            BodySegments = $bodySegments
-            LineColor    = $enabledColor
-            Enabled      = [bool]$row.Enabled
-            Source       = $source
-            Number       = [int]$row.Number
+            BodyPlain      = [string]$body.BodyPlain
+            BodySegments   = @($body.BodySegments)
+            LineColor      = $enabledColor
+            Enabled        = $enabled
+            Source         = $source
+            Number         = [int]$row.Number
+            RawCells       = $rawCells
+            Widths         = @($widths)
+            CellColors     = $cellColors
+            ScrollOverflow = @($body.ScrollOverflow)
         }
     }
 
@@ -66,16 +86,38 @@ function Build-ShellSingleSelectListRowSpec {
         [bool]$Selected,
         [int]$NumWidth,
         [int]$DisplayNumber,
-        [string]$Gap
+        [string]$Gap,
+        [int]$ScrollColumn = -1,
+        [int]$MarqueeOffset = 0
     )
 
     if (-not $RowCacheEntry) { return $null }
 
+    if (-not (Get-Command Test-ShellListRowMarqueeActive -ErrorAction SilentlyContinue)) {
+        . (Join-Path $PSScriptRoot 'ShellListScroll.ps1')
+    }
+
     $num = Format-ListDisplayNumber -Number $DisplayNumber -NumWidth $NumWidth
     $mark = if ($Selected) { '>' } else { ' ' }
     $lineColor = $RowCacheEntry.LineColor
+    $enabled = [bool]$RowCacheEntry.Enabled
+    $marqueeActive = Test-ShellListRowMarqueeActive -RowCacheEntry $RowCacheEntry `
+        -ScrollColumn $ScrollColumn -Selected:$Selected
 
-    if ($Selected) {
+    $bodySegs = @()
+    if ($marqueeActive) {
+        $body = Build-ShellListRowBodyFromCells -RawCells @($RowCacheEntry.RawCells) `
+            -Widths @($RowCacheEntry.Widths) -Gap (' ' * (Get-MenuColumnGap)) `
+            -DefaultLineColor $lineColor -CellColors $RowCacheEntry.CellColors -Enabled $enabled `
+            -ScrollColumn $ScrollColumn -MarqueeOffset $MarqueeOffset -MarqueeActive `
+            -Selected:$Selected
+        $bodySegs = @($body.BodySegments)
+    }
+    elseif ($null -ne $RowCacheEntry.BodySegments) {
+        $bodySegs = @($RowCacheEntry.BodySegments)
+    }
+
+    if ($Selected -and -not $marqueeActive) {
         $prefix = " $mark $num$Gap"
         return @{
             Text       = $prefix + $RowCacheEntry.BodyPlain
@@ -84,14 +126,18 @@ function Build-ShellSingleSelectListRowSpec {
         }
     }
 
-    # 与多选 checkSeg 一致：未选中不加前导空格，选中时 " $mark" 才插入 > 并右移内容
-    $markSeg = @{ Text = "$mark "; Color = $lineColor }
-    $keySeg = @{ Text = "$num$Gap"; Color = $lineColor }
-    $bodySegs = @()
-    if ($null -ne $RowCacheEntry.BodySegments) {
-        $bodySegs = @($RowCacheEntry.BodySegments)
+    if ($Selected -and $marqueeActive) {
+        $markSeg = @{ Text = "$mark "; Color = $lineColor }
+        $keySeg = @{ Text = "$num$Gap"; Color = $lineColor }
+        return @{
+            Segments          = @($markSeg, $keySeg) + $bodySegs
+            DefaultForeground = [System.ConsoleColor]::Black
+            Background        = [System.ConsoleColor]::Cyan
+        }
     }
 
+    $markSeg = @{ Text = "$mark "; Color = $lineColor }
+    $keySeg = @{ Text = "$num$Gap"; Color = $lineColor }
     return @{
         Segments          = @($markSeg, $keySeg) + $bodySegs
         DefaultForeground = $lineColor
@@ -128,7 +174,7 @@ function Write-ShellSingleSelectListRow {
     try { [Console]::SetCursorPosition(0, $ScreenRow) } catch { return }
 
     $width = Get-SafeWriteLineWidth -Row $ScreenRow
-    if ($Selected) {
+    if ($Selected -and $RowSpec.Text -and -not $RowSpec.Segments) {
         $region = Resolve-ConsoleContentHighlightRegion -Row $ScreenRow `
             -LayoutStartColumn $LayoutStartColumn -LayoutLineWidth $LayoutLineWidth
         Write-ConsoleRowHighlightText -Text ([string]$RowSpec.Text) -Region $region
@@ -137,13 +183,17 @@ function Write-ShellSingleSelectListRow {
     }
 
     $used = 0
-    foreach ($seg in $RowSpec.Segments) {
+    $segments = if ($RowSpec.Segments) { @($RowSpec.Segments) } else { @() }
+    foreach ($seg in $segments) {
+        if (-not $seg) { continue }
         if ($used -ge $width) { break }
         $partWidth = Get-DisplayWidth $seg.Text
         $remaining = $width - $used
         $text = if ($partWidth -gt $remaining) { Truncate-DisplayText $seg.Text $remaining } else { $seg.Text }
         if ([string]::IsNullOrEmpty($text)) { break }
-        Write-Host $text -NoNewline -ForegroundColor $seg.Color
+        $fg = if ($seg.Color) { $seg.Color } else { $RowSpec.DefaultForeground }
+        $bg = if ($Selected -and $RowSpec.Background) { $RowSpec.Background } else { (Get-ConsoleSurfaceBackground) }
+        Write-Host $text -NoNewline -ForegroundColor $fg -BackgroundColor $bg
         $used += Get-DisplayWidth $text
     }
     if ($used -lt $width) {
@@ -163,7 +213,9 @@ function Invoke-ShellSingleSelectListDrawRow {
         [int]$DisplayNumber,
         [bool]$Enabled,
         [int]$LayoutLineWidth = 0,
-        [int]$LayoutStartColumn = 0
+        [int]$LayoutStartColumn = 0,
+        [int]$ScrollColumn = -1,
+        [int]$MarqueeOffset = 0
     )
 
     if ($Index -lt 0 -or $Index -ge $RowCache.Count) { return }
@@ -171,7 +223,8 @@ function Invoke-ShellSingleSelectListDrawRow {
     if (-not $part) { return }
 
     $spec = Build-ShellSingleSelectListRowSpec -RowCacheEntry $part -Selected $Selected `
-        -NumWidth $NumWidth -DisplayNumber $DisplayNumber -Gap $ColGap
+        -NumWidth $NumWidth -DisplayNumber $DisplayNumber -Gap $ColGap `
+        -ScrollColumn $ScrollColumn -MarqueeOffset $MarqueeOffset
     Write-ShellSingleSelectListRow -ScreenRow $ScreenRow -DisplayNumber $DisplayNumber `
         -NumWidth $NumWidth -Gap $ColGap -Selected $Selected -Enabled $Enabled -RowSpec $spec `
         -LayoutLineWidth $LayoutLineWidth -LayoutStartColumn $LayoutStartColumn
@@ -182,18 +235,22 @@ function New-ShellSingleSelectListDrawHandlers {
         [array]$RowCache,
         [string]$ColGap,
         [int]$LayoutLineWidth = 0,
-        [int]$LayoutStartColumn = 0
+        [int]$LayoutStartColumn = 0,
+        [int]$ScrollColumn = -1,
+        [scriptblock]$GetMarqueeOffset = $null
     )
 
     $cacheSnapshot = @($RowCache)
     $gapSnapshot = [string]$ColGap
     $contentWidthSnapshot = [int]$LayoutLineWidth
     $contentStartSnapshot = [int]$LayoutStartColumn
+    $scrollColumnSnapshot = [int]$ScrollColumn
+    $getOffset = $GetMarqueeOffset
 
     $getLabel = {
         param($Item, [int]$Index)
-        if ($Index -lt 0 -or $Index -ge $RowCache.Count) { return '' }
-        $part = $RowCache[$Index]
+        if ($Index -lt 0 -or $Index -ge $cacheSnapshot.Count) { return '' }
+        $part = $cacheSnapshot[$Index]
         if (-not $part) { return '' }
         return [string]$part.BodyPlain
     }.GetNewClosure()
@@ -207,11 +264,14 @@ function New-ShellSingleSelectListDrawHandlers {
             [bool]$Enabled
         )
 
-        if ($Index -lt 0 -or $Index -ge $RowCache.Count -or -not $RowCache[$Index]) {
+        if ($Index -lt 0 -or $Index -ge $cacheSnapshot.Count -or -not $cacheSnapshot[$Index]) {
             return $null
         }
-        return (Build-ShellSingleSelectListRowSpec -RowCacheEntry $RowCache[$Index] -Selected $Selected `
-            -NumWidth $NumWidth -DisplayNumber $DisplayNumber -Gap $ColGap)
+        $offset = 0
+        if ($getOffset) { $offset = [int](& $getOffset) }
+        return (Build-ShellSingleSelectListRowSpec -RowCacheEntry $cacheSnapshot[$Index] -Selected $Selected `
+            -NumWidth $NumWidth -DisplayNumber $DisplayNumber -Gap $gapSnapshot `
+            -ScrollColumn $scrollColumnSnapshot -MarqueeOffset $offset)
     }.GetNewClosure()
 
     $drawListRow = {
@@ -225,10 +285,13 @@ function New-ShellSingleSelectListDrawHandlers {
             [bool]$Enabled
         )
 
+        $offset = 0
+        if ($getOffset) { $offset = [int](& $getOffset) }
         Invoke-ShellSingleSelectListDrawRow -ScreenRow $ScreenRow -Index $Index `
             -RowCache $cacheSnapshot -ColGap $gapSnapshot -Selected $Selected `
             -NumWidth $NumWidth -DisplayNumber $DisplayNumber -Enabled $Enabled `
-            -LayoutLineWidth $contentWidthSnapshot -LayoutStartColumn $contentStartSnapshot
+            -LayoutLineWidth $contentWidthSnapshot -LayoutStartColumn $contentStartSnapshot `
+            -ScrollColumn $scrollColumnSnapshot -MarqueeOffset $offset
     }.GetNewClosure()
 
     return @{
@@ -243,7 +306,8 @@ function Get-ShellSingleSelectListRowCache {
         [hashtable]$Shell,
         [string]$CacheKey,
         [array]$Rows,
-        [hashtable]$ColumnLayout
+        [hashtable]$ColumnLayout,
+        [scriptblock]$OnProgress = $null
     )
 
     $locale = Get-CurrentLocale
@@ -252,6 +316,9 @@ function Get-ShellSingleSelectListRowCache {
     }
     else {
         ($ColumnLayout.Widths -join ',')
+    }
+    if ($ColumnLayout.ContainsKey('ScrollColumn')) {
+        $layoutKey += "|sc$($ColumnLayout.ScrollColumn)"
     }
     $rowsKey = Get-ShellListRowsCacheKey -Rows $Rows
     $cacheField = "${CacheKey}ListRowCache"
@@ -286,7 +353,8 @@ function Get-ShellSingleSelectListRowCache {
         return $diskBuilt
     }
 
-    $built = Build-ShellSingleSelectListRowCache -Rows $Rows -ColumnLayout $ColumnLayout
+    $built = Build-ShellSingleSelectListRowCache -Rows $Rows -ColumnLayout $ColumnLayout `
+        -OnProgress $OnProgress
     if ($Shell) {
         $Shell[$cacheField] = $built.RowCache
         $Shell[$localeField] = $locale
@@ -308,4 +376,35 @@ function Clear-ShellSingleSelectListCache {
     $Shell.Remove("${CacheKey}ListRowCacheLocale")
     $Shell.Remove("${CacheKey}ListRowCacheKey")
     $Shell.Remove("${CacheKey}ListColGap")
+}
+
+function Invoke-ShellSingleSelectListRedrawMarqueeRow {
+    param(
+        [hashtable]$Layout,
+        [int]$SelectedIndex,
+        [int]$PageIndex,
+        [int]$PageSize,
+        [int]$ListScrollOffset,
+        [array]$RowCache,
+        [scriptblock]$GetListRowSpec,
+        [int]$NumWidth,
+        [scriptblock]$GetItemDisplayNumber,
+        [scriptblock]$TestItemEnabled,
+        [array]$Items,
+        [int]$LayoutLineWidth,
+        [int]$LayoutStartColumn
+    )
+
+    $pageStart = $PageIndex * $PageSize
+    $local = $SelectedIndex - $pageStart - $ListScrollOffset
+    $viewport = $Layout.ListViewportHeight
+    if ($local -lt 0 -or $local -ge $viewport) { return }
+
+    $displayNumber = & $GetItemDisplayNumber $Items[$SelectedIndex] $SelectedIndex
+    $enabled = & $TestItemEnabled $Items[$SelectedIndex] $SelectedIndex
+    $spec = & $GetListRowSpec $SelectedIndex $true $NumWidth $displayNumber $enabled
+    if (-not $spec) { return }
+
+    Write-ListRowFromSpec -ScreenRow ($Layout.ListStartRow + $local) -Spec $spec `
+        -LayoutLineWidth $LayoutLineWidth -LayoutStartColumn $LayoutStartColumn
 }

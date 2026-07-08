@@ -43,6 +43,8 @@
       "current": "#",
       "item": "items",
       "piece": "",
+      "letterSearch": "Letter search",
+      "navigate": "Navigate",
       "nth": "Page ",
       "page": "",
       "altogether": "",
@@ -64,6 +66,13 @@
         "sysUpdate": "Update toolkit",
         "sysUninstall": "Uninstall toolkit",
         "tool": "Open a tool"
+      },
+      "list": {
+        "letterSearchOn": "Letter search enabled",
+        "letterSearchOff": "Letter search disabled",
+        "loadingFetch": "{spinner} Loading list…",
+        "loadingResult": "{spinner} Preparing list…",
+        "loadingDraw": "{spinner} Rendering list…"
       }
     },
     "brand": {

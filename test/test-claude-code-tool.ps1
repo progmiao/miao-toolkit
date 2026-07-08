@@ -18,11 +18,11 @@ $name = Resolve-ToolI18nLabel -ToolRoot $toolRoot -Key 'claude-code.name' -Fallb
 if ([string]::IsNullOrWhiteSpace($name)) { throw 'name i18n empty' }
 
 $actions = @((Get-Content (Join-Path $toolRoot 'index.json') -Raw -Encoding UTF8 | ConvertFrom-Json).actions)
-if ($actions.Count -ne 10) { throw "expected 10 actions, got $($actions.Count)" }
+if ($actions.Count -ne 9) { throw "expected 9 actions, got $($actions.Count)" }
 if ($actions[0].command -ne 'install') { throw 'first action must be install' }
 if ($actions[1].command -ne 'init') { throw 'second action must be init' }
 $expectedCommands = @(
-    'install', 'init', 'plugin', 'inst-plug', 'upd-plug', 'uninst-plug',
+    'install', 'init', 'inst-plug', 'upd-plug', 'uninst-plug',
     'config-api', 'config-proxy', 'update', 'uninstall'
 )
 for ($i = 0; $i -lt $expectedCommands.Count; $i++) {
@@ -35,6 +35,7 @@ for ($i = 0; $i -lt $expectedCommands.Count; $i++) {
 . (Join-Path $toolRoot 'lib\claude-code-state.ps1')
 . (Join-Path $toolRoot 'lib\claude-settings.ps1')
 . (Join-Path $toolRoot 'lib\claude-plugin.ps1')
+. (Join-Path $toolRoot 'lib\claude-code-presets.ps1')
 
 if ((Compare-ClaudeSemVersion -Left '2.0.0' -Right '1.9.9') -ne 1) { throw 'Compare-ClaudeSemVersion gt failed' }
 if ((Compare-ClaudeSemVersion -Left '1.0.0' -Right '1.0.0') -ne 0) { throw 'Compare-ClaudeSemVersion eq failed' }
@@ -44,14 +45,83 @@ if ($split.Name -ne 'superpowers' -or $split.Marketplace -ne 'claude-plugins-off
     throw 'Split-ClaudePluginId failed'
 }
 
-$marketItems = @(Get-ClaudeCodePresetMarketplaces | ForEach-Object {
-    New-ClaudePluginMenuItem -PluginId ([string]$_.Source) -Description ([string]$_.Description) `
+$marketPresets = @(Get-ClaudeCodeMarketplacePresets -ToolRoot $toolRoot)
+if ($marketPresets.Count -ne 3) { throw "expected 3 marketplace presets, got $($marketPresets.Count)" }
+if ([string]$marketPresets[0].Source -ne 'obra/superpowers-marketplace') {
+    throw 'unexpected first marketplace preset source'
+}
+
+$featuredMap = Get-ClaudeCodeFeaturedPluginOrderMap -ToolRoot $toolRoot
+if ($featuredMap.Count -ne 1) {
+    throw "expected 1 featured plugin preset, got $($featuredMap.Count)"
+}
+if (-not $featuredMap.ContainsKey('superpowers@superpowers-marketplace')) {
+    throw 'featured plugin preset missing superpowers@superpowers-marketplace'
+}
+
+$sortSample = @(
+    (New-ClaudePluginMenuItem -PluginId 'zebra@test' -Enabled $true)
+    (New-ClaudePluginMenuItem -PluginId 'superpowers@superpowers-marketplace' -Featured $true -Enabled $true)
+    (New-ClaudePluginMenuItem -PluginId 'alpha@test' -Enabled $true)
+)
+$sortedSample = @(Sort-ClaudePluginMenuItems -Items $sortSample -FeaturedOrderMap $featuredMap)
+if ([string]$sortedSample[0].PluginId -ne 'superpowers@superpowers-marketplace') {
+    throw 'featured plugin should sort first'
+}
+if ([string]$sortedSample[1].PluginId -ne 'alpha@test' -or [string]$sortedSample[2].PluginId -ne 'zebra@test') {
+    throw 'non-featured plugins should sort by PluginId after featured'
+}
+
+$marketItems = @($marketPresets | ForEach-Object {
+    New-ClaudePluginMenuItem -PluginId ([string]$_.Source) -Description ([string]$_.Label) `
         -Enabled $true -Source $_
 })
 $marketRows = Build-ClaudePluginRows -Items $marketItems -ToolRoot $toolRoot
 if ($marketRows.Count -lt 1) { throw 'marketplace rows empty' }
-if (@($marketRows[0].Cells).Count -ne 3) {
-    throw "marketplace row expected 3 cells, got $(@($marketRows[0].Cells).Count)"
+if (@($marketRows[0].Cells).Count -ne 2) {
+    throw "marketplace row expected 2 cells, got $(@($marketRows[0].Cells).Count)"
+}
+
+$pluginLayout = New-ClaudePluginListLayout
+if ([string]$pluginLayout.Preset -ne 'HalfSplit') {
+    throw 'plugin list layout should use HalfSplit preset'
+}
+if ([int]$pluginLayout.ScrollColumn -ne 1) {
+    throw 'plugin list layout should scroll detail column'
+}
+
+$featuredItem = New-ClaudePluginMenuItem -PluginId 'superpowers@superpowers-marketplace' -Featured $true -Enabled $true
+$plainItem = New-ClaudePluginMenuItem -PluginId 'alpha@test' -Enabled $true
+$featuredRows = Build-ClaudePluginRows -Items @($featuredItem) -ToolRoot $toolRoot
+if (-not $featuredRows[0].CellColors -or $featuredRows[0].CellColors[0] -ne (Get-ClaudeFeaturedPluginNameColor)) {
+    throw 'featured plugin row should color plugin id column'
+}
+
+$shell = @{ BrandInnerWidth = 120; LayoutLineMetrics = @{ StartColumn = 0; EndColumn = 100 } }
+$resolved = Resolve-ShellListLayout -Shell $shell -Layout $pluginLayout -NumWidth 0 -Mode Multi `
+    -HideNumberColumn
+if ([int]$resolved.Widths[0] -lt 30 -or [int]$resolved.Widths[1] -lt 30) {
+    throw "plugin columns too narrow: $($resolved.Widths[0]), $($resolved.Widths[1])"
+}
+$halfDelta = [Math]::Abs([int]$resolved.Widths[0] - [int]$resolved.Widths[1])
+if ($halfDelta -gt 2) {
+    throw "plugin columns should split roughly half: $($resolved.Widths[0]) vs $($resolved.Widths[1])"
+}
+
+$specNoNum = Build-ShellMultiSelectListRowSpec -RowCacheEntry @{
+    BodyPlain    = 'plugin-id          detail'
+    BodySegments = @(
+        @{ Text = 'plugin-id          '; Color = [System.ConsoleColor]::Gray }
+        @{ Text = 'detail'; Color = [System.ConsoleColor]::Gray }
+    )
+    LineColor    = [System.ConsoleColor]::Gray
+    Enabled      = $true
+} -Selected $false -Checked $false -NumWidth 0 -DisplayNumber 1 -Gap '  ' -HideNumberColumn
+if ($specNoNum.Segments[0].Text -match '\d{2}') {
+    throw 'HideNumberColumn should not render number prefix'
+}
+if ($specNoNum.Segments[0].Text -notmatch '\[ \]$') {
+    throw 'first column should sit adjacent to check mark'
 }
 
 function Test-ParseClaudeVersionLine {
@@ -78,6 +148,13 @@ if ($notWingetMsg -notmatch '1\.0\.0' -or $notWingetMsg -notmatch 'claude\.cmd')
 }
 
 $coreLib = Join-Path $root 'package\core\lib'
+$longDetail = ('x' * 80)
+if (-not (Test-ShellListCellTextOverflow -Text $longDetail -Width 20)) {
+    throw 'overflow detection failed'
+}
+$window = Format-ShellListTableCellText -Text $longDetail -Width 20 -MarqueeOffset 3 -MarqueeActive
+if ($window.Length -ne 20) { throw "marquee window width should pad to 20, got $($window.Length)" }
+
 . (Join-Path $coreLib 'domain\Ensure-ToolDeps.ps1')
 $listSample = @"
 名称        ID                   版本    源

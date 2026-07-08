@@ -44,6 +44,8 @@
             "current": "当前",
             "item": "项",
             "piece": "个",
+            "letterSearch": "字母搜索",
+            "navigate": "切换",
             "nth": "第",
             "page": "页",
             "altogether": "共",
@@ -65,6 +67,13 @@
                 "sysUpdate": "更新工具箱",
                 "sysUninstall": "卸载工具箱",
                 "tool": "进入工具"
+            },
+            "list": {
+                "letterSearchOn": "字母搜索已开启",
+                "letterSearchOff": "字母搜索已关闭",
+                "loadingFetch": "{spinner} 正在加载列表…",
+                "loadingResult": "{spinner} 正在整理列表…",
+                "loadingDraw": "{spinner} 开始绘制列表…"
             }
         },
         "brand": {

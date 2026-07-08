@@ -9,7 +9,7 @@
       },
       "init": {
         "name": "初始化配置",
-        "description": "写入使用前必要的默认配置（如禁用 OAuth 登录）"
+        "description": "写入默认配置并注册预设插件市场"
       },
       "configureApi": {
         "name": "配置 API",
@@ -18,10 +18,6 @@
       "configureProxy": {
         "name": "配置代理",
         "description": "配置 HTTP/HTTPS 代理或清除代理"
-      },
-      "addMarketplace": {
-        "name": "插件市场",
-        "description": "注册常用插件市场目录"
       },
       "installPlugin": {
         "name": "安装插件",
@@ -70,6 +66,7 @@
       "stepDisableLogin": "禁用 OAuth 登录",
       "stepWriteSettings": "合并写入 settings.json",
       "stepVerify": "校验配置",
+      "stepRegisterMarketplace": "注册插件市场 {source}",
       "logSuccess": "{step} 完成",
       "logFailed": "{step} 失败：{detail}"
     },
@@ -96,19 +93,14 @@
       "logFailed": "配置失败：{detail}"
     },
     "section": {
-      "marketplaceAddExecute": "添加市场",
       "pluginInstallExecute": "插件安装",
       "pluginUninstallExecute": "插件卸载",
       "pluginUpdateExecute": "插件更新"
     },
-    "marketplace": {
-      "countUnit": "个市场",
-      "noPresets": "暂无预设市场",
-      "statusReady": "准备添加市场",
-      "logSuccess": "已添加 {source}",
-      "logFailed": "添加 {source} 失败：{detail}"
-    },
     "plugin": {
+      "loadingFetch": "{spinner} 正在加载插件列表…",
+      "loadingResult": "{spinner} 正在整理插件列表…",
+      "loadingDraw": "{spinner} 开始绘制插件列表…",
       "countUnit": "个插件",
       "tagInstalled": "已安装",
       "tagUpdate": "可更新→{version}",

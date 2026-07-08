@@ -1604,6 +1604,51 @@ function Write-MenuBarLine {
     Write-FixedLine $Row $text -Color $Color
 }
 
+function Write-MenuBarLineWithHighlightKey {
+    param(
+        [int]$Row,
+        [int]$InnerWidth,
+        [string[]]$Segments,
+        [int]$ColumnCount = 0,
+        [string]$HighlightSegment = '',
+        [switch]$HighlightActive,
+        [System.ConsoleColor]$Color = [System.ConsoleColor]::DarkGray,
+        [System.ConsoleColor]$HighlightForeground = [System.ConsoleColor]::Black,
+        [System.ConsoleColor]$HighlightBackground = [System.ConsoleColor]::Cyan
+    )
+
+    $text = Format-MenuBarLine -InnerWidth $InnerWidth -Segments $Segments -ColumnCount $ColumnCount
+    if (-not $HighlightActive -or [string]::IsNullOrWhiteSpace($HighlightSegment)) {
+        Write-FixedLine $Row $text -Color $Color
+        return
+    }
+
+    $pos = $text.IndexOf($HighlightSegment)
+    if ($pos -lt 0) {
+        Write-FixedLine $Row $text -Color $Color
+        return
+    }
+
+    $useBatch = Test-ShellConsoleBatchDraw
+    $enteredBatch = $false
+    if ($useBatch) {
+        Enter-ConsoleDrawBatch
+        $enteredBatch = $true
+    }
+
+    try {
+        try { [Console]::SetCursorPosition(0, $Row) } catch { return }
+        Write-Host ($text.Substring(0, $pos)) -NoNewline -ForegroundColor $Color
+        Write-Host $HighlightSegment -NoNewline -ForegroundColor $HighlightForeground -BackgroundColor $HighlightBackground
+        Write-Host $text.Substring($pos + $HighlightSegment.Length) -NoNewline -ForegroundColor $Color
+    }
+    finally {
+        if ($enteredBatch) {
+            $null = Complete-ConsoleDrawBatch
+        }
+    }
+}
+
 function Select-MenuPageSelectionIndex {
     param(
         [int]$NewPageIndex,
@@ -1746,7 +1791,10 @@ function Update-PaginatedMenuFooter {
         [string]$FooterLayout = 'Default',
         [int]$BrandInnerWidth = 0,
         [switch]$MultiSelectNav,
-        [switch]$CompactNavStatus
+        [switch]$CompactNavStatus,
+        [switch]$LetterSearchActive,
+        [switch]$LetterSearchEnabled,
+        [string]$LetterSearchToggleKey = 'Slash'
     )
 
     if ($FooterLayout -eq 'Split') {
@@ -1779,13 +1827,20 @@ function Update-PaginatedMenuFooter {
             $actionSegments = @($actionSegments[0..($actionColCount - 1)])
         }
 
+        $letterSearchHint = $null
         if ($CompactNavStatus) {
             $keys = Get-MiaoI18nKeys
             $spaceLabelKey = if ($MultiSelectNav) { 'common.toggle' } else { 'common.confirm' }
             $navSegments = @(
                 (Format-I18nPaginationCompactStatus -PageIndex $PageIndex -PageCount $PageCount -ItemCount $ItemCount)
-                (Get-I18nArrowHint -Arrows $keys.ArrowsUpDown -LabelKey 'common.select')
-                (Get-I18nArrowHint -Arrows $keys.ArrowsLeftRight -LabelKey 'common.pageTurn')
+                (Get-I18nListNavigateHint)
+            )
+            if ($LetterSearchEnabled) {
+                $toggleDisplay = Get-ShellListLetterSearchToggleKeyDisplay -ToggleKey $LetterSearchToggleKey
+                $letterSearchHint = Get-I18nKeyHint -Key $toggleDisplay -LabelKey 'common.letterSearch'
+                $navSegments += $letterSearchHint
+            }
+            $navSegments += @(
                 (Get-I18nKeyHint -Key $keys.Space -LabelKey $spaceLabelKey)
                 (Get-I18nKeyHint -Key $keys.Enter -LabelKey 'common.confirm')
             )
@@ -1810,7 +1865,8 @@ function Update-PaginatedMenuFooter {
             $navSegments = @($navSegments[0..($navColCount - 1)])
         }
 
-        if ((Test-UseConsoleBufferDraw) -and $script:ConsoleDrawBatchDepth -gt 0 -and (Test-ConsoleBufferDrawAvailable)) {
+        if ((Test-UseConsoleBufferDraw) -and $script:ConsoleDrawBatchDepth -gt 0 -and (Test-ConsoleBufferDrawAvailable) `
+                -and -not $LetterSearchActive) {
             try {
                 Write-MenuBarLineBuffer -HintRow $HintRow -StatusRow $StatusRow -InnerWidth $lineWidth `
                     -TopSegments $navSegments -BottomSegments $actionSegments -ColumnCount $navColCount
@@ -1819,7 +1875,13 @@ function Update-PaginatedMenuFooter {
             catch { }
         }
 
-        Write-MenuBarLine -Row $HintRow -InnerWidth $lineWidth -Segments $navSegments -ColumnCount $navColCount
+        if ($LetterSearchEnabled -and $LetterSearchActive -and $letterSearchHint) {
+            Write-MenuBarLineWithHighlightKey -Row $HintRow -InnerWidth $lineWidth -ColumnCount $navColCount `
+                -Segments $navSegments -HighlightSegment $letterSearchHint -HighlightActive:$true
+        }
+        else {
+            Write-MenuBarLine -Row $HintRow -InnerWidth $lineWidth -Segments $navSegments -ColumnCount $navColCount
+        }
         Write-MenuBarLine -Row $StatusRow -InnerWidth $lineWidth -ColumnCount $actionColCount -Segments $actionSegments
         return
     }
@@ -2327,7 +2389,12 @@ function Show-PaginatedMenu {
         [switch]$CompactNavStatus,
         [switch]$AllowSpaceConfirm,
         [string]$InitialCatalogLine = '',
-        [string]$InitialFlashMessage = ''
+        [string]$InitialFlashMessage = '',
+        [hashtable]$SearchConfig = $null,
+        [hashtable]$ListScrollConfig = $null,
+        [ref]$MarqueeOffset = $null,
+        [ref]$MarqueeLastTick = $null,
+        [array]$MarqueeRowCache = $null
     )
 
     if (-not $PSBoundParameters.ContainsKey('HideColHeader')) {
@@ -2337,6 +2404,20 @@ function Show-PaginatedMenu {
     $resolveNumberFn = $ResolveMenuNumber
     if (-not $resolveNumberFn) {
         $resolveNumberFn = ${function:Resolve-ListNumberIndexDefault}
+    }
+
+    $resolvedSearchConfig = Resolve-ShellListSearchConfig -SearchConfig $SearchConfig
+    $letterInputMode = $false
+    $listScrollConfig = if ($ListScrollConfig) {
+        $ListScrollConfig
+    }
+    else {
+        if (Get-Command Resolve-ShellListScrollConfig -ErrorAction SilentlyContinue) {
+            Resolve-ShellListScrollConfig -Layout $null
+        }
+        else {
+            @{ ScrollColumn = -1; ScrollIntervalMs = 300 }
+        }
     }
 
     if (-not $CountLabel) {
@@ -2393,8 +2474,10 @@ function Show-PaginatedMenu {
         if ([string]::IsNullOrEmpty($Buffer)) { return }
         if ($Items.Count -eq 0) { return }
 
-        $num = [int]$Buffer
-        $idx = & $resolveNumberFn $Items $num
+        $inputMode = if ($letterInputMode) { 'Letter' } else { 'Number' }
+        $idx = Resolve-ShellListInputBufferIndex -Rows $Items -Buffer $Buffer -InputMode $inputMode `
+            -SearchConfig $resolvedSearchConfig -GetItemDisplayNumber $GetItemDisplayNumber `
+            -TestItemEnabled $TestItemEnabled -ResolveMenuNumber $resolveNumberFn
         if ($idx -ge 0 -and $idx -lt $Items.Count) {
             if (-not (& $TestItemEnabled $Items[$idx] $idx)) {
                 return
@@ -2437,6 +2520,9 @@ function Show-PaginatedMenu {
                 FlashMessage            = $FlashMessage
                 MenuSplitActionSegments = $MenuSplitActionSegments
                 CompactNavStatus        = [bool]$CompactNavStatus
+                LetterSearchActive      = [bool]$letterInputMode
+                LetterSearchEnabled     = [bool]$resolvedSearchConfig.Enabled
+                LetterSearchToggleKey   = [string]$resolvedSearchConfig.LetterToggleKey
             }
             return
         }
@@ -2452,7 +2538,10 @@ function Show-PaginatedMenu {
             -MenuSplitActionSegments $MenuSplitActionSegments `
             -BrandInnerWidth $layout.BrandInnerWidth `
             -FlashMessage $(if ($FooterLayout -eq 'Split') { '' } else { $FlashMessage }) `
-            -CompactNavStatus:$CompactNavStatus
+            -CompactNavStatus:$CompactNavStatus `
+            -LetterSearchActive:$letterInputMode `
+            -LetterSearchEnabled:([bool]$resolvedSearchConfig.Enabled) `
+            -LetterSearchToggleKey ([string]$resolvedSearchConfig.LetterToggleKey)
     }
 
     if (-not $ToolkitShell) {
@@ -2505,22 +2594,66 @@ function Show-PaginatedMenu {
             $oldPage = $pageIndex
             $oldScroll = $listScrollOffset
             $oldNumberBuffer = $numberBuffer
+            $oldLetterInputMode = $letterInputMode
             $flashMessage = ''
             $pageStart = $pageIndex * $PageSize
             $itemsOnPage = [Math]::Min($PageSize, $Items.Count - $pageStart)
             $localIndex = $selectedIndex - $pageStart
 
-            $key = [Console]::ReadKey($true)
+            $key = $null
+            if ([int]$listScrollConfig.ScrollColumn -ge 0 -and (Get-Command Read-ShellListMenuKey -ErrorAction SilentlyContinue)) {
+                $key = Read-ShellListMenuKey -ScrollConfig $listScrollConfig
+                if ($null -eq $key) {
+                    if ($MarqueeOffset -and $MarqueeLastTick -and $MarqueeRowCache -and $GetListRowSpec `
+                            -and (Get-Command Invoke-ShellListMenuMarqueeTick -ErrorAction SilentlyContinue)) {
+                        if (Invoke-ShellListMenuMarqueeTick -SelectedIndex $selectedIndex -RowCache $MarqueeRowCache `
+                                -ScrollConfig $listScrollConfig -MarqueeOffset $MarqueeOffset `
+                                -MarqueeLastTick $MarqueeLastTick -LetterInputMode:$letterInputMode) {
+                            $marqueeBatch = $useShellBatch
+                            if ($marqueeBatch) { Enter-ConsoleDrawBatch }
+                            Invoke-ShellSingleSelectListRedrawMarqueeRow -Layout $layout `
+                                -SelectedIndex $selectedIndex -PageIndex $pageIndex -PageSize $PageSize `
+                                -ListScrollOffset $listScrollOffset -RowCache $MarqueeRowCache `
+                                -GetListRowSpec $GetListRowSpec -NumWidth $numWidth `
+                                -GetItemDisplayNumber $GetItemDisplayNumber -TestItemEnabled $TestItemEnabled `
+                                -Items $Items -LayoutLineWidth ([int]$layout.LayoutLineWidth) `
+                                -LayoutStartColumn ([int]$layout.LayoutStartColumn)
+                            if ($marqueeBatch) { $null = Complete-ConsoleDrawBatch -ToolkitShell $ToolkitShell }
+                        }
+                    }
+                    Start-Sleep -Milliseconds 25
+                    continue
+                }
+            }
+            else {
+                $key = [Console]::ReadKey($true)
+            }
 
-            if ($key.Key -eq 'Backspace') {
-                if (-not $singleDigitSelect -and -not [string]::IsNullOrEmpty($numberBuffer)) {
-                    $numberBuffer = $numberBuffer.Substring(0, $numberBuffer.Length - 1)
+            if ($resolvedSearchConfig.Enabled -and (Test-ShellListLetterSearchToggleKey -Key $key `
+                    -ToggleKey $resolvedSearchConfig.LetterToggleKey)) {
+                $letterInputMode = -not $letterInputMode
+                $numberBuffer = ''
+            }
+            elseif ($key.Key -eq 'Backspace') {
+                if (-not $singleDigitSelect -or $letterInputMode) {
                     if (-not [string]::IsNullOrEmpty($numberBuffer)) {
-                        Apply-MenuNumberBuffer -Buffer $numberBuffer
+                        $numberBuffer = $numberBuffer.Substring(0, $numberBuffer.Length - 1)
+                        if (-not [string]::IsNullOrEmpty($numberBuffer)) {
+                            Apply-MenuNumberBuffer -Buffer $numberBuffer
+                        }
                     }
                 }
             }
-            elseif ($key.KeyChar -match '^[0-9]$') {
+            elseif ($letterInputMode -and $key.KeyChar -match '^[a-zA-Z0-9]$') {
+                $candidate = $numberBuffer + [string]$key.KeyChar
+                if (Test-ShellListInputBufferPrefixValid -Rows $Items -Buffer $candidate -InputMode Letter `
+                        -SearchConfig $resolvedSearchConfig -GetItemDisplayNumber $GetItemDisplayNumber `
+                        -TestItemEnabled $TestItemEnabled -ResolveMenuNumber $resolveNumberFn) {
+                    $numberBuffer = $candidate
+                    Apply-MenuNumberBuffer -Buffer $numberBuffer
+                }
+            }
+            elseif (-not $letterInputMode -and $key.KeyChar -match '^[0-9]$') {
                 if ($singleDigitSelect) {
                     $digit = [string]$key.KeyChar
                     if (Test-MenuNumberBufferPrefix -Items $Items -Buffer $digit `
@@ -2546,7 +2679,9 @@ function Show-PaginatedMenu {
             }
             elseif ($key.KeyChar -match '^[a-zA-Z]$') {
                 $letter = $key.KeyChar.ToString().ToLowerInvariant()
-                if ($LetterKeys -and $LetterKeys.ContainsKey($letter)) {
+                $effectiveLetterKeys = Get-ShellListEffectiveLetterKeys -LetterKeys $LetterKeys `
+                    -LetterInputMode:$letterInputMode
+                if ($effectiveLetterKeys -and $effectiveLetterKeys.ContainsKey($letter)) {
                     Set-MenuInputCursorPosition -Layout $layout -ToolkitShell $ToolkitShell
                     return $LetterKeys[$letter]
                 }
@@ -2683,9 +2818,13 @@ function Show-PaginatedMenu {
             $scrollChanged = ($oldScroll -ne $listScrollOffset)
             $pageChanged = ($oldPage -ne $pageIndex)
             $selectionChanged = ($oldIndex -ne $selectedIndex)
+            if ($selectionChanged -and $MarqueeOffset) {
+                $MarqueeOffset.Value = 0
+            }
             $bufferChanged = ($oldNumberBuffer -ne $numberBuffer)
+            $letterModeChanged = ($oldLetterInputMode -ne $letterInputMode)
 
-            $footerChanged = $pageChanged -or $flashMessage -or $bufferChanged
+            $footerChanged = $pageChanged -or $flashMessage -or $bufferChanged -or $letterModeChanged
             if ($FooterLayout -ne 'Split' -and -not $RenderFooter) {
                 $footerChanged = $footerChanged -or $selectionChanged -or $scrollChanged
             }
