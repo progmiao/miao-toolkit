@@ -6,6 +6,7 @@ $lib = Join-Path (Split-Path $PSScriptRoot -Parent) 'package\core\lib'
 . (Join-Path $lib 'ui\console\Console-Menu.ps1')
 . (Join-Path $lib 'ui\shell\ShellListModel.ps1')
 . (Join-Path $lib 'ui\shell\ShellListLayout.ps1')
+. (Join-Path $lib 'ui\shell\Layout.ps1')
 . (Join-Path $lib 'ui\shell\SingleSelectList.ps1')
 . (Join-Path $lib 'ui\shell\MultiSelectList.ps1')
 
@@ -87,6 +88,28 @@ if ($spec.Text -notmatch '22\.14\.0') {
 }
 if ($spec.Text -notmatch '\[LTS\]') {
     throw 'search key spec should still include tags in body'
+}
+
+$shell = @{
+    BrandInnerWidth     = 120
+    LayoutLineMetrics   = @{ StartColumn = 0; EndColumn = 100 }
+    Layout              = @{ LayoutStartColumn = 0; LayoutLineWidth = 100; ListViewportHeight = 10 }
+}
+$resolvedBrowseLayout = Resolve-ShellListLayout -Shell $shell -Layout $listLayout -NumWidth 0 -Mode Multi `
+    -KeyColumn SearchKey -HideNumberColumn
+$browseColumnLayout = Resolve-ShellListLayoutColumnLayout -Layout $resolvedBrowseLayout
+$browseBuilt = Build-ShellMultiSelectListRowCache -Rows $normalized -ColumnLayout $browseColumnLayout
+$browseHandlers = New-ShellMultiSelectListDrawHandlers -RowCache $browseBuilt.RowCache -ColGap $browseBuilt.ColGap `
+    -SearchKeyMode -SearchKeyWidth 8 -HideNumberColumn
+$browseSpec = & $browseHandlers['GetListRowSpec'] 0 $true 0 1 $true
+if (-not $browseSpec.Text -and -not $browseSpec.Segments) {
+    throw 'SearchKey browse handlers should render row content'
+}
+$browseText = if ($browseSpec.Text) { [string]$browseSpec.Text } else {
+    (@($browseSpec.Segments | ForEach-Object { [string]$_.Text }) -join '')
+}
+if ($browseText -notmatch '22\.14\.0' -or $browseText -notmatch '\[LTS\]') {
+    throw "SearchKey browse row should include version and tags: $browseText"
 }
 
 Write-Host 'test-multi-select-search-key: OK'

@@ -385,6 +385,19 @@ function Get-RepositoryBrowseUrl {
     return ''
 }
 
+function Get-ShellListDefaultPageSize {
+    return 10
+}
+
+function Resolve-ShellListPageSize {
+    param([int]$PageSize = 0)
+
+    if ($PageSize -gt 0) {
+        return $PageSize
+    }
+    return (Get-ShellListDefaultPageSize)
+}
+
 function Resolve-MenuPagingDefaults {
     param(
         [int]$PageSize = 0,

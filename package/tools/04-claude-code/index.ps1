@@ -77,9 +77,8 @@ if ($Install.IsPresent) { $mode = 'Install' }
 elseif ($Init.IsPresent) { $mode = 'Init' }
 elseif ($ConfigureApi.IsPresent) { $mode = 'ConfigureApi' }
 elseif ($ConfigureProxy.IsPresent) { $mode = 'ConfigureProxy' }
-elseif ($InstallPlugin.IsPresent) { $mode = 'InstallPlugin' }
+elseif ($InstallPlugin.IsPresent -or $UpdatePlugin.IsPresent) { $mode = 'InstallPlugin' }
 elseif ($UninstallPlugin.IsPresent) { $mode = 'UninstallPlugin' }
-elseif ($UpdatePlugin.IsPresent) { $mode = 'UpdatePlugin' }
 elseif ($Update.IsPresent) { $mode = 'Update' }
 elseif ($Uninstall.IsPresent) { $mode = 'Uninstall' }
 

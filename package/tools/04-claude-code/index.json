@@ -29,14 +29,6 @@
       "enabled": true
     },
     {
-      "command": "upd-plug",
-      "name": "claude-code.action.updatePlugin.name",
-      "description": "claude-code.action.updatePlugin.description",
-      "script": "lib/update-plugin.ps1",
-      "param": { "switch": "UpdatePlugin", "alias": "g" },
-      "enabled": true
-    },
-    {
       "command": "uninst-plug",
       "name": "claude-code.action.uninstallPlugin.name",
       "description": "claude-code.action.uninstallPlugin.description",

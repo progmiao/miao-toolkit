@@ -30,8 +30,10 @@ function Invoke-ToolkitShellList {
     $SkipBodyInit = [bool]($Config.ContainsKey('SkipBodyInit') -and $Config['SkipBodyInit'])
     $InitialCatalogLine = if ($Config.ContainsKey('InitialCatalogLine')) { [string]$Config['InitialCatalogLine'] } else { '' }
     $InitialFlashMessage = if ($Config.ContainsKey('InitialFlashMessage')) { [string]$Config['InitialFlashMessage'] } else { '' }
+    $EmptyListMessage = if ($Config.ContainsKey('EmptyListMessage')) { [string]$Config['EmptyListMessage'] } else { '' }
     $FlashKeys = if ($Config.ContainsKey('FlashKeys')) { $Config['FlashKeys'] } else { $null }
     $LoadingProgress = if ($Config.ContainsKey('LoadingProgress')) { $Config['LoadingProgress'] } else { $null }
+    $pageSize = Resolve-ShellListPageSize -PageSize $(if ($Config.ContainsKey('PageSize')) { [int]$Config['PageSize'] } else { 0 })
 
     if ($Mode -notin @('Single', 'Multi')) {
         throw "Invoke-ToolkitShellList Config.Mode must be Single or Multi (got: $Mode)."
@@ -57,6 +59,10 @@ function Invoke-ToolkitShellList {
     else { 'message.disabledItem' }
 
     Sync-MiaoLocaleFromShell -Shell $Shell
+
+    if ($Shell.Layout) {
+        $Shell.Layout['PageSize'] = $pageSize
+    }
 
     $hideNumberColumn = ($Mode -eq 'Multi')
     $numWidthPreview = 0
@@ -131,8 +137,8 @@ function Invoke-ToolkitShellList {
         $raw = Invoke-ToolkitShellListSingleCore -Shell $Shell -CacheKey $CacheKey `
             -NormalizedRows $normalized -ColumnLayout $columnLayout -ToolbarConfig $Toolbar `
             -CountLabel $CountLabel -InitialCatalogLine $catalogLine `
-            -InitialFlashMessage $InitialFlashMessage -SearchConfig $Search `
-            -ListScrollConfig $listScrollConfig
+            -InitialFlashMessage $InitialFlashMessage -EmptyListMessage $EmptyListMessage `
+            -SearchConfig $Search -ListScrollConfig $listScrollConfig -PageSize $pageSize
         return (ConvertTo-ShellListSelectResult -RawResult $raw -Mode Single)
     }
 
@@ -142,7 +148,7 @@ function Invoke-ToolkitShellList {
         -CountLabel $CountLabel -KeyColumn $KeyColumn -SearchKeyWidth $SearchKeyWidth `
         -SearchConfig $Search -FlashNothingSelectedKey $flashNothingSelectedKey `
         -FlashItemDisabledKey $flashItemDisabledKey -HideNumberColumn:$hideNumberColumn `
-        -ListScrollConfig $listScrollConfig
+        -ListScrollConfig $listScrollConfig -PageSize $pageSize
     return (ConvertTo-ShellListSelectResult -RawResult $raw -Mode Multi)
 }
 
@@ -156,8 +162,10 @@ function Invoke-ToolkitShellListSingleCore {
         [string]$CountLabel,
         [string]$InitialCatalogLine,
         [string]$InitialFlashMessage,
+        [string]$EmptyListMessage = '',
         [hashtable]$SearchConfig = $null,
-        [hashtable]$ListScrollConfig = $null
+        [hashtable]$ListScrollConfig = $null,
+        [int]$PageSize = 0
     )
 
     $header = New-ToolkitMenuHeader -HideSectionTitle
@@ -221,9 +229,9 @@ function Invoke-ToolkitShellListSingleCore {
         -CompactNavStatus `
         -AllowSpaceConfirm `
         -InitialCatalogLine $InitialCatalogLine `
-        -InitialFlashMessage $InitialFlashMessage -SearchConfig $SearchConfig `
-        -ListScrollConfig $scrollConfig -MarqueeOffset ([ref]$marqueeOffset) `
-        -MarqueeLastTick ([ref]$marqueeLastTick) -MarqueeRowCache $rowCache
+        -InitialFlashMessage $InitialFlashMessage -EmptyListMessage $EmptyListMessage `
+        -SearchConfig $SearchConfig -ListScrollConfig $scrollConfig -MarqueeOffset ([ref]$marqueeOffset) `
+        -MarqueeLastTick ([ref]$marqueeLastTick) -MarqueeRowCache $rowCache -PageSize $PageSize
 }
 
 function Invoke-ToolkitShellListMultiCore {
@@ -241,7 +249,8 @@ function Invoke-ToolkitShellListMultiCore {
         [string]$FlashItemDisabledKey,
         [hashtable]$SearchConfig = $null,
         [switch]$HideNumberColumn,
-        [hashtable]$ListScrollConfig = $null
+        [hashtable]$ListScrollConfig = $null,
+        [int]$PageSize = 0
     )
 
     $header = New-ToolkitMenuHeader -HideSectionTitle
@@ -286,14 +295,25 @@ function Invoke-ToolkitShellListMultiCore {
         $numberWidth = Get-ListNumberDisplayWidth -MaxNumber $maxNumber
     }
 
+    $useSearchKeyColumn = ($KeyColumn -eq 'SearchKey')
+    $resolvedSearchKeyWidth = if ($SearchKeyWidth -gt 0) {
+        $SearchKeyWidth
+    }
+    else {
+        Get-ShellMultiSelectSearchKeyWidth
+    }
+
     $picked = Show-ShellMultiSelectListMenu -Header $header -Items $NormalizedRows -CountLabel $CountLabel `
         -TestItemEnabled $testRowEnabled -GetItemDisplayNumber $getDisplayNumber `
+        -GetItemSearchKey $(if ($useSearchKeyColumn) { $getSearchKey } else { $null }) `
         -ResolveMenuNumber $resolveMenuNumber -NumberDisplayWidth $numberWidth `
+        -SearchKeyMode:($useSearchKeyColumn) -SearchKeyWidth $resolvedSearchKeyWidth `
         -RowCache $rowCache -ColGap $colGap -CheckedCacheKey $CacheKey `
         -MenuSplitActionSegments @($ToolbarConfig.Segments) -LetterKeys $letterKeys `
         -ToolkitShell $Shell -AllowBack:($ToolbarConfig.AllowBack) `
         -FlashNothingSelectedKey $FlashNothingSelectedKey -FlashItemDisabledKey $flashItemDisabledKey `
-        -SearchConfig $SearchConfig -HideNumberColumn:$HideNumberColumn
+        -SearchConfig $SearchConfig -HideNumberColumn:$HideNumberColumn `
+        -ListScrollConfig $ListScrollConfig -PageSize $PageSize
 
     if (Test-ShellNavMarker $picked) { return $picked }
     if ($null -eq $picked) { return $null }

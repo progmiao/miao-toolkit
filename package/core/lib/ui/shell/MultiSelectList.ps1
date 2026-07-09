@@ -514,7 +514,12 @@ function Show-ShellMultiSelectListMenu {
     }
 
     if ($PageSize -le 0) {
-        $PageSize = Get-MenuPageSize
+        $PageSize = if (Get-Command Resolve-ShellListPageSize -ErrorAction SilentlyContinue) {
+            Resolve-ShellListPageSize
+        }
+        else {
+            Get-MenuPageSize
+        }
     }
 
     if (-not $ToolkitShell) {
@@ -531,9 +536,7 @@ function Show-ShellMultiSelectListMenu {
     $fnSetMenuCursor = Get-ShellMultiSelectMenuCommand 'Set-MenuInputCursorPosition'
 
     $layout = $ToolkitShell.Layout
-    if ($PageSize -le 0) {
-        $PageSize = $layout.ListViewportHeight
-    }
+    $layout['PageSize'] = $PageSize
     if (-not $layout.LayoutLineWidth -or -not $layout.LayoutStartColumn) {
         $metrics = if ($ToolkitShell.LayoutLineMetrics) {
             $ToolkitShell.LayoutLineMetrics
@@ -598,8 +601,9 @@ function Show-ShellMultiSelectListMenu {
     $contentStartColumn = [int]$layout.LayoutStartColumn
     $handlers = New-ShellMultiSelectListDrawHandlers -RowCache $RowCache -ColGap $ColGap `
         -CheckedIndexSet $checkedIndexSet -LayoutLineWidth $layoutLineWidth `
-        -LayoutStartColumn $contentStartColumn -SearchKeyMode:$false `
-        -SearchKeyWidth 0 -HideNumberColumn:$HideNumberColumn `
+        -LayoutStartColumn $contentStartColumn -SearchKeyMode:$SearchKeyMode.IsPresent `
+        -SearchKeyWidth $(if ($SearchKeyWidth -gt 0) { $SearchKeyWidth } else { (Get-ShellMultiSelectSearchKeyWidth) }) `
+        -HideNumberColumn:$HideNumberColumn `
         -ScrollColumn ([int]$listScrollConfig.ScrollColumn) -GetMarqueeOffset $getMarqueeOffset
 
     function Apply-MultiSelectInputBuffer {

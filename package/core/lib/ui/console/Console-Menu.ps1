@@ -2193,10 +2193,21 @@ function Redraw-PaginatedMenuPage {
         [scriptblock]$DrawListRow = $null,
         [scriptblock]$GetListRowSpec = $null,
         [int]$LayoutLineWidth = 0,
-        [int]$LayoutStartColumn = 0
+        [int]$LayoutStartColumn = 0,
+        [string]$EmptyListMessage = ''
     )
 
-    if ($PageSize -le 0) { $PageSize = $Layout.PageSize }
+    if ($PageSize -le 0) {
+        if ($Layout.PageSize -gt 0) {
+            $PageSize = [int]$Layout.PageSize
+        }
+        elseif (Get-Command Resolve-ShellListPageSize -ErrorAction SilentlyContinue) {
+            $PageSize = Resolve-ShellListPageSize
+        }
+        else {
+            $PageSize = Get-MenuPageSize
+        }
+    }
 
     $viewport = $Layout.ListViewportHeight
     if ($viewport -le 0) { $viewport = $PageSize }
@@ -2208,7 +2219,13 @@ function Redraw-PaginatedMenuPage {
     }
 
     if ($Items.Count -eq 0) {
-        Write-FixedLine $Layout.ListStartRow " $(Get-I18n -Key 'page.home.noToolsRegistered')" -Color DarkGray
+        $emptyText = if (-not [string]::IsNullOrWhiteSpace($EmptyListMessage)) {
+            [string]$EmptyListMessage
+        }
+        else {
+            Get-I18n -Key 'page.home.noToolsRegistered'
+        }
+        Write-FixedLine $Layout.ListStartRow " $emptyText" -Color DarkGray
         for ($row = 1; $row -lt $viewport; $row++) {
             Write-FixedLine ($Layout.ListStartRow + $row) '' -Selected $false
         }
@@ -2221,12 +2238,13 @@ function Redraw-PaginatedMenuPage {
     if ($Items.Count -gt 0) {
         $itemsOnPage = [Math]::Min($PageSize, $Items.Count - $pageStart)
     }
+    $rowsToDraw = [Math]::Min($viewport, [Math]::Max(0, $itemsOnPage - $ListScrollOffset))
 
     if ($GetListRowSpec -and (Test-UseConsoleListBufferDraw)) {
         try {
-            $rowSpecs = New-Object 'System.Collections.Generic.List[object]' $viewport
+            $rowSpecs = New-Object 'System.Collections.Generic.List[object]' $rowsToDraw
             $rowsDrawn = 0
-            for ($row = 0; $row -lt $viewport; $row++) {
+            for ($row = 0; $row -lt $rowsToDraw; $row++) {
                 $itemIndex = $pageStart + $ListScrollOffset + $row
                 if ($itemIndex -lt ($pageStart + $itemsOnPage) -and $itemIndex -lt $Items.Count) {
                     $selected = ($SelectedIndex -eq $itemIndex)
@@ -2260,7 +2278,7 @@ function Redraw-PaginatedMenuPage {
     }
 
     $rowsDrawn = 0
-    for ($row = 0; $row -lt $viewport; $row++) {
+    for ($row = 0; $row -lt $rowsToDraw; $row++) {
         $itemIndex = $pageStart + $ListScrollOffset + $row
         if ($itemIndex -lt ($pageStart + $itemsOnPage) -and $itemIndex -lt $Items.Count) {
             $selected = ($SelectedIndex -eq $itemIndex)
@@ -2390,6 +2408,7 @@ function Show-PaginatedMenu {
         [switch]$AllowSpaceConfirm,
         [string]$InitialCatalogLine = '',
         [string]$InitialFlashMessage = '',
+        [string]$EmptyListMessage = '',
         [hashtable]$SearchConfig = $null,
         [hashtable]$ListScrollConfig = $null,
         [ref]$MarqueeOffset = $null,
@@ -2425,15 +2444,18 @@ function Show-PaginatedMenu {
     }
 
     if ($PageSize -le 0) {
-        $PageSize = Get-MenuPageSize
+        $PageSize = if (Get-Command Resolve-ShellListPageSize -ErrorAction SilentlyContinue) {
+            Resolve-ShellListPageSize
+        }
+        else {
+            Get-MenuPageSize
+        }
     }
 
     $pinFooter = ($FooterLayout -eq 'Split') -or [bool]$ToolkitShell
     if ($ToolkitShell) {
         $layout = $ToolkitShell.Layout
-        if ($PageSize -le 0) {
-            $PageSize = $layout.ListViewportHeight
-        }
+        $layout['PageSize'] = $PageSize
         if (-not $layout.LayoutLineWidth -or -not $layout.LayoutStartColumn) {
             $metrics = if ($ToolkitShell.LayoutLineMetrics) {
                 $ToolkitShell.LayoutLineMetrics
@@ -2496,7 +2518,8 @@ function Show-PaginatedMenu {
             -SelectedIndex $selectedIndex -NumWidth $numWidth `
             -GetItemLabel $GetItemLabel -TestItemEnabled $TestItemEnabled -PageSize $PageSize `
             -GetItemDisplayNumber $GetItemDisplayNumber -ListScrollOffset $listScrollOffset `
-            -DrawListRow $DrawListRow -GetListRowSpec $GetListRowSpec
+            -DrawListRow $DrawListRow -GetListRowSpec $GetListRowSpec `
+            -EmptyListMessage $EmptyListMessage
     }
 
     $invokeFooter = {

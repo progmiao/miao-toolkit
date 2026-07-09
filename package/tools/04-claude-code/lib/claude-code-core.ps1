@@ -11,6 +11,9 @@ function Import-ClaudeCodeShellCore {
         . (Join-Path $CoreLib 'config\UserConfig.ps1')
         . (Join-Path $CoreLib 'config\I18n.ps1')
     }
+    elseif (-not (Get-Command Resolve-ShellListPageSize -ErrorAction SilentlyContinue)) {
+        . (Join-Path $CoreLib 'config\Paths.ps1')
+    }
 
     foreach ($rel in @(
             'ui\console\Console-Menu.ps1'
@@ -96,13 +99,13 @@ function Invoke-ClaudeCodeNoticePage {
     Clear-ShellListCache -Shell $Shell -CacheKey $cacheKey
 
     return Invoke-ToolkitShellList @{
-        Mode                 = 'Single'
-        Shell                = $Shell
-        SectionTitle         = $SectionTitle
-        Rows                 = @()
-        CacheKey             = $cacheKey
-        Toolbar              = (New-ShellSystemToolbarConfig)
-        InitialFlashMessage  = $Message
+        Mode              = 'Single'
+        Shell             = $Shell
+        SectionTitle      = $SectionTitle
+        Rows              = @()
+        CacheKey          = $cacheKey
+        Toolbar           = (New-ShellSystemToolbarConfig)
+        EmptyListMessage  = $Message
     }
 }
 

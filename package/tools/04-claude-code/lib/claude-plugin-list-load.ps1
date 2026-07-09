@@ -12,26 +12,32 @@ function Start-ClaudePluginListFetch {
     param(
         [string]$LibPath,
         [string]$ToolRoot,
+        [string]$CoreLib,
         [ValidateSet('install', 'installed', 'update')]
         [string]$LoadMode
     )
 
-    $job = Start-Job -ArgumentList @($LibPath, $ToolRoot, $LoadMode) -ScriptBlock {
+    $job = Start-Job -ArgumentList @($LibPath, $ToolRoot, $CoreLib, $LoadMode) -ScriptBlock {
         param(
             [string]$Lib,
             [string]$Root,
+            [string]$CoreLibPath,
             [string]$Mode
         )
 
         $ErrorActionPreference = 'Stop'
+        if (-not (Get-Command Get-UserConfigDirectory -ErrorAction SilentlyContinue)) {
+            . (Join-Path $CoreLibPath 'config\UserConfig.ps1')
+        }
         . (Join-Path $Lib 'claude-code-state.ps1')
         . (Join-Path $Lib 'claude-code-presets.ps1')
         . (Join-Path $Lib 'claude-plugin.ps1')
+        . (Join-Path $Lib 'claude-plugin-state.ps1')
 
         switch ($Mode) {
             'install' { return @(Get-ClaudePluginInstallMenuItems -ToolRoot $Root) }
-            'installed' { return @(Get-ClaudePluginInstalledMenuItems) }
-            'update' { return @(Get-ClaudePluginInstalledMenuItems -ForUpdate) }
+            'installed' { return @(Get-ClaudePluginInstalledMenuItems -ToolRoot $Root) }
+            'update' { return @(Get-ClaudePluginInstalledMenuItems -ForUpdate -ToolRoot $Root) }
         }
     }
 
@@ -52,7 +58,8 @@ function Invoke-ClaudePluginMenuItemsWithLoading {
     Import-ToolkitShellListLoadCore -CoreLib $coreLib
 
     $libPath = Join-Path $ToolRoot 'lib'
-    $fetch = Start-ClaudePluginListFetch -LibPath $libPath -ToolRoot $ToolRoot -LoadMode $LoadMode
+    $fetch = Start-ClaudePluginListFetch -LibPath $libPath -ToolRoot $ToolRoot -CoreLib $coreLib `
+        -LoadMode $LoadMode
     $loadResult = Wait-ToolkitShellListLoad -Shell $Shell -SectionTitle $SectionTitle -Fetch $fetch
     if ($loadResult.Nav) {
         return $loadResult

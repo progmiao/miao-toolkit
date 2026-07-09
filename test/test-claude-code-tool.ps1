@@ -18,11 +18,11 @@ $name = Resolve-ToolI18nLabel -ToolRoot $toolRoot -Key 'claude-code.name' -Fallb
 if ([string]::IsNullOrWhiteSpace($name)) { throw 'name i18n empty' }
 
 $actions = @((Get-Content (Join-Path $toolRoot 'index.json') -Raw -Encoding UTF8 | ConvertFrom-Json).actions)
-if ($actions.Count -ne 9) { throw "expected 9 actions, got $($actions.Count)" }
+if ($actions.Count -ne 8) { throw "expected 8 actions, got $($actions.Count)" }
 if ($actions[0].command -ne 'install') { throw 'first action must be install' }
 if ($actions[1].command -ne 'init') { throw 'second action must be init' }
 $expectedCommands = @(
-    'install', 'init', 'inst-plug', 'upd-plug', 'uninst-plug',
+    'install', 'init', 'inst-plug', 'uninst-plug',
     'config-api', 'config-proxy', 'update', 'uninstall'
 )
 for ($i = 0; $i -lt $expectedCommands.Count; $i++) {
@@ -39,6 +39,28 @@ for ($i = 0; $i -lt $expectedCommands.Count; $i++) {
 
 if ((Compare-ClaudeSemVersion -Left '2.0.0' -Right '1.9.9') -ne 1) { throw 'Compare-ClaudeSemVersion gt failed' }
 if ((Compare-ClaudeSemVersion -Left '1.0.0' -Right '1.0.0') -ne 0) { throw 'Compare-ClaudeSemVersion eq failed' }
+
+$latestResolved = Resolve-ClaudePluginLatestVersion -PluginId 'alpha@test' -AvailableVersion '6.1.1' `
+    -CatalogVersionMap @{ 'alpha@test' = '6.0.3' }
+if ($latestResolved -ne '6.1.1') {
+    throw "latest version should prefer higher available/catalog semver, got [$latestResolved]"
+}
+$installedEntry = New-ClaudePluginMenuItem -PluginId 'alpha@test' -Version '6.0.3' `
+    -InstalledVersion '6.1.1' -Tags '' -Enabled $false
+$installedOnlyRows = Build-ClaudePluginManageRows -Items @($installedEntry) -ToolRoot $toolRoot
+if ([string]$installedOnlyRows[0].Cells[3] -match '已安装|installed') {
+    throw 'installed version ahead of stale latest should not show installed tag'
+}
+if ([string]$installedOnlyRows[0].Cells[3] -ne '6.1.1') {
+    throw "installed status cell should show current version only when ahead of latest, got [$($installedOnlyRows[0].Cells[3])]"
+}
+
+$catalogMap = @{ 'beta@test' = '6.0.3' }
+$updateEntry = [pscustomobject]@{ PluginId = 'beta@test'; version = '6.1.0' }
+if (-not (Test-ClaudePluginUpdateAvailable -InstalledEntry $updateEntry -CatalogVersionMap $catalogMap `
+        -AvailableVersion '6.2.0')) {
+    throw 'update should be available when CLI available version exceeds installed'
+}
 
 $split = Split-ClaudePluginId -PluginId 'superpowers@claude-plugins-official'
 if ($split.Name -ne 'superpowers' -or $split.Marketplace -ne 'claude-plugins-official') {
@@ -62,14 +84,27 @@ if (-not $featuredMap.ContainsKey('superpowers@superpowers-marketplace')) {
 $sortSample = @(
     (New-ClaudePluginMenuItem -PluginId 'zebra@test' -Enabled $true)
     (New-ClaudePluginMenuItem -PluginId 'superpowers@superpowers-marketplace' -Featured $true -Enabled $true)
-    (New-ClaudePluginMenuItem -PluginId 'alpha@test' -Enabled $true)
+    (New-ClaudePluginMenuItem -PluginId 'alpha@test' -Tags 'installed' -Enabled $false)
+    (New-ClaudePluginMenuItem -PluginId 'beta@test' -Tags 'installed' -Featured $true -Enabled $false)
+    (New-ClaudePluginMenuItem -PluginId 'gamma@test' -Enabled $true)
 )
-$sortedSample = @(Sort-ClaudePluginMenuItems -Items $sortSample -FeaturedOrderMap $featuredMap)
-if ([string]$sortedSample[0].PluginId -ne 'superpowers@superpowers-marketplace') {
-    throw 'featured plugin should sort first'
+$installedMap = @{
+    'alpha@test' = $true
+    'beta@test'  = $true
 }
-if ([string]$sortedSample[1].PluginId -ne 'alpha@test' -or [string]$sortedSample[2].PluginId -ne 'zebra@test') {
-    throw 'non-featured plugins should sort by PluginId after featured'
+$sortedSample = @(Sort-ClaudePluginMenuItems -Items $sortSample -FeaturedOrderMap $featuredMap `
+    -InstalledMap $installedMap)
+if ([string]$sortedSample[0].PluginId -ne 'beta@test') {
+    throw 'installed featured plugin should sort first'
+}
+if ([string]$sortedSample[1].PluginId -ne 'alpha@test') {
+    throw 'installed non-featured plugin should sort after installed featured'
+}
+if ([string]$sortedSample[2].PluginId -ne 'superpowers@superpowers-marketplace') {
+    throw 'featured installable plugin should sort before other installable plugins'
+}
+if ([string]$sortedSample[3].PluginId -ne 'gamma@test' -or [string]$sortedSample[4].PluginId -ne 'zebra@test') {
+    throw 'remaining plugins should sort by PluginId'
 }
 
 $marketItems = @($marketPresets | ForEach-Object {
@@ -122,6 +157,90 @@ if ($specNoNum.Segments[0].Text -match '\d{2}') {
 }
 if ($specNoNum.Segments[0].Text -notmatch '\[ \]$') {
     throw 'first column should sit adjacent to check mark'
+}
+
+$manageLayout = New-ClaudePluginManageListLayout -Shell $shell
+$manageResolved = Resolve-ShellListLayout -Shell $shell -Layout $manageLayout -NumWidth 0 -Mode Multi `
+    -HideNumberColumn
+if ($manageLayout.ContainsKey('Headers')) {
+    throw 'manage plugin layout should not expose column headers'
+}
+if ([int]$manageResolved.Widths[0] -ne [int]$resolved.Widths[0]) {
+    throw 'manage plugin name column width should match install'
+}
+if (@($manageResolved.Widths).Count -ne 4) {
+    throw 'manage plugin layout should have 4 columns'
+}
+if ([int]$manageLayout.ScrollColumn -ne 3) {
+    throw 'manage plugin status column should scroll'
+}
+
+$uninstallLayout = New-ClaudePluginUninstallListLayout -Shell $shell
+$uninstallResolved = Resolve-ShellListLayout -Shell $shell -Layout $uninstallLayout -NumWidth 0 -Mode Multi `
+    -HideNumberColumn
+if ([int]$uninstallResolved.Widths[0] -ne [int]$resolved.Widths[0]) {
+    throw 'uninstall plugin name column width should match install'
+}
+if ($uninstallLayout.ContainsKey('Headers')) {
+    throw 'uninstall plugin layout should not expose column headers'
+}
+if (@($uninstallResolved.Widths).Count -ne 3) {
+    throw 'uninstall plugin layout should have 3 columns'
+}
+
+$manageRows = Build-ClaudePluginManageRows -Items @(
+    (New-ClaudePluginMenuItem -PluginId 'superpowers@superpowers-marketplace' -Version '1.1.0' `
+        -InstalledVersion '1.0.0' -Tags 'installed' -Enabled $false)
+    (New-ClaudePluginMenuItem -PluginId 'beta@test' -Version '2.1.0' -InstalledVersion '2.0.0' `
+        -UpdateVersion '2.1.0' -HasUpdate $true -Tags 'update:2.1.0' -Enabled $true)
+    (New-ClaudePluginMenuItem -PluginId 'gamma@test' -Version '1.0.0' -Enabled $true)
+) -ToolRoot $toolRoot
+if (@($manageRows[0].Cells).Count -ne 4) {
+    throw "manage row expected 4 cells, got $(@($manageRows[0].Cells).Count)"
+}
+if ([string]$manageRows[0].Cells[0] -ne 'superpowers') {
+    throw 'manage row should show plugin short name in first column'
+}
+if ([string]$manageRows[0].Cells[1] -ne 'superpowers-marketplace') {
+    throw 'manage row should show marketplace name in second column'
+}
+if ([string]$manageRows[0].Cells[2] -ne '1.1.0') {
+    throw 'manage row latest version cell mismatch'
+}
+if ($manageRows[0].Enabled -ne $false -or $manageRows[1].Enabled -ne $true -or $manageRows[2].Enabled -ne $true) {
+    throw 'manage rows should disable only installed up-to-date plugins'
+}
+if ([string]$manageRows[0].Cells[3] -notmatch '1\.0\.0') {
+    throw 'installed status cell should show current version'
+}
+if ([string]$manageRows[2].Cells[3] -ne '-') {
+    throw 'not installed plugin should show dash in status column'
+}
+
+$orphanInstalled = New-ClaudePluginMenuItem -PluginId 'orphan@test' -Version '1.0.0' `
+    -InstalledVersion '1.0.0' -Tags 'installed' -Enabled $false
+if (-not (Test-ClaudePluginMenuItemInstalled -Item $orphanInstalled)) {
+    throw 'installed-only menu item should be detected as installed'
+}
+$orphanRows = Build-ClaudePluginManageRows -Items @($orphanInstalled) -ToolRoot $toolRoot
+if ([string]$orphanRows[0].Cells[3] -notmatch '1\.0\.0') {
+    throw 'installed-only plugin should show current version in status column'
+}
+
+$uninstallRows = Build-ClaudePluginUninstallRows -Items @(
+    (New-ClaudePluginMenuItem -PluginId 'superpowers@superpowers-marketplace' -Version '1.0.0' -Enabled $true)
+)
+if (@($uninstallRows[0].Cells).Count -ne 3) {
+    throw "uninstall row expected 3 cells, got $(@($uninstallRows[0].Cells).Count)"
+}
+if ([string]$uninstallRows[0].Cells[0] -ne 'superpowers') {
+    throw 'uninstall row should show plugin short name in first column'
+}
+if ([string]$uninstallRows[0].Cells[1] -ne 'superpowers-marketplace') {
+    throw 'uninstall row should show marketplace name in second column'
+}
+if ([string]$uninstallRows[0].Cells[2] -ne '1.0.0') {
+    throw 'uninstall row version cell mismatch'
 }
 
 function Test-ParseClaudeVersionLine {

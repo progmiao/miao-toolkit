@@ -173,6 +173,13 @@ function Sync-ToolkitShellLayoutLineMetrics {
     return $metrics
 }
 
+function Get-ShellListSlotRows {
+    if (Get-Command Get-ShellListDefaultPageSize -ErrorAction SilentlyContinue) {
+        return (Get-ShellListDefaultPageSize)
+    }
+    return (Get-MenuPageSize)
+}
+
 function Get-ShellLayoutConstants {
     return @{
         TitleCatalogRows  = 2
@@ -181,7 +188,7 @@ function Get-ShellLayoutConstants {
         SubFooterBarRows  = 1
         HomeDRows         = 3
         SubDRows          = 2
-        ListSlotRows      = (Get-MenuPageSize)
+        ListSlotRows      = (Get-ShellListSlotRows)
     }
 }
 

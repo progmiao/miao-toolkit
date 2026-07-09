@@ -14,6 +14,7 @@ $toolRoot = Split-Path $PSScriptRoot -Parent
 . (Join-Path $PSScriptRoot 'claude-code-action-title.ps1')
 . (Join-Path $PSScriptRoot 'claude-code-state.ps1')
 . (Join-Path $PSScriptRoot 'claude-plugin.ps1')
+. (Join-Path $PSScriptRoot 'claude-plugin-state.ps1')
 . (Join-Path $PSScriptRoot 'claude-plugin-list-load.ps1')
 . (Join-Path $PSScriptRoot 'claude-batch.ps1')
 
@@ -51,20 +52,18 @@ if ($items.Count -eq 0) {
 }
 
 $null = Ensure-ToolkitShellLayoutBrandInnerWidth -Shell $shell
-$rows = Build-ClaudePluginRows -Items $items -ToolRoot $toolRoot -GetTagsLabel {
-    param($Item)
-    Get-ClaudePluginTagsLabel -Item $Item -ToolRoot $toolRoot
-}
+$rows = Build-ClaudePluginUninstallRows -Items $items
 $listResult = Invoke-ToolkitShellList @{
-    Mode            = 'Multi'
-    Shell           = $shell
-    SectionTitle    = $sectionTitle
-    Rows            = $rows
-    CacheKey        = 'ClaudeCodeUninstallPlugin'
-    Layout          = (New-ClaudePluginListLayout)
-    Toolbar         = (New-ShellSystemToolbarConfig)
-    CountLabel      = (Get-ClaudeCodeI18n -ToolRoot $toolRoot -Key 'claude-code.plugin.countUnit')
-    Search          = @{ Columns = @(0) }
+    Mode               = 'Multi'
+    Shell              = $shell
+    SectionTitle       = $sectionTitle
+    Rows               = $rows
+    CacheKey           = 'ClaudeCodeUninstallPlugin'
+    Layout             = (New-ClaudePluginUninstallListLayout -Shell $shell)
+    InitialCatalogLine = ''
+    Toolbar            = (New-ShellSystemToolbarConfig)
+    CountLabel         = (Get-ClaudeCodeI18n -ToolRoot $toolRoot -Key 'claude-code.plugin.countUnit')
+    Search             = @{ Columns = @(0, 1) }
     LoadingProgress = $progress
 }
 
@@ -83,10 +82,21 @@ $batchSectionTitle = Get-ClaudeCodePluginBatchSectionTitle -ToolRoot $toolRoot `
 return Invoke-ClaudeCodeBatchOperation -Shell $shell -SectionTitle $batchSectionTitle `
     -ReadyStatusText (Get-ClaudeCodeI18n -ToolRoot $toolRoot -Key 'claude-code.plugin.uninstallStatusReady') `
     -Intent uninstall -Items $pluginIds `
-    -GetItemLabel { param($Item) [string]$Item } `
+    -GetItemLabel {
+        param($Item)
+        $pluginId = [string]$Item
+        $name = Get-ClaudePluginDisplayName -PluginId $pluginId
+        $market = Get-ClaudePluginMarketplaceName -PluginId $pluginId
+        if ($market -eq '-') { return $name }
+        return "$name ($market)"
+    } `
     -InvokeItem {
         param($Item, $Pump)
-        Invoke-ClaudePluginUninstall -PluginId ([string]$Item) -OnUiPoll $Pump -OnChromePulse $Pump
+        $result = Invoke-ClaudePluginUninstall -PluginId ([string]$Item) -OnUiPoll $Pump -OnChromePulse $Pump
+        if ($result -and [int]$result.ExitCode -eq 0) {
+            Remove-ClaudePluginInstallRecord -PluginId ([string]$Item)
+        }
+        return $result
     } `
     -GetSuccessLog {
         param($Item, $Result)

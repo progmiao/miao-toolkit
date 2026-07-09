@@ -21,7 +21,7 @@
       },
       "installPlugin": {
         "name": "Install plugins",
-        "description": "Pick plugins from registered marketplaces and install"
+        "description": "Pick plugins from registered marketplaces and install or update to latest"
       },
       "uninstallPlugin": {
         "name": "Uninstall plugins",
@@ -102,10 +102,16 @@
       "loadingResult": "{spinner} Preparing plugin list…",
       "loadingDraw": "{spinner} Rendering plugin list…",
       "countUnit": "plugins",
+      "colName": "Name",
+      "colMarketplace": "Marketplace",
+      "colVersion": "Version",
+      "colLatestVersion": "Latest",
+      "colInstalledVersion": "Installed",
       "tagInstalled": "installed",
       "tagUpdate": "update→{version}",
       "loadFailed": "Failed to load plugin list: {detail}",
-      "noInstallable": "No installable plugins",
+      "noAvailable": "No available plugins",
+      "manageStatusReady": "Ready to install/update plugins",
       "noInstalled": "No installed plugins",
       "installStatusReady": "Ready to install plugins",
       "installSuccess": "Installed {plugin}",

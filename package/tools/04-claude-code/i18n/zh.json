@@ -21,7 +21,7 @@
       },
       "installPlugin": {
         "name": "安装插件",
-        "description": "从已注册市场选择并安装插件"
+        "description": "从已注册市场选择插件并安装或更新到最新版本"
       },
       "uninstallPlugin": {
         "name": "卸载插件",
@@ -102,10 +102,16 @@
       "loadingResult": "{spinner} 正在整理插件列表…",
       "loadingDraw": "{spinner} 开始绘制插件列表…",
       "countUnit": "个插件",
+      "colName": "名称",
+      "colMarketplace": "市场",
+      "colVersion": "版本",
+      "colLatestVersion": "最新版本",
+      "colInstalledVersion": "当前版本",
       "tagInstalled": "已安装",
       "tagUpdate": "可更新→{version}",
       "loadFailed": "加载插件列表失败：{detail}",
-      "noInstallable": "暂无可安装插件",
+      "noAvailable": "暂无可用插件",
+      "manageStatusReady": "准备安装/更新插件",
       "noInstalled": "暂无已安装插件",
       "installStatusReady": "准备安装插件",
       "installSuccess": "已安装 {plugin}",

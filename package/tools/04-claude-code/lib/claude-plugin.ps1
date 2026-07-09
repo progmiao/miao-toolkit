@@ -132,6 +132,40 @@ function Compare-ClaudeSemVersion {
     return 0
 }
 
+function Get-ClaudePluginHigherSemVersion {
+    param([string[]]$Candidates)
+
+    $best = ''
+    foreach ($candidate in @($Candidates)) {
+        if ([string]::IsNullOrWhiteSpace($candidate)) { continue }
+        if ([string]::IsNullOrWhiteSpace($best)) {
+            $best = [string]$candidate
+            continue
+        }
+        if ((Compare-ClaudeSemVersion -Left ([string]$candidate) -Right $best) -gt 0) {
+            $best = [string]$candidate
+        }
+    }
+
+    return $best
+}
+
+function Resolve-ClaudePluginLatestVersion {
+    param(
+        [string]$PluginId,
+        [string]$AvailableVersion = '',
+        [hashtable]$CatalogVersionMap = $null
+    )
+
+    $catalogVersion = ''
+    if ($CatalogVersionMap -and -not [string]::IsNullOrWhiteSpace($PluginId) `
+        -and $CatalogVersionMap.ContainsKey($PluginId)) {
+        $catalogVersion = [string]$CatalogVersionMap[$PluginId]
+    }
+
+    return (Get-ClaudePluginHigherSemVersion -Candidates @($AvailableVersion, $catalogVersion))
+}
+
 function Get-ClaudeMarketplaceCatalogVersionMap {
     $map = @{}
     $root = Join-Path (Join-Path $env:USERPROFILE '.claude') 'plugins\marketplaces'
@@ -170,64 +204,104 @@ function Get-ClaudeMarketplaceCatalogVersionMap {
 function Test-ClaudePluginUpdateAvailable {
     param(
         $InstalledEntry,
-        [hashtable]$CatalogVersionMap
+        [hashtable]$CatalogVersionMap,
+        [string]$AvailableVersion = ''
     )
 
     $pluginId = Get-ClaudePluginDisplayId -Entry $InstalledEntry
     if ([string]::IsNullOrWhiteSpace($pluginId)) { return $false }
-    if (-not $CatalogVersionMap.ContainsKey($pluginId)) { return $false }
 
     $installedVersion = if ($InstalledEntry.PSObject.Properties['version']) {
         [string]$InstalledEntry.version
     }
     else { '' }
 
-    $catalogVersion = [string]$CatalogVersionMap[$pluginId]
-    if ([string]::IsNullOrWhiteSpace($installedVersion) -or [string]::IsNullOrWhiteSpace($catalogVersion)) {
+    $latestVersion = Resolve-ClaudePluginLatestVersion -PluginId $pluginId `
+        -AvailableVersion $AvailableVersion -CatalogVersionMap $CatalogVersionMap
+    if ([string]::IsNullOrWhiteSpace($installedVersion) -or [string]::IsNullOrWhiteSpace($latestVersion)) {
         return $false
     }
 
-    return (Compare-ClaudeSemVersion -Left $catalogVersion -Right $installedVersion) -gt 0
+    return (Compare-ClaudeSemVersion -Left $latestVersion -Right $installedVersion) -gt 0
 }
 
 function New-ClaudePluginMenuItem {
     param(
         [string]$PluginId,
         [string]$Version = '',
+        [string]$InstalledVersion = '',
+        [string]$UpdateVersion = '',
         [string]$Description = '',
         [string]$Tags = '',
         [bool]$Enabled = $true,
         [bool]$Featured = $false,
+        [bool]$HasUpdate = $false,
         $Source = $null
     )
 
     return [pscustomobject]@{
-        PluginId    = $PluginId
-        Version     = $Version
-        Description = $Description
-        Tags        = $Tags
-        Enabled     = $Enabled
-        Featured    = $Featured
-        Source      = $Source
+        PluginId         = $PluginId
+        Version          = $Version
+        InstalledVersion = $InstalledVersion
+        UpdateVersion    = $UpdateVersion
+        Description      = $Description
+        Tags             = $Tags
+        Enabled          = $Enabled
+        Featured         = $Featured
+        HasUpdate        = $HasUpdate
+        Source           = $Source
     }
+}
+
+function Test-ClaudePluginMenuItemInstalled {
+    param(
+        $Item,
+        [hashtable]$InstalledMap = $null
+    )
+
+    $pluginId = [string]$Item.PluginId
+    if ($InstalledMap -and $InstalledMap.ContainsKey($pluginId)) {
+        return $true
+    }
+    if ($Item.PSObject.Properties['Installed'] -and [bool]$Item.Installed) {
+        return $true
+    }
+    if ($Item.PSObject.Properties['HasUpdate'] -and [bool]$Item.HasUpdate) {
+        return $true
+    }
+    if ($Item.PSObject.Properties['InstalledVersion'] -and `
+        -not [string]::IsNullOrWhiteSpace([string]$Item.InstalledVersion)) {
+        return $true
+    }
+
+    $tags = [string]$Item.Tags
+    if ($tags -match '(?i)\binstalled\b') {
+        return $true
+    }
+
+    return $false
 }
 
 function Sort-ClaudePluginMenuItems {
     param(
         [array]$Items,
-        [hashtable]$FeaturedOrderMap = $null
+        [hashtable]$FeaturedOrderMap = $null,
+        [hashtable]$InstalledMap = $null
     )
-
-    if (-not $FeaturedOrderMap -or $FeaturedOrderMap.Count -le 0) {
-        return @($Items | Sort-Object PluginId)
-    }
 
     $featuredRankBase = 1000000
     return @($Items | Sort-Object @{
         Expression = {
+            if (Test-ClaudePluginMenuItemInstalled -Item $_ -InstalledMap $InstalledMap) { 0 } else { 1 }
+        }
+    }, @{
+        Expression = {
             $id = [string]$_.PluginId
-            if ($FeaturedOrderMap.ContainsKey($id)) {
+            if ($FeaturedOrderMap -and $FeaturedOrderMap.ContainsKey($id)) {
                 return [int]$FeaturedOrderMap[$id]
+            }
+            if ($_.PSObject.Properties['Featured'] -and [bool]$_.Featured) {
+                return 0
             }
             return $featuredRankBase
         }
@@ -236,8 +310,12 @@ function Sort-ClaudePluginMenuItems {
     })
 }
 
-function Get-ClaudePluginInstallMenuItems {
+function Get-ClaudePluginManageMenuItems {
     param([string]$ToolRoot = '')
+
+    if (-not (Get-Command Get-ClaudePluginInstalledEntryMap -ErrorAction SilentlyContinue)) {
+        . (Join-Path $PSScriptRoot 'claude-plugin-state.ps1')
+    }
 
     $featuredOrderMap = @{}
     if (-not [string]::IsNullOrWhiteSpace($ToolRoot)) {
@@ -247,66 +325,210 @@ function Get-ClaudePluginInstallMenuItems {
         $featuredOrderMap = Get-ClaudeCodeFeaturedPluginOrderMap -ToolRoot $ToolRoot
     }
 
+    $catalogMap = Get-ClaudeMarketplaceCatalogVersionMap
+    $recordMap = Get-ClaudePluginInstallRecordMap
+    $entryMap = Get-ClaudePluginInstalledEntryMap
+
     $json = Invoke-ClaudePluginListJson -IncludeAvailable
     $installed = @{}
     foreach ($entry in @(Get-ClaudePluginInstalledEntries -JsonData $json)) {
         $id = Get-ClaudePluginDisplayId -Entry $entry
-        if ($id) { $installed[$id] = $true }
+        if ($id) { $installed[$id] = $entry }
+    }
+    foreach ($pluginId in @($entryMap.Keys)) {
+        if (-not $installed.ContainsKey($pluginId)) {
+            $installed[[string]$pluginId] = $entryMap[$pluginId]
+        }
     }
 
     $items = @()
+    $catalogPluginIds = @{}
     foreach ($entry in @(Get-ClaudePluginAvailableEntries -JsonData $json)) {
         $pluginId = Get-ClaudePluginDisplayId -Entry $entry
         if ([string]::IsNullOrWhiteSpace($pluginId)) { continue }
+        $catalogPluginIds[[string]$pluginId] = $true
 
-        $version = if ($entry.PSObject.Properties['version']) { [string]$entry.version } else { '' }
+        $entryVersion = if ($entry.PSObject.Properties['version']) { [string]$entry.version } else { '' }
+        $latestVersion = Resolve-ClaudePluginLatestVersion -PluginId $pluginId `
+            -AvailableVersion $entryVersion -CatalogVersionMap $catalogMap
         $description = if ($entry.PSObject.Properties['description']) { [string]$entry.description } else { '' }
-        $tags = if ($installed.ContainsKey($pluginId)) {
-            'installed'
+
+        $isInstalled = $installed.ContainsKey($pluginId)
+        $installedVersion = ''
+        $updateVersion = ''
+        $hasUpdate = $false
+        $tags = @()
+
+        if ($isInstalled) {
+            $installedEntry = $installed[$pluginId]
+            $installedVersion = Resolve-ClaudePluginInstalledVersion -Entry $installedEntry `
+                -PluginId $pluginId -RecordMap $recordMap
+            $updateEntry = $installedEntry
+            if (-not ($updateEntry.PSObject.Properties['version']) `
+                -or [string]::IsNullOrWhiteSpace([string]$updateEntry.version)) {
+                $updateEntry = [pscustomobject]@{
+                    PluginId = $pluginId
+                    version  = $installedVersion
+                }
+            }
+            if (Test-ClaudePluginUpdateAvailable -InstalledEntry $updateEntry -CatalogVersionMap $catalogMap `
+                -AvailableVersion $entryVersion) {
+                $hasUpdate = $true
+                $updateVersion = $latestVersion
+                $tags += "update:$updateVersion"
+            }
+            elseif (-not [string]::IsNullOrWhiteSpace($installedVersion) `
+                -and -not [string]::IsNullOrWhiteSpace($latestVersion) `
+                -and (Compare-ClaudeSemVersion -Left $installedVersion -Right $latestVersion) -le 0) {
+                $tags += 'installed'
+            }
         }
-        else { '' }
 
         $featured = $featuredOrderMap.ContainsKey($pluginId)
-        $items += New-ClaudePluginMenuItem -PluginId $pluginId -Version $version `
-            -Description $description -Tags $tags -Featured:$featured `
-            -Enabled:(-not $installed.ContainsKey($pluginId)) -Source $entry
+        $enabled = (-not $isInstalled) -or $hasUpdate
+
+        $items += New-ClaudePluginMenuItem -PluginId $pluginId -Version $latestVersion `
+            -InstalledVersion $installedVersion -UpdateVersion $updateVersion `
+            -Description $description -Tags (($tags -join ' ') -replace '^\s+|\s+$', '') `
+            -Featured:$featured -HasUpdate:$hasUpdate -Enabled:$enabled -Source $entry
     }
 
-    return (Sort-ClaudePluginMenuItems -Items $items -FeaturedOrderMap $featuredOrderMap)
+    foreach ($pluginId in @($installed.Keys | Sort-Object)) {
+        if ($catalogPluginIds.ContainsKey([string]$pluginId)) { continue }
+
+        $installedEntry = $installed[$pluginId]
+        $installedVersion = Resolve-ClaudePluginInstalledVersion -Entry $installedEntry `
+            -PluginId $pluginId -RecordMap $recordMap
+        $latestVersion = Resolve-ClaudePluginLatestVersion -PluginId $pluginId `
+            -CatalogVersionMap $catalogMap
+        if ([string]::IsNullOrWhiteSpace($latestVersion)) {
+            $latestVersion = $installedVersion
+        }
+        $updateVersion = ''
+        $hasUpdate = $false
+        $tags = @()
+
+        $updateEntry = $installedEntry
+        if (-not ($updateEntry.PSObject.Properties['version']) `
+            -or [string]::IsNullOrWhiteSpace([string]$updateEntry.version)) {
+            $updateEntry = [pscustomobject]@{
+                PluginId = $pluginId
+                version  = $installedVersion
+            }
+        }
+        if (Test-ClaudePluginUpdateAvailable -InstalledEntry $updateEntry -CatalogVersionMap $catalogMap) {
+            $hasUpdate = $true
+            $updateVersion = $latestVersion
+            $tags = @("update:$updateVersion")
+        }
+        elseif (-not [string]::IsNullOrWhiteSpace($installedVersion) `
+            -and -not [string]::IsNullOrWhiteSpace($latestVersion) `
+            -and (Compare-ClaudeSemVersion -Left $installedVersion -Right $latestVersion) -le 0) {
+            $tags = @('installed')
+        }
+
+        $featured = $featuredOrderMap.ContainsKey($pluginId)
+        $enabled = $hasUpdate
+
+        $items += New-ClaudePluginMenuItem -PluginId $pluginId -Version $latestVersion `
+            -InstalledVersion $installedVersion -UpdateVersion $updateVersion `
+            -Description '' -Tags (($tags -join ' ') -replace '^\s+|\s+$', '') `
+            -Featured:$featured -HasUpdate:$hasUpdate -Enabled:$enabled -Source $installedEntry
+    }
+
+    $installedMap = @{}
+    foreach ($pluginId in @($installed.Keys)) {
+        $installedMap[[string]$pluginId] = $true
+    }
+
+    $deduped = @{}
+    $uniqueItems = @()
+    foreach ($item in @($items)) {
+        $id = [string]$item.PluginId
+        if ([string]::IsNullOrWhiteSpace($id)) { continue }
+        if ($deduped.ContainsKey($id)) { continue }
+        $deduped[$id] = $true
+        $uniqueItems += $item
+    }
+
+    return (Sort-ClaudePluginMenuItems -Items $uniqueItems -FeaturedOrderMap $featuredOrderMap `
+        -InstalledMap $installedMap)
+}
+
+function Get-ClaudePluginInstallMenuItems {
+    param([string]$ToolRoot = '')
+
+    return @(Get-ClaudePluginManageMenuItems -ToolRoot $ToolRoot)
 }
 
 function Get-ClaudePluginInstalledMenuItems {
-    param([switch]$ForUpdate)
+    param(
+        [switch]$ForUpdate,
+        [string]$ToolRoot = ''
+    )
 
-    $json = Invoke-ClaudePluginListJson
+    if (-not (Get-Command Get-ClaudePluginInstalledEntryMap -ErrorAction SilentlyContinue)) {
+        . (Join-Path $PSScriptRoot 'claude-plugin-state.ps1')
+    }
+
+    $featuredOrderMap = @{}
+    if (-not [string]::IsNullOrWhiteSpace($ToolRoot)) {
+        if (-not (Get-Command Get-ClaudeCodeFeaturedPluginOrderMap -ErrorAction SilentlyContinue)) {
+            . (Join-Path $PSScriptRoot 'claude-code-presets.ps1')
+        }
+        $featuredOrderMap = Get-ClaudeCodeFeaturedPluginOrderMap -ToolRoot $ToolRoot
+    }
+
     $catalogMap = if ($ForUpdate.IsPresent) {
         Get-ClaudeMarketplaceCatalogVersionMap
     }
     else {
         @{}
     }
+    $recordMap = Get-ClaudePluginInstallRecordMap
+    $entryMap = Get-ClaudePluginInstalledEntryMap
+    $installedMap = @{}
+    foreach ($pluginId in @($entryMap.Keys)) {
+        $installedMap[[string]$pluginId] = $true
+    }
 
     $items = @()
-    foreach ($entry in @(Get-ClaudePluginInstalledEntries -JsonData $json)) {
-        $pluginId = Get-ClaudePluginDisplayId -Entry $entry
-        if ([string]::IsNullOrWhiteSpace($pluginId)) { continue }
-
-        $version = if ($entry.PSObject.Properties['version']) { [string]$entry.version } else { '' }
-        $tags = @()
-        if ($version) { $tags += "v$version" }
-
-        if ($ForUpdate.IsPresent -and (Test-ClaudePluginUpdateAvailable -InstalledEntry $entry `
-                -CatalogVersionMap $catalogMap)) {
-            $catalogVersion = [string]$catalogMap[$pluginId]
-            $tags += "update:$catalogVersion"
+    foreach ($pluginId in @($entryMap.Keys)) {
+        $entry = $entryMap[$pluginId]
+        $version = Resolve-ClaudePluginInstalledVersion -Entry $entry -PluginId $pluginId -RecordMap $recordMap
+        $updateVersion = ''
+        $hasUpdate = $false
+        if ($ForUpdate.IsPresent) {
+            $updateEntry = $entry
+            if (-not ($updateEntry.PSObject.Properties['version']) -or [string]::IsNullOrWhiteSpace([string]$updateEntry.version)) {
+                $updateEntry = [pscustomobject]@{
+                    PluginId = $pluginId
+                    version  = $version
+                }
+            }
+            if (Test-ClaudePluginUpdateAvailable -InstalledEntry $updateEntry -CatalogVersionMap $catalogMap) {
+                $hasUpdate = $true
+                $updateVersion = Resolve-ClaudePluginLatestVersion -PluginId $pluginId `
+                    -CatalogVersionMap $catalogMap
+            }
         }
 
+        $tags = @()
+        if (-not $ForUpdate.IsPresent) {
+            if ($version) { $tags += "v$version" }
+        }
+
+        $enabled = if ($ForUpdate.IsPresent) { $hasUpdate } else { $true }
+        $featured = $featuredOrderMap.ContainsKey($pluginId)
+
         $items += New-ClaudePluginMenuItem -PluginId $pluginId -Version $version `
-            -Description '' -Tags (($tags -join ' ') -replace '^\s+|\s+$', '') -Enabled $true `
+            -UpdateVersion $updateVersion -Description '' `
+            -Tags (($tags -join ' ') -replace '^\s+|\s+$', '') -Enabled:$enabled -Featured:$featured `
             -Source $entry
     }
 
-    return @($items | Sort-Object PluginId)
+    return (Sort-ClaudePluginMenuItems -Items $items -FeaturedOrderMap $featuredOrderMap `
+        -InstalledMap $installedMap)
 }
 
 function Get-ClaudeCodeCliFailureDetail {
@@ -396,6 +618,202 @@ function New-ClaudePluginListLayout {
         ScrollColumn     = 1
         ScrollIntervalMs = 300
     }
+}
+
+function Resolve-ClaudePluginInstallListLayout {
+    param([hashtable]$Shell)
+
+    if (-not (Get-Command Resolve-ShellListLayout -ErrorAction SilentlyContinue)) {
+        $coreLib = Join-Path $PSScriptRoot '..\..\..\core\lib'
+        . (Join-Path $coreLib 'ui\shell\ShellListLayout.ps1')
+    }
+
+    return Resolve-ShellListLayout -Shell $Shell -Layout (New-ClaudePluginListLayout) `
+        -NumWidth 0 -Mode Multi -HideNumberColumn
+}
+
+function Get-ClaudePluginDisplayName {
+    param([string]$PluginId)
+
+    $split = Split-ClaudePluginId -PluginId ([string]$PluginId)
+    if (-not [string]::IsNullOrWhiteSpace($split.Name)) {
+        return [string]$split.Name
+    }
+    return [string]$PluginId
+}
+
+function Get-ClaudePluginMarketplaceName {
+    param([string]$PluginId)
+
+    $split = Split-ClaudePluginId -PluginId ([string]$PluginId)
+    if (-not [string]::IsNullOrWhiteSpace($split.Marketplace)) {
+        return [string]$split.Marketplace
+    }
+    return '-'
+}
+
+function New-ClaudePluginManageListLayout {
+    param([hashtable]$Shell)
+
+    $installLayout = Resolve-ClaudePluginInstallListLayout -Shell $Shell
+    $marketWidth = [Math]::Max(12, [Math]::Min(18, [Math]::Floor([int]$installLayout.Widths[1] * 0.55)))
+    return @{
+        Widths           = @([int]$installLayout.Widths[0], $marketWidth, 8, 12)
+        ScrollColumn     = 3
+        ScrollIntervalMs = 300
+    }
+}
+
+function New-ClaudePluginUpdateListLayout {
+    param([hashtable]$Shell)
+
+    return (New-ClaudePluginManageListLayout -Shell $Shell)
+}
+
+function New-ClaudePluginUninstallListLayout {
+    param([hashtable]$Shell)
+
+    $installLayout = Resolve-ClaudePluginInstallListLayout -Shell $Shell
+    $marketWidth = [Math]::Max(12, [Math]::Min(18, [Math]::Floor([int]$installLayout.Widths[1] * 0.55)))
+    $versionWidth = [Math]::Max(8, [int]$installLayout.Widths[1] - $marketWidth)
+    return @{
+        Widths           = @([int]$installLayout.Widths[0], $marketWidth, $versionWidth)
+        ScrollColumn     = 0
+        ScrollIntervalMs = 300
+    }
+}
+
+function Format-ClaudePluginVersionCell {
+    param([string]$Version)
+
+    if ([string]::IsNullOrWhiteSpace($Version)) {
+        return '-'
+    }
+    return [string]$Version
+}
+
+function Get-ClaudePluginInstalledStatusTags {
+    param(
+        $Item,
+        [string]$ToolRoot,
+        [string]$InstalledTagKey = 'claude-code.plugin.tagInstalled',
+        [string]$UpdateTagKey = 'claude-code.plugin.tagUpdate'
+    )
+
+    if ($Item.PSObject.Properties['HasUpdate'] -and [bool]$Item.HasUpdate) {
+        $target = [string]$Item.UpdateVersion
+        if ([string]::IsNullOrWhiteSpace($target)) {
+            if ([string]$Item.Tags -match 'update:([^\s]+)') {
+                $target = $Matches[1]
+            }
+        }
+        if (-not [string]::IsNullOrWhiteSpace($target)) {
+            return (Get-ClaudeCodeI18n -ToolRoot $ToolRoot -Key $UpdateTagKey -Vars @{
+                version = $target
+            })
+        }
+    }
+
+    if (Test-ClaudePluginMenuItemInstalled -Item $Item) {
+        $latest = [string]$Item.Version
+        $installed = [string]$Item.InstalledVersion
+        if (-not [string]::IsNullOrWhiteSpace($latest) -and -not [string]::IsNullOrWhiteSpace($installed) `
+            -and (Compare-ClaudeSemVersion -Left $installed -Right $latest) -gt 0) {
+            return ''
+        }
+        return (Get-ClaudeCodeI18n -ToolRoot $ToolRoot -Key $InstalledTagKey)
+    }
+
+    return ''
+}
+
+function Format-ClaudePluginInstalledStatusCell {
+    param(
+        $Item,
+        [string]$ToolRoot
+    )
+
+    if (-not (Test-ClaudePluginMenuItemInstalled -Item $Item)) {
+        return '-'
+    }
+
+    $versionText = Format-ClaudePluginVersionCell -Version ([string]$Item.InstalledVersion)
+    $tags = Get-ClaudePluginInstalledStatusTags -Item $Item -ToolRoot $ToolRoot
+    if ([string]::IsNullOrWhiteSpace($tags)) {
+        return $versionText
+    }
+    return "$versionText $tags"
+}
+
+function Build-ClaudePluginManageRows {
+    param(
+        [array]$Items,
+        [string]$ToolRoot
+    )
+
+    return @($Items | ForEach-Object {
+        $item = $_
+        $pluginId = [string]$item.PluginId
+        $displayName = Get-ClaudePluginDisplayName -PluginId $pluginId
+        $marketplaceName = Get-ClaudePluginMarketplaceName -PluginId $pluginId
+
+        $cellColors = $null
+        if ($item.PSObject.Properties['Featured'] -and [bool]$item.Featured) {
+            $cellColors = @(
+                (Get-ClaudeFeaturedPluginNameColor)
+                [System.ConsoleColor]::DarkGray
+                [System.ConsoleColor]::DarkGray
+                [System.ConsoleColor]::DarkGray
+            )
+        }
+
+        New-ShellListRow -Id $pluginId -Cells @(
+            $displayName
+            $marketplaceName
+            (Format-ClaudePluginVersionCell -Version ([string]$item.Version))
+            (Format-ClaudePluginInstalledStatusCell -Item $item -ToolRoot $ToolRoot)
+        ) -Payload $item -SearchKey "$displayName $marketplaceName" -Enabled ([bool]$item.Enabled) `
+            -CellColors $cellColors
+    })
+}
+
+function Build-ClaudePluginUpdateRows {
+    param(
+        [array]$Items,
+        [string]$ToolRoot = ''
+    )
+
+    if ([string]::IsNullOrWhiteSpace($ToolRoot)) {
+        return (Build-ClaudePluginManageRows -Items $Items -ToolRoot '')
+    }
+    return (Build-ClaudePluginManageRows -Items $Items -ToolRoot $ToolRoot)
+}
+
+function Build-ClaudePluginUninstallRows {
+    param([array]$Items)
+
+    return @($Items | ForEach-Object {
+        $item = $_
+        $pluginId = [string]$item.PluginId
+        $displayName = Get-ClaudePluginDisplayName -PluginId $pluginId
+        $marketplaceName = Get-ClaudePluginMarketplaceName -PluginId $pluginId
+
+        $cellColors = $null
+        if ($item.PSObject.Properties['Featured'] -and [bool]$item.Featured) {
+            $cellColors = @(
+                (Get-ClaudeFeaturedPluginNameColor)
+                [System.ConsoleColor]::DarkGray
+                [System.ConsoleColor]::DarkGray
+            )
+        }
+
+        New-ShellListRow -Id $pluginId -Cells @(
+            $displayName
+            $marketplaceName
+            (Format-ClaudePluginVersionCell -Version ([string]$item.Version))
+        ) -Payload $item -SearchKey "$displayName $marketplaceName" -Enabled ([bool]$item.Enabled) `
+            -CellColors $cellColors
+    })
 }
 
 function Build-ClaudePluginRows {

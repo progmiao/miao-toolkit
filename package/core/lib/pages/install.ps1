@@ -112,8 +112,14 @@ function Show-InstallMultiSelectMenu {
     }
 
     $layout = $Shell.Layout
-    $pageSize = $layout.ListViewportHeight
+    $pageSize = if (Get-Command Resolve-ShellListPageSize -ErrorAction SilentlyContinue) {
+        Resolve-ShellListPageSize
+    }
+    else {
+        $layout.ListViewportHeight
+    }
     if ($pageSize -le 0) { $pageSize = Get-MenuPageSize }
+    $layout['PageSize'] = $pageSize
 
     $selectedSet = New-Object 'System.Collections.Generic.HashSet[int]'
     $pageIndex = 0
