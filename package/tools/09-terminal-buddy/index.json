@@ -1,0 +1,47 @@
+{
+  "name": "terminal-buddy.name",
+  "description": "terminal-buddy.description",
+  "interactive": true,
+  "requiresInstall": false,
+  "gitee": {
+    "owner": "updateme",
+    "repo": "terminal-buddy",
+    "assetName": "terminal-buddy.exe"
+  },
+  "actions": [
+    {
+      "command": "install",
+      "name": "terminal-buddy.action.install.name",
+      "description": "terminal-buddy.action.install.description",
+      "script": "lib/install.ps1",
+      "param": { "switch": "Install", "alias": "i" },
+      "enabled": true
+    },
+    {
+      "command": "uninstall",
+      "name": "terminal-buddy.action.uninstall.name",
+      "description": "terminal-buddy.action.uninstall.description",
+      "script": "lib/uninstall.ps1",
+      "param": { "switch": "Uninstall", "alias": "d" },
+      "enabled": true
+    },
+    {
+      "command": "gitee-doc",
+      "menuCommand": "-",
+      "name": "terminal-buddy.action.gitee-doc.name",
+      "description": "terminal-buddy.action.gitee-doc.description",
+      "script": "lib/open-doc.ps1",
+      "url": "https://gitee.com/updateme/terminal-buddy",
+      "enabled": true
+    },
+    {
+      "command": "github-doc",
+      "menuCommand": "-",
+      "name": "terminal-buddy.action.github-doc.name",
+      "description": "terminal-buddy.action.github-doc.description",
+      "script": "lib/open-doc.ps1",
+      "url": "https://github.com/asupc/TerminalBuddy/blob/main/README_CN.md",
+      "enabled": true
+    }
+  ]
+}

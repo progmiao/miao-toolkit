@@ -1,4 +1,4 @@
-# 依赖安装/更新专页（Space 多选，Enter 确认，Esc 返回）
+﻿# 依赖安装/更新专页（Space 多选，Enter 确认，Esc 返回）
 
 function Get-InstallPageTools {
     param(

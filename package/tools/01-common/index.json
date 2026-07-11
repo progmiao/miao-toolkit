@@ -1,0 +1,7 @@
+{
+  "name": "common.name",
+  "description": "common.description",
+  "interactive": true,
+  "requiresInstall": false,
+  "actions": []
+}

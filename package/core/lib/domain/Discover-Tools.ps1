@@ -1,4 +1,4 @@
-function Get-ToolkitReservedToolCommands {
+﻿function Get-ToolkitReservedToolCommands {
     return @(
         'install', 'update', 'uninstall', 'help', 'list', 'version', 'sys', 'helper', 'lang', 'init', 'cache'
     )

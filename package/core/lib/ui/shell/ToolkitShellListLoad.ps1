@@ -1,4 +1,4 @@
-# Shell 列表 — 异步加载进度过渡（列表 Body 区域）
+﻿# Shell 列表 — 异步加载进度过渡（列表 Body 区域）
 
 function Import-ToolkitShellListLoadCore {
     param([string]$CoreLib)

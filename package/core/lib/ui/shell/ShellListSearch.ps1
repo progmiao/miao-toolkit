@@ -1,4 +1,4 @@
-# Shell 列表 — 搜索配置与输入 buffer 匹配（单选/多选共用）
+﻿# Shell 列表 — 搜索配置与输入 buffer 匹配（单选/多选共用）
 
 function Resolve-ShellListSearchConfig {
     param($SearchConfig)

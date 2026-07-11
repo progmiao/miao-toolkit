@@ -1,0 +1,52 @@
+{
+  "terminal-buddy": {
+    "name": "TerminalBuddy",
+    "description": "Windows desktop terminal emulator (Gitee release)",
+    "action": {
+      "install": {
+        "name": "Install",
+        "description": "Detect status; install if missing, check for updates if installed"
+      },
+      "uninstall": {
+        "name": "Uninstall",
+        "description": "Uninstall TerminalBuddy (keeps user config and data)"
+      },
+      "gitee-doc": {
+        "name": "Gitee docs",
+        "description": "Open the Gitee project page in your browser"
+      },
+      "github-doc": {
+        "name": "GitHub docs",
+        "description": "Open the GitHub Chinese README in your browser"
+      }
+    },
+    "app": {
+      "notInstalled": "TerminalBuddy is not installed",
+      "detectStatus": "Detecting installation status…",
+      "detectNotInstalled": "Not installed; preparing Gitee Release download",
+      "detectInstalled": "Current version v{version}",
+      "detectUpdatePreflight": "Checking network connectivity…",
+      "detectUpdateStatus": "Checking latest Gitee release…",
+      "detectUpdateSkippedNetwork": "Network unavailable; skipped update check (current v{version})",
+      "detectUpdateSkippedError": "Update check failed; skipped (current v{version})",
+      "detectUpdateAvailable": "Update available (v{version}); preparing download",
+      "alreadyLatest": "Already up to date (v{version})",
+      "installStatusReady": "Ready to install TerminalBuddy",
+      "downloadStart": "Downloading v{version}: {url}",
+      "downloadProgress": "Downloading v{version} ({percent}%)",
+      "downloadSuccess": "Download complete",
+      "downloadFailed": "Download failed: {detail}",
+      "installInProgress": "Installing to {path}…",
+      "installSuccess": "Installation complete",
+      "installFailed": "Install failed: {detail}",
+      "updateSuccess": "Update complete",
+      "updateFailed": "Update failed: {detail}",
+      "uninstallStatusReady": "Ready to uninstall TerminalBuddy",
+      "uninstallInProgress": "Uninstalling…",
+      "uninstallSuccess": "Uninstall complete (%APPDATA%\\TerminalBuddy user data preserved)",
+      "uninstallFailed": "Uninstall failed: {detail}",
+      "openDocFailed": "Could not open browser: {detail}",
+      "shortcutCreated": "Start menu and desktop shortcuts created"
+    }
+  }
+}

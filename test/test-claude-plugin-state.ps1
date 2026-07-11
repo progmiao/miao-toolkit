@@ -1,4 +1,4 @@
-# test-claude-plugin-state.ps1 — 插件安装记录与 registry 合并
+﻿# test-claude-plugin-state.ps1 — 插件安装记录与 registry 合并
 
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
@@ -6,7 +6,7 @@ $lib = Join-Path $root 'package\core\lib'
 . (Join-Path $lib 'bootstrap\Load-Core.ps1') -LibDirectory $lib
 Initialize-Paths -BinDirectory (Join-Path $root 'package\bin')
 
-$toolRoot = Join-Path $root 'package\tools\04-claude-code'
+$toolRoot = Join-Path $root 'package\tools\05-claude-code'
 Initialize-PathsFromToolRoot -ToolRoot $toolRoot
 
 # Isolated load (simulates Start-Job scriptblock before core is imported)

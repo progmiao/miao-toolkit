@@ -1,4 +1,4 @@
-# test-batch-execution.ps1 — 批量执行组件入口与 API 别名
+﻿# test-batch-execution.ps1 — 批量执行组件入口与 API 别名
 
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent

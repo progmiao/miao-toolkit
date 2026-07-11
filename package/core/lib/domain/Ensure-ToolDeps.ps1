@@ -121,15 +121,177 @@ function Get-WingetPackageInstalledVersion {
     }
 }
 
+$script:WingetUpdateCheckNetworkPreflightSec = 5
+$script:WingetUpdateCheckCommandTimeoutSec = 15
+
+function Invoke-WingetCliWithTimeout {
+    param(
+        [Parameter(Mandatory)]
+        [string[]]$ArgumentList,
+        [int]$TimeoutSec = 0,
+        [scriptblock]$OnPulse = $null
+    )
+
+    if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
+        return @{
+            TimedOut = $false
+            ExitCode = -1
+            Output   = ''
+            Success  = $false
+        }
+    }
+
+    if ($TimeoutSec -le 0) {
+        try {
+            $output = & winget @ArgumentList 2>&1 | Out-String
+            $exitCode = if ($null -ne $LASTEXITCODE) { [int]$LASTEXITCODE } else { 0 }
+            return @{
+                TimedOut = $false
+                ExitCode = $exitCode
+                Output   = [string]$output
+                Success  = ($exitCode -eq 0)
+            }
+        }
+        catch {
+            return @{
+                TimedOut = $false
+                ExitCode = -1
+                Output   = [string]$_.Exception.Message
+                Success  = $false
+            }
+        }
+    }
+
+    $psi = New-Object System.Diagnostics.ProcessStartInfo
+    $psi.FileName = 'winget'
+    $escaped = @($ArgumentList | ForEach-Object {
+        if ($_ -match '\s') { "`"$_`"" } else { $_ }
+    })
+    $psi.Arguments = ($escaped -join ' ')
+    $psi.RedirectStandardOutput = $true
+    $psi.RedirectStandardError = $true
+    $psi.UseShellExecute = $false
+    $psi.CreateNoWindow = $true
+    $psi.StandardOutputEncoding = [Text.UTF8Encoding]::new($false)
+    $psi.StandardErrorEncoding = [Text.UTF8Encoding]::new($false)
+
+    $process = $null
+    try {
+        $process = New-Object System.Diagnostics.Process
+        $process.StartInfo = $psi
+        $null = $process.Start()
+
+        $stdoutTask = $process.StandardOutput.ReadToEndAsync()
+        $stderrTask = $process.StandardError.ReadToEndAsync()
+        $deadline = [Environment]::TickCount + ($TimeoutSec * 1000)
+
+        while (-not $process.HasExited) {
+            if ([Environment]::TickCount -ge $deadline) {
+                try { $process.Kill() } catch {}
+                return @{
+                    TimedOut = $true
+                    ExitCode = -1
+                    Output   = ''
+                    Success  = $false
+                }
+            }
+            if ($OnPulse) { & $OnPulse }
+            Start-Sleep -Milliseconds 50
+        }
+
+        $null = $process.WaitForExit()
+        $output = ($stdoutTask.GetAwaiter().GetResult() + $stderrTask.GetAwaiter().GetResult())
+        $exitCode = [int]$process.ExitCode
+        return @{
+            TimedOut = $false
+            ExitCode = $exitCode
+            Output   = [string]$output
+            Success  = ($exitCode -eq 0)
+        }
+    }
+    catch {
+        return @{
+            TimedOut = $false
+            ExitCode = -1
+            Output   = [string]$_.Exception.Message
+            Success  = $false
+        }
+    }
+    finally {
+        if ($process) {
+            try { $process.Dispose() } catch {}
+        }
+    }
+}
+
+function Test-WingetCatalogNetworkReachable {
+    param(
+        [int]$TimeoutSec = 0,
+        [scriptblock]$OnPulse = $null
+    )
+
+    $timeout = if ($TimeoutSec -gt 0) { $TimeoutSec } else { $script:WingetUpdateCheckNetworkPreflightSec }
+    $timeout = [Math]::Max(2, [int]$timeout)
+
+    $urls = @(
+        'https://cdn.winget.microsoft.com/cache/'
+        'https://www.microsoft.com'
+    )
+
+    foreach ($url in @($urls)) {
+        if ($OnPulse) { & $OnPulse }
+        try {
+            $response = Invoke-WebRequest -Uri $url -Method Head -TimeoutSec $timeout -UseBasicParsing
+            $code = [int]$response.StatusCode
+            if ($code -ge 200 -and $code -lt 400) {
+                return $true
+            }
+        }
+        catch {
+            $msg = [string]$_.Exception.Message
+            if ($msg -match '405|403|401') {
+                return $true
+            }
+        }
+    }
+
+    return $false
+}
+
 function Get-WingetPackageLatestVersion {
-    param([string]$PackageId)
+    param(
+        [string]$PackageId,
+        [int]$CommandTimeoutSec = 0,
+        [scriptblock]$OnPulse = $null
+    )
 
     if ([string]::IsNullOrWhiteSpace($PackageId)) { return $null }
     if (-not (Get-Command winget -ErrorAction SilentlyContinue)) { return $null }
 
     try {
-        $output = & winget show --id $PackageId -e --disable-interactivity --accept-source-agreements --output json 2>&1 |
-            Out-String
+        $args = @(
+            'show'
+            '--id'
+            $PackageId
+            '-e'
+            '--disable-interactivity'
+            '--accept-source-agreements'
+            '--output'
+            'json'
+        )
+        $wingetResult = if ($CommandTimeoutSec -gt 0) {
+            Invoke-WingetCliWithTimeout -ArgumentList $args -TimeoutSec $CommandTimeoutSec -OnPulse $OnPulse
+        }
+        else {
+            $output = & winget @args 2>&1 | Out-String
+            @{
+                TimedOut = $false
+                Output   = [string]$output
+            }
+        }
+
+        if ($wingetResult.TimedOut) { return $null }
+        $output = [string]$wingetResult.Output
         if (-not $output) { return $null }
 
         $data = $output | ConvertFrom-Json
@@ -151,6 +313,142 @@ function Get-WingetPackageLatestVersion {
     return $null
 }
 
+function Test-WingetPackageUpdateAvailableCore {
+    param(
+        [string]$PackageId,
+        [string]$InstalledVersion = '',
+        [int]$CommandTimeoutSec = 0,
+        [scriptblock]$OnPulse = $null
+    )
+
+    if ([string]::IsNullOrWhiteSpace($PackageId)) {
+        return @{ Available = $false; TimedOut = $false }
+    }
+    if (-not (Get-Command winget -ErrorAction SilentlyContinue)) {
+        return @{ Available = $false; TimedOut = $false }
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($InstalledVersion)) {
+        $latest = Get-WingetPackageLatestVersion -PackageId $PackageId `
+            -CommandTimeoutSec $CommandTimeoutSec -OnPulse $OnPulse
+        if ($latest) {
+            $available = Test-VersionIsNewer -Candidate $latest -Baseline $InstalledVersion
+            return @{ Available = [bool]$available; TimedOut = $false }
+        }
+        if ($CommandTimeoutSec -gt 0) {
+            $probeArgs = @(
+                'show'
+                '--id'
+                $PackageId
+                '-e'
+                '--disable-interactivity'
+                '--accept-source-agreements'
+                '--output'
+                'json'
+            )
+            $probe = Invoke-WingetCliWithTimeout -ArgumentList $probeArgs `
+                -TimeoutSec $CommandTimeoutSec -OnPulse $OnPulse
+            if ($probe.TimedOut) {
+                return @{ Available = $false; TimedOut = $true }
+            }
+        }
+    }
+
+    try {
+        $upgradeArgs = @(
+            'upgrade'
+            '--id'
+            $PackageId
+            '--disable-interactivity'
+            '--accept-source-agreements'
+        )
+        $wingetResult = if ($CommandTimeoutSec -gt 0) {
+            Invoke-WingetCliWithTimeout -ArgumentList $upgradeArgs -TimeoutSec $CommandTimeoutSec -OnPulse $OnPulse
+        }
+        else {
+            $output = & winget @upgradeArgs 2>&1 | Out-String
+            @{
+                TimedOut = $false
+                Output   = [string]$output
+                ExitCode = if ($null -ne $LASTEXITCODE) { [int]$LASTEXITCODE } else { 0 }
+            }
+        }
+
+        if ($wingetResult.TimedOut) {
+            return @{ Available = $false; TimedOut = $true }
+        }
+
+        $output = [string]$wingetResult.Output
+        if ($output -match 'No applicable upgrade|No available upgrade|没有适用的升级|找不到可用的升级|没有可用的升级') {
+            return @{ Available = $false; TimedOut = $false }
+        }
+        $exitCode = if ($null -ne $wingetResult.ExitCode) { [int]$wingetResult.ExitCode } else { 0 }
+        if ($exitCode -eq -1978335189) {
+            return @{ Available = $false; TimedOut = $false }
+        }
+        return @{ Available = ($exitCode -eq 0); TimedOut = $false }
+    }
+    catch {
+        return @{ Available = $false; TimedOut = $false }
+    }
+}
+
+function Resolve-WingetPackageUpdateCheck {
+    param(
+        [string]$PackageId,
+        [string]$InstalledVersion = '',
+        [int]$NetworkPreflightTimeoutSec = 0,
+        [int]$CommandTimeoutSec = 0,
+        [switch]$SkipNetworkPreflight,
+        [scriptblock]$OnPulse = $null
+    )
+
+    $networkTimeout = if ($NetworkPreflightTimeoutSec -gt 0) {
+        $NetworkPreflightTimeoutSec
+    }
+    else {
+        $script:WingetUpdateCheckNetworkPreflightSec
+    }
+    $cmdTimeout = if ($CommandTimeoutSec -gt 0) {
+        $CommandTimeoutSec
+    }
+    else {
+        $script:WingetUpdateCheckCommandTimeoutSec
+    }
+
+    if (-not $SkipNetworkPreflight) {
+        if ($OnPulse) { & $OnPulse }
+        if (-not (Test-WingetCatalogNetworkReachable -TimeoutSec $networkTimeout -OnPulse $OnPulse)) {
+            return @{
+                Available  = $false
+                Skipped    = $true
+                SkipReason = 'network'
+                Detail     = ''
+            }
+        }
+    }
+
+    if ($OnPulse) { & $OnPulse }
+    $coreResult = Test-WingetPackageUpdateAvailableCore -PackageId $PackageId `
+        -InstalledVersion $InstalledVersion -CommandTimeoutSec $cmdTimeout -OnPulse $OnPulse
+
+    if ($coreResult.TimedOut) {
+        return @{
+            Available  = $false
+            Skipped    = $true
+            SkipReason = 'timeout'
+            Detail     = ''
+        }
+    }
+
+    return @{
+        Available  = [bool]$coreResult.Available
+        Skipped    = $false
+        SkipReason = ''
+        Detail     = ''
+    }
+}
+
 function Test-WingetPackageUpdateAvailable {
     param(
         [string]$PackageId,
@@ -160,25 +458,9 @@ function Test-WingetPackageUpdateAvailable {
     if ([string]::IsNullOrWhiteSpace($PackageId)) { return $false }
     if (-not (Get-Command winget -ErrorAction SilentlyContinue)) { return $false }
 
-    if (-not [string]::IsNullOrWhiteSpace($InstalledVersion)) {
-        $latest = Get-WingetPackageLatestVersion -PackageId $PackageId
-        if ($latest) {
-            return (Test-VersionIsNewer -Candidate $latest -Baseline $InstalledVersion)
-        }
-    }
-
-    try {
-        $output = & winget upgrade --id $PackageId --disable-interactivity --accept-source-agreements 2>&1 |
-            Out-String
-        if ($output -match 'No applicable upgrade|No available upgrade|没有适用的升级|找不到可用的升级|没有可用的升级') {
-            return $false
-        }
-        if ($LASTEXITCODE -eq -1978335189) { return $false }
-        return ($LASTEXITCODE -eq 0)
-    }
-    catch {
-        return $false
-    }
+    $coreResult = Test-WingetPackageUpdateAvailableCore -PackageId $PackageId `
+        -InstalledVersion $InstalledVersion
+    return [bool]$coreResult.Available
 }
 
 function Test-WingetDepResultIsAlreadyLatest {

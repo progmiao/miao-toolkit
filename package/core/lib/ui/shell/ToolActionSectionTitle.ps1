@@ -1,4 +1,4 @@
-# 工具功能页标题：{工具名} - {功能名} [- {子阶段}]
+﻿# 工具功能页标题：{工具名} - {功能名} [- {子阶段}]
 
 function Import-ToolActionSectionTitleCore {
     param([string]$CoreLib)

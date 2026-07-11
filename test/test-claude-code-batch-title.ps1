@@ -1,7 +1,7 @@
-$ErrorActionPreference = 'Stop'
+﻿$ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
 $coreLib = Join-Path $root 'package\core\lib'
-$toolRoot = Join-Path $root 'package\tools\04-claude-code'
+$toolRoot = Join-Path $root 'package\tools\05-claude-code'
 
 . (Join-Path $coreLib 'bootstrap\Load-Core.ps1') -LibDirectory $coreLib
 . (Join-Path $coreLib 'ui\shell\BatchExecution.ps1')

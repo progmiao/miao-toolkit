@@ -1,4 +1,4 @@
-# 第三方依赖 Plan + 编排（install/update/uninstall 统一）
+﻿# 第三方依赖 Plan + 编排（install/update/uninstall 统一）
 
 function Get-ToolkitDepEffectiveIntent {
     param(

@@ -1,4 +1,4 @@
-function Get-DependencyVersionPolicy {
+﻿function Get-DependencyVersionPolicy {
     param($Dependency)
 
     if ($Dependency.version) {
@@ -513,6 +513,10 @@ function Get-ToolMenuItemCommand {
 
     if (Get-ToolDependencyMenuAction $Action) {
         return Get-ToolDependencyMenuCommandDisplay
+    }
+
+    if ($Action.PSObject.Properties['menuCommand'] -and -not [string]::IsNullOrWhiteSpace([string]$Action.menuCommand)) {
+        return [string]$Action.menuCommand
     }
 
     return Get-ShellListItemCommand $Action

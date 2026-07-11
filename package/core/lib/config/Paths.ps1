@@ -386,7 +386,7 @@ function Get-RepositoryBrowseUrl {
 }
 
 function Get-ShellListDefaultPageSize {
-    return 10
+    return 20
 }
 
 function Resolve-ShellListPageSize {

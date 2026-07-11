@@ -1,4 +1,4 @@
-# Shell 列表：行模型、布局、选择结果
+﻿# Shell 列表：行模型、布局、选择结果
 
 function New-ShellListLayout {
     param(

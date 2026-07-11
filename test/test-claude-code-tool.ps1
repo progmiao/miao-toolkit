@@ -1,4 +1,4 @@
-# test-claude-code-tool.ps1 — claude-code 工具发现、i18n、设置与插件解析
+﻿# test-claude-code-tool.ps1 — claude-code 工具发现、i18n、设置与插件解析
 
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
@@ -6,24 +6,24 @@ $lib = Join-Path $root 'package\core\lib'
 . (Join-Path $lib 'bootstrap\Load-Core.ps1') -LibDirectory $lib
 Initialize-Paths -BinDirectory (Join-Path $root 'package\bin')
 
-$toolRoot = Join-Path $root 'package\tools\04-claude-code'
+$toolRoot = Join-Path $root 'package\tools\05-claude-code'
 Initialize-PathsFromToolRoot -ToolRoot $toolRoot
 
 $tool = Get-ToolFromDirectory -ToolRoot $toolRoot
 if (-not $tool) { throw 'tool not discovered' }
 if ([string]$tool.command -ne 'claude-code') { throw "unexpected command: $($tool.command)" }
-if ([int]$tool.sortOrder -ne 4) { throw "unexpected sortOrder: $($tool.sortOrder)" }
+if ([int]$tool.sortOrder -ne 5) { throw "unexpected sortOrder: $($tool.sortOrder)" }
 
 $name = Resolve-ToolI18nLabel -ToolRoot $toolRoot -Key 'claude-code.name' -Fallback 'claude-code'
 if ([string]::IsNullOrWhiteSpace($name)) { throw 'name i18n empty' }
 
 $actions = @((Get-Content (Join-Path $toolRoot 'index.json') -Raw -Encoding UTF8 | ConvertFrom-Json).actions)
-if ($actions.Count -ne 8) { throw "expected 8 actions, got $($actions.Count)" }
+if ($actions.Count -ne 7) { throw "expected 7 actions, got $($actions.Count)" }
 if ($actions[0].command -ne 'install') { throw 'first action must be install' }
 if ($actions[1].command -ne 'init') { throw 'second action must be init' }
 $expectedCommands = @(
     'install', 'init', 'inst-plug', 'uninst-plug',
-    'config-api', 'config-proxy', 'update', 'uninstall'
+    'config-api', 'config-proxy', 'uninstall'
 )
 for ($i = 0; $i -lt $expectedCommands.Count; $i++) {
     if ([string]$actions[$i].command -ne $expectedCommands[$i]) {

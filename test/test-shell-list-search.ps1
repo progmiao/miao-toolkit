@@ -1,4 +1,4 @@
-# test-shell-list-search.ps1 — 列表搜索归一化与 buffer 匹配
+﻿# test-shell-list-search.ps1 — 列表搜索归一化与 buffer 匹配
 
 $ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent

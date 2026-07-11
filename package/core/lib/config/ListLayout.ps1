@@ -9,7 +9,7 @@ $script:ToolkitBrandSeparatorExtra = 0
 $script:ToolkitBrandInnerWidthExpandNumerator = 4
 $script:ToolkitBrandInnerWidthExpandDenominator = 3
 $script:ToolkitToolListColumnWidths = @{
-    command     = 12
+    command     = 16
     name        = 18
     description = 32
 }

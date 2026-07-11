@@ -1,6 +1,6 @@
 ﻿$ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
-$toolRoot = Join-Path $root 'package\tools\03-yarn'
+$toolRoot = Join-Path $root 'package\tools\04-yarn'
 $coreLib = Join-Path $toolRoot '..\..\core\lib'
 
 . (Join-Path $coreLib 'bootstrap\Load-Core.ps1') -LibDirectory $coreLib
@@ -15,12 +15,12 @@ if ([string]$config.name -ne 'yarn.name') { throw 'expected yarn.name in index.j
 
 $tool = Get-ToolFromDirectory -ToolRoot $toolRoot
 if (-not $tool) { throw 'Get-ToolFromDirectory failed for yarn' }
-if ([int]$tool.sortOrder -ne 3) { throw "expected yarn sortOrder=3 from dir 03-yarn, got $($tool.sortOrder)" }
+if ([int]$tool.sortOrder -ne 4) { throw "expected yarn sortOrder=4 from dir 04-yarn, got $($tool.sortOrder)" }
 if ([int]$tool.no -ne 0) { throw 'Get-ToolFromDirectory should leave menu no=0 before Assign-ToolMenuNumbers' }
 
 $discovered = @(Discover-Tools | Where-Object { [string]$_.command -eq 'yarn' })
 if ($discovered.Count -ne 1) { throw 'expected single yarn in Discover-Tools' }
-if ([int]$discovered[0].no -ne 3) { throw "expected yarn menu no=3, got $($discovered[0].no)" }
+if ([int]$discovered[0].no -ne 4) { throw "expected yarn menu no=4, got $($discovered[0].no)" }
 
 $title = Resolve-ToolI18nLabel -ToolRoot $toolRoot -Key 'yarn.action.pin.name' -Fallback 'pin'
 if ([string]::IsNullOrWhiteSpace($title)) { throw 'expected pin action title' }

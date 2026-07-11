@@ -1,4 +1,4 @@
-# Shell 列表：列宽解析（单选/多选共用）
+﻿# Shell 列表：列宽解析（单选/多选共用）
 
 function Add-ShellListLayoutScrollFields {
     param(

@@ -1,0 +1,42 @@
+{
+  "hermes": {
+    "name": "Hermes Agent",
+    "description": "Official Hermes Agent CLI (terminal, TUI, gateway)",
+    "action": {
+      "install": {
+        "name": "Install",
+        "description": "Detect CLI status; install if missing, check for updates if installed"
+      },
+      "uninstall": {
+        "name": "Uninstall",
+        "description": "Uninstall Hermes CLI (keeps user config and data)"
+      }
+    },
+    "cli": {
+      "notInstalled": "Hermes CLI is not installed",
+      "detectStatus": "Detecting installation status…",
+      "detectNotInstalled": "CLI not installed; preparing official install script",
+      "detectInstalled": "Current version v{version}",
+      "detectVersionCommand": "hermes --version → {line}",
+      "detectUpdatePreflight": "Checking network connectivity…",
+      "detectUpdateStatus": "Checking for updates…",
+      "detectUpdateSkippedNetwork": "Network unavailable; skipped update check (current v{version})",
+      "detectUpdateSkippedTimeout": "Update check timed out; skipped (current v{version})",
+      "detectUpdateSkippedError": "Update check failed; skipped (current v{version})",
+      "detectUpdateAvailable": "Update available; preparing hermes update",
+      "alreadyLatest": "Already up to date (v{version})",
+      "installStatusReady": "Ready to install CLI",
+      "installInProgress": "Installing via official install.ps1 (may take several minutes)…",
+      "installSuccess": "CLI installation complete",
+      "installFailed": "Install failed: {detail}",
+      "toolkitTimedOut": "Toolkit wait timed out ({minutes} min — not an error from the Hermes installer)",
+      "updateSuccess": "Update complete",
+      "updateFailed": "Update failed: {detail}",
+      "uninstallStatusReady": "Ready to uninstall CLI",
+      "uninstallSuccess": "CLI uninstalled (user config and data preserved)",
+      "uninstallFailed": "Uninstall failed: {detail}",
+      "desktopDetected": "WinGet Hermes Desktop detected; this tool manages the official CLI only",
+      "postInstallHint": "Open a new PowerShell window, then run:\n  hermes setup --portal    (recommended: Portal OAuth + Tool Gateway)\n  or hermes model / hermes setup  to configure a provider"
+    }
+  }
+}

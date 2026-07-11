@@ -1,0 +1,24 @@
+{
+  "name": "hermes.name",
+  "description": "hermes.description",
+  "interactive": true,
+  "requiresInstall": false,
+  "actions": [
+    {
+      "command": "install",
+      "name": "hermes.action.install.name",
+      "description": "hermes.action.install.description",
+      "script": "lib/install.ps1",
+      "param": { "switch": "Install", "alias": "i" },
+      "enabled": true
+    },
+    {
+      "command": "uninstall",
+      "name": "hermes.action.uninstall.name",
+      "description": "hermes.action.uninstall.description",
+      "script": "lib/uninstall.ps1",
+      "param": { "switch": "Uninstall", "alias": "d" },
+      "enabled": true
+    }
+  ]
+}

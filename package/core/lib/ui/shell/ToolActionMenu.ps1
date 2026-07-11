@@ -1,4 +1,4 @@
-# 工具一级功能菜单：单选列表 + 依赖项分发 + 业务 action 调度
+﻿# 工具一级功能菜单：单选列表 + 依赖项分发 + 业务 action 调度
 
 function Import-ToolActionMenuCore {
     param([string]$CoreLib)

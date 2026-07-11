@@ -1,0 +1,28 @@
+{
+  "name": "cc-connect.name",
+  "description": "cc-connect.description",
+  "interactive": true,
+  "requiresInstall": false,
+  "winget": {
+    "packageId": "9NHCNC0N2LBJ",
+    "source": "msstore"
+  },
+  "actions": [
+    {
+      "command": "install",
+      "name": "cc-connect.action.install.name",
+      "description": "cc-connect.action.install.description",
+      "script": "lib/install.ps1",
+      "param": { "switch": "Install", "alias": "i" },
+      "enabled": true
+    },
+    {
+      "command": "uninstall",
+      "name": "cc-connect.action.uninstall.name",
+      "description": "cc-connect.action.uninstall.description",
+      "script": "lib/uninstall.ps1",
+      "param": { "switch": "Uninstall", "alias": "d" },
+      "enabled": true
+    }
+  ]
+}

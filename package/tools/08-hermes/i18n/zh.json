@@ -1,0 +1,42 @@
+﻿{
+  "hermes": {
+    "name": "Hermes Agent",
+    "description": "Hermes Agent 官方 CLI（命令行/TUI/Gateway）",
+    "action": {
+      "install": {
+        "name": "安装",
+        "description": "检测 CLI 安装状态；未安装则安装，已安装则检查更新"
+      },
+      "uninstall": {
+        "name": "卸载",
+        "description": "卸载 Hermes CLI（保留用户配置与数据）"
+      }
+    },
+    "cli": {
+      "notInstalled": "尚未安装 Hermes CLI",
+      "detectStatus": "正在检测安装状态…",
+      "detectNotInstalled": "尚未安装 CLI，准备通过官方脚本安装",
+      "detectInstalled": "当前版本 v{version}",
+      "detectVersionCommand": "hermes --version → {line}",
+      "detectUpdatePreflight": "正在检测网络连接…",
+      "detectUpdateStatus": "正在检查是否有可用更新…",
+      "detectUpdateSkippedNetwork": "网络不可用，跳过更新检查（当前 v{version}）",
+      "detectUpdateSkippedTimeout": "更新检查超时，跳过（当前 v{version}）",
+      "detectUpdateSkippedError": "更新检查失败，跳过（当前 v{version}）",
+      "detectUpdateAvailable": "发现可用更新，准备执行 hermes update",
+      "alreadyLatest": "已是最新版本（v{version}）",
+      "installStatusReady": "准备安装 CLI",
+      "installInProgress": "正在通过官方 install.ps1 安装（可能需要数分钟）…",
+      "installSuccess": "CLI 安装完成",
+      "installFailed": "安装失败：{detail}",
+      "toolkitTimedOut": "工具等待超时（已等待 {minutes} 分钟，非 Hermes 安装脚本报错）",
+      "updateSuccess": "更新完成",
+      "updateFailed": "更新失败：{detail}",
+      "uninstallStatusReady": "准备卸载 CLI",
+      "uninstallSuccess": "CLI 卸载完成（用户配置与数据已保留）",
+      "uninstallFailed": "卸载失败：{detail}",
+      "desktopDetected": "检测到 WinGet 社区版 Hermes Desktop；本工具仅管理官方 CLI，两者相互独立",
+      "postInstallHint": "请新开 PowerShell 窗口，然后执行：\n  hermes setup --portal    （推荐：Portal OAuth + Tool Gateway）\n  或 hermes model / hermes setup  配置 Provider"
+    }
+  }
+}

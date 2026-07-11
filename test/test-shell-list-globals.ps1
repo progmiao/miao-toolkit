@@ -1,4 +1,4 @@
-$ErrorActionPreference = 'Stop'
+﻿$ErrorActionPreference = 'Stop'
 $lib = Join-Path (Split-Path $PSScriptRoot -Parent) 'package\core\lib'
 . (Join-Path $lib 'bootstrap\Load-Core.ps1') -LibDirectory $lib
 
@@ -20,11 +20,11 @@ foreach ($name in $required) {
     }
 }
 
-if ((Get-ShellListDefaultPageSize) -ne 10) {
-    throw 'shell list default page size should be 10'
+if ((Get-ShellListDefaultPageSize) -ne 20) {
+    throw 'shell list default page size should be 20'
 }
-if ((Resolve-ShellListPageSize) -ne 10) {
-    throw 'shell list page size should default to 10'
+if ((Resolve-ShellListPageSize) -ne 20) {
+    throw 'shell list page size should default to 20'
 }
 if ((Resolve-ShellListPageSize -PageSize 15) -ne 15) {
     throw 'shell list page size override should be honored'
@@ -33,8 +33,8 @@ if ((Resolve-ShellListPageSize -PageSize 15) -ne 15) {
 $coreShellLib = Join-Path (Split-Path $PSScriptRoot -Parent) 'package\core\lib\ui\shell\Layout.ps1'
 . $coreShellLib
 $c = Get-ShellLayoutConstants
-if ([int]$c.ListSlotRows -ne 10) {
-    throw "shell list slot rows should be 10, got $($c.ListSlotRows)"
+if ([int]$c.ListSlotRows -ne 20) {
+    throw "shell list slot rows should be 20, got $($c.ListSlotRows)"
 }
 
 Write-Host 'test-shell-list-globals: OK'

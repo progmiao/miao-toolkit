@@ -1,0 +1,27 @@
+{
+  "name": "cc-switch.name",
+  "description": "cc-switch.description",
+  "interactive": true,
+  "requiresInstall": false,
+  "winget": {
+    "packageId": "farion1231.CC-Switch"
+  },
+  "actions": [
+    {
+      "command": "install",
+      "name": "cc-switch.action.install.name",
+      "description": "cc-switch.action.install.description",
+      "script": "lib/install.ps1",
+      "param": { "switch": "Install", "alias": "i" },
+      "enabled": true
+    },
+    {
+      "command": "uninstall",
+      "name": "cc-switch.action.uninstall.name",
+      "description": "cc-switch.action.uninstall.description",
+      "script": "lib/uninstall.ps1",
+      "param": { "switch": "Uninstall", "alias": "d" },
+      "enabled": true
+    }
+  ]
+}

@@ -1,0 +1,7 @@
+{
+  "common": {
+    "name": "Common Tools",
+    "description": "Collection of common utilities (reserved)",
+    "empty": "No utilities yet. Future releases will add items here."
+  }
+}

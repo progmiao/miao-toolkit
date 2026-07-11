@@ -1,6 +1,6 @@
 ﻿$ErrorActionPreference = 'Stop'
 $root = Split-Path $PSScriptRoot -Parent
-$toolRoot = Join-Path $root 'package\tools\02-pnpm'
+$toolRoot = Join-Path $root 'package\tools\03-pnpm'
 $coreLib = Join-Path $toolRoot '..\..\core\lib'
 
 . (Join-Path $coreLib 'bootstrap\Load-Core.ps1') -LibDirectory $coreLib
@@ -15,12 +15,12 @@ if ([string]$config.name -ne 'pnpm.name') { throw 'expected pnpm.name in index.j
 
 $tool = Get-ToolFromDirectory -ToolRoot $toolRoot
 if (-not $tool) { throw 'Get-ToolFromDirectory failed for pnpm' }
-if ([int]$tool.sortOrder -ne 2) { throw "expected pnpm sortOrder=2 from dir 02-pnpm, got $($tool.sortOrder)" }
+if ([int]$tool.sortOrder -ne 3) { throw "expected pnpm sortOrder=3 from dir 03-pnpm, got $($tool.sortOrder)" }
 if ([int]$tool.no -ne 0) { throw 'Get-ToolFromDirectory should leave menu no=0 before Assign-ToolMenuNumbers' }
 
 $discovered = @(Discover-Tools | Where-Object { [string]$_.command -eq 'pnpm' })
 if ($discovered.Count -ne 1) { throw 'expected single pnpm in Discover-Tools' }
-if ([int]$discovered[0].no -ne 2) { throw "expected pnpm menu no=2, got $($discovered[0].no)" }
+if ([int]$discovered[0].no -ne 3) { throw "expected pnpm menu no=3, got $($discovered[0].no)" }
 
 $title = Resolve-ToolI18nLabel -ToolRoot $toolRoot -Key 'pnpm.action.pin.name' -Fallback 'pin'
 if ([string]::IsNullOrWhiteSpace($title)) { throw 'expected pin action title' }

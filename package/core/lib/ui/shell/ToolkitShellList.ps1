@@ -1,4 +1,4 @@
-# Shell 列表：统一单选/多选入口
+﻿# Shell 列表：统一单选/多选入口
 
 function Invoke-ToolkitShellList {
     param(

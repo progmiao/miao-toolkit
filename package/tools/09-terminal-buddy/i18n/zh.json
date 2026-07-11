@@ -1,0 +1,52 @@
+{
+  "terminal-buddy": {
+    "name": "TerminalBuddy",
+    "description": "Windows 桌面终端模拟器（Gitee 发行版）",
+    "action": {
+      "install": {
+        "name": "安装",
+        "description": "检测安装状态；未安装则安装，已安装则检查更新"
+      },
+      "uninstall": {
+        "name": "卸载",
+        "description": "卸载 TerminalBuddy 程序（保留用户配置与数据）"
+      },
+      "gitee-doc": {
+        "name": "Gitee 文档",
+        "description": "在浏览器中打开 Gitee 项目页"
+      },
+      "github-doc": {
+        "name": "GitHub 文档",
+        "description": "在浏览器中打开 GitHub 中文 README"
+      }
+    },
+    "app": {
+      "notInstalled": "尚未安装 TerminalBuddy",
+      "detectStatus": "正在检测安装状态…",
+      "detectNotInstalled": "尚未安装，准备从 Gitee Release 下载",
+      "detectInstalled": "当前版本 v{version}",
+      "detectUpdatePreflight": "正在检测网络连接…",
+      "detectUpdateStatus": "正在检查 Gitee 最新版本…",
+      "detectUpdateSkippedNetwork": "网络不可用，跳过更新检查（当前 v{version}）",
+      "detectUpdateSkippedError": "更新检查失败，跳过（当前 v{version}）",
+      "detectUpdateAvailable": "发现新版本 v{version}，准备下载更新",
+      "alreadyLatest": "已是最新版本（v{version}）",
+      "installStatusReady": "准备安装 TerminalBuddy",
+      "downloadStart": "正在下载 v{version}：{url}",
+      "downloadProgress": "正在下载 v{version}（{percent}%）",
+      "downloadSuccess": "下载完成",
+      "downloadFailed": "下载失败：{detail}",
+      "installInProgress": "正在安装到 {path}…",
+      "installSuccess": "安装完成",
+      "installFailed": "安装失败：{detail}",
+      "updateSuccess": "更新完成",
+      "updateFailed": "更新失败：{detail}",
+      "uninstallStatusReady": "准备卸载 TerminalBuddy",
+      "uninstallInProgress": "正在卸载…",
+      "uninstallSuccess": "卸载完成（%APPDATA%\\TerminalBuddy 用户数据已保留）",
+      "uninstallFailed": "卸载失败：{detail}",
+      "openDocFailed": "无法打开浏览器：{detail}",
+      "shortcutCreated": "已创建开始菜单与桌面快捷方式"
+    }
+  }
+}

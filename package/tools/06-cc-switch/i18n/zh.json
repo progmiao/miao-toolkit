@@ -1,0 +1,36 @@
+{
+  "cc-switch": {
+    "name": "CC Switch",
+    "description": "Claude/Codex 等 CLI 配置切换工具",
+    "action": {
+      "install": {
+        "name": "安装",
+        "description": "检测安装状态；未安装或不是最新版时通过 WinGet 安装/升级"
+      },
+      "uninstall": {
+        "name": "卸载",
+        "description": "通过 WinGet 卸载"
+      }
+    },
+    "cli": {
+      "notInstalled": "尚未安装",
+      "detectStatus": "正在检测安装状态…",
+      "detectNotInstalled": "尚未安装，准备通过 WinGet 安装最新版",
+      "detectInstalled": "当前版本 v{version}",
+      "detectUpdatePreflight": "正在检测网络连接…",
+      "detectUpdateStatus": "正在检查是否有可用更新…",
+      "detectUpdateSkippedNetwork": "网络不可用，跳过更新检查（当前 v{version}）",
+      "detectUpdateSkippedTimeout": "更新检查超时，跳过（当前 v{version}）",
+      "detectUpdateAvailable": "发现可用更新，准备安装最新版",
+      "alreadyLatest": "已是最新版本（v{version}）",
+      "installStatusReady": "准备安装",
+      "installSuccess": "安装完成",
+      "installFailed": "安装失败：{detail}",
+      "updateSuccess": "更新完成",
+      "updateFailed": "更新失败：{detail}",
+      "uninstallStatusReady": "准备卸载",
+      "uninstallSuccess": "卸载完成",
+      "uninstallFailed": "卸载失败：{detail}"
+    }
+  }
+}

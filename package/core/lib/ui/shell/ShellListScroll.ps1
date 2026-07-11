@@ -1,4 +1,4 @@
-# Shell 列表：焦点列滚动（marquee）与单元格渲染
+﻿# Shell 列表：焦点列滚动（marquee）与单元格渲染
 
 function Resolve-ShellListScrollConfig {
     param([hashtable]$Layout)

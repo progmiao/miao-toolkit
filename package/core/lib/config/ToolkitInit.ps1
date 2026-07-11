@@ -1,4 +1,4 @@
-# 工具箱初始化快照：品牌区、工具目录、首页列表、各工具依赖状态（仅探测，不安装）
+﻿# 工具箱初始化快照：品牌区、工具目录、首页列表、各工具依赖状态（仅探测，不安装）
 
 $script:ToolkitToolsMemoryCache = $null
 $script:ToolkitDiskListRowCaches = @{}

@@ -1,0 +1,126 @@
+{
+  "claude-code": {
+    "name": "Claude Code",
+    "description": "Install, configure, and manage the Claude Code CLI and plugins",
+    "action": {
+      "install": {
+        "name": "Install CLI",
+        "description": "Detect install state; install or upgrade via WinGet when missing or outdated"
+      },
+      "init": {
+        "name": "Init config",
+        "description": "Apply defaults and register preset plugin marketplaces"
+      },
+      "configureApi": {
+        "name": "Configure API",
+        "description": "Set Anthropic API key or custom base URL"
+      },
+      "configureProxy": {
+        "name": "Configure proxy",
+        "description": "Set HTTP/HTTPS proxy or clear proxy settings"
+      },
+      "installPlugin": {
+        "name": "Install plugins",
+        "description": "Pick plugins from registered marketplaces and install or update to latest"
+      },
+      "uninstallPlugin": {
+        "name": "Uninstall plugins",
+        "description": "Pick installed plugins and uninstall"
+      },
+      "updatePlugin": {
+        "name": "Update plugins",
+        "description": "Pick installed plugins and update to latest"
+      },
+      "uninstall": {
+        "name": "Uninstall CLI",
+        "description": "Remove Claude Code CLI via WinGet"
+      }
+    },
+    "cli": {
+      "alreadyInstalled": "Claude Code is installed (v{version})",
+      "alreadyLatest": "Claude Code is up to date (v{version})",
+      "notInstalled": "Claude Code CLI is not installed. Use Install first.",
+      "detectStatus": "Detecting Claude Code CLI installation…",
+      "detectVersionCommand": "claude --version → {line}",
+      "detectNotInstalled": "Not installed; preparing WinGet install (latest)",
+      "detectInstalled": "Current version v{version}",
+      "detectUpdatePreflight": "Checking network connectivity…",
+      "detectUpdateStatus": "Checking for updates…",
+      "detectUpdateSkippedNetwork": "Network unavailable; skipped update check (current v{version})",
+      "detectUpdateSkippedTimeout": "Update check timed out; skipped (current v{version})",
+      "detectUpdateAvailable": "Update available; preparing install (latest)",
+      "installStatusReady": "Ready to install",
+      "installSuccess": "Claude Code CLI installed",
+      "installFailed": "Install failed: {detail}",
+      "updateStatusReady": "Ready to update",
+      "updateSuccess": "Claude Code CLI updated",
+      "updateFailed": "Update failed: {detail}",
+      "uninstallStatusReady": "Ready to uninstall",
+      "uninstallNotWingetManaged": "Claude Code CLI was not installed via WinGet (path: {path}, version: {version}). This tool can only remove the WinGet package Anthropic.ClaudeCode. Uninstall it using your original method (e.g. npm or Volta).",
+      "uninstallSuccess": "Claude Code CLI uninstalled",
+      "uninstallFailed": "Uninstall failed: {detail}"
+    },
+    "init": {
+      "statusReady": "Ready to initialize",
+      "stepDisableLogin": "Disable OAuth login",
+      "stepWriteSettings": "Merge settings.json",
+      "stepVerify": "Verify configuration",
+      "stepRegisterMarketplace": "Register marketplace {source}",
+      "logSuccess": "{step} done",
+      "logFailed": "{step} failed: {detail}"
+    },
+    "api": {
+      "modeOfficial": "Official API key",
+      "modeCustom": "Custom base URL + token",
+      "modeClear": "Clear API settings",
+      "promptApiKey": "API key",
+      "promptBaseUrl": "Base URL",
+      "promptToken": "Token / API key",
+      "statusReady": "Ready to write settings",
+      "applyLabel": "Configure API",
+      "logSuccess": "Written to {path}",
+      "logFailed": "Configure failed: {detail}"
+    },
+    "proxy": {
+      "modeSet": "Set proxy",
+      "modeClear": "Clear proxy",
+      "promptHttp": "HTTP_PROXY (optional)",
+      "promptHttps": "HTTPS_PROXY",
+      "statusReady": "Ready to write proxy",
+      "applyLabel": "Configure proxy",
+      "logSuccess": "Written to {path}",
+      "logFailed": "Configure failed: {detail}"
+    },
+    "section": {
+      "pluginInstallExecute": "Install plugins",
+      "pluginUninstallExecute": "Uninstall plugins",
+      "pluginUpdateExecute": "Update plugins"
+    },
+    "plugin": {
+      "loadingFetch": "{spinner} Loading plugin list…",
+      "loadingResult": "{spinner} Preparing plugin list…",
+      "loadingDraw": "{spinner} Rendering plugin list…",
+      "countUnit": "plugins",
+      "colName": "Name",
+      "colMarketplace": "Marketplace",
+      "colVersion": "Version",
+      "colLatestVersion": "Latest",
+      "colInstalledVersion": "Installed",
+      "tagInstalled": "installed",
+      "tagUpdate": "update→{version}",
+      "loadFailed": "Failed to load plugin list: {detail}",
+      "noAvailable": "No available plugins",
+      "manageStatusReady": "Ready to install/update plugins",
+      "noInstalled": "No installed plugins",
+      "installStatusReady": "Ready to install plugins",
+      "installSuccess": "Installed {plugin}",
+      "installFailed": "Failed to install {plugin}: {detail}",
+      "uninstallStatusReady": "Ready to uninstall plugins",
+      "uninstallSuccess": "Uninstalled {plugin}",
+      "uninstallFailed": "Failed to uninstall {plugin}: {detail}",
+      "updateStatusReady": "Ready to update plugins",
+      "updateSuccess": "Updated {plugin}: {detail}",
+      "updateFailed": "Failed to update {plugin}: {detail}"
+    }
+  }
+}
