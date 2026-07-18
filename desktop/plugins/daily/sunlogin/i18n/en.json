@@ -1,0 +1,6 @@
+{
+  "sunlogin.name": "Sunlogin Remote",
+  "sunlogin.description": "Oray Sunlogin (download and launch installer)",
+  "sunlogin.action.install": "Install",
+  "sunlogin.action.uninstall": "Uninstall"
+}

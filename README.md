@@ -1,47 +1,30 @@
 # miao-toolkit
 
-**程序喵 Miao 工具包** — Windows 下的统一 CLI 工具集合。
+**程序喵 Miao** — Windows 个人工具百宝箱（桌面版）。
 
-> 当前阶段：**设计文档评审中，package/ 开发预览壳已可本地运行。**
+> 产品方向与方案：见 [PRODUCT-DIRECTION.md](PRODUCT-DIRECTION.md)。  
+> 技术栈：**.NET 10 + Vue 3 + TypeScript**（WPF WebView2 宿主）。
 
-## 安装（用户）
+## 当前工程
+
+| 路径 | 说明 |
+|------|------|
+| [`desktop/`](desktop/) | **新主工程**（请在此继续开发） |
+| [`cli/`](cli/) | 旧 PowerShell CLI（**仅功能参考**，非运行时） |
+| [`PRODUCT-DIRECTION.md`](PRODUCT-DIRECTION.md) | 已敲定方向（换机续作必读） |
+
+## 快速开始
 
 ```powershell
-winget install miao              # 推荐（Moniker）
-winget install ProgMiao.Miao     # 同上（Package Id）
+cd desktop
+.\dev.ps1
 ```
 
-## 开发预览（未 winget 发版）
+一条命令同时起 Vue（Vite 热更新）和 `Miao` 宿主。细节见 [desktop/README.md](desktop/README.md)。
 
-在 **仓库根目录** 打开 PowerShell（含 `dev/`、`package/` 的目录）：
+## 旧 CLI（仅备份）
 
 ```powershell
+cd cli
 .\dev\dev-miao.ps1 list
-.\dev\dev-miao.ps1 -helper
-.\dev\dev-miao.ps1 node -Install
 ```
-
-路径由脚本内 `$PSScriptRoot` 解析，**与仓库 clone 到哪块盘无关**。
-
-## 仓库结构
-
-```
-miao-toolkit/
-├── dev/                     # 本地调试（dev-miao、BOM 维护等）
-├── test/                    # 自动化/手工测试脚本（不进安装包）
-├── docs/                    # 工具箱设计文档（平铺）
-└── package/
-    ├── bin/
-    ├── core/
-    └── tools/<id>/
-```
-
-## 设计文档
-
-从 [`docs/README.md`](docs/README.md) 开始，按文档确认顺序评审。
-
-## 发布
-
-- 整体发版：`ProgMiao.Miao`（Moniker: `miao`）
-- 更新：`winget upgrade miao` 或 `miao update`
-- 工具依赖：`miao install`

@@ -1,0 +1,23 @@
+{
+  "id": "terminal-buddy",
+  "sort": 20,
+  "nameKey": "tb.name",
+  "descriptionKey": "tb.description",
+  "tags": ["terminal"],
+  "ui": { "mode": "generic" },
+  "install": {
+    "strategy": "custom",
+    "giteeOwner": "updateme",
+    "giteeRepo": "terminal-buddy",
+    "assetName": "terminal-buddy.exe",
+    "detect": {
+      "exePaths": [
+        "%LOCALAPPDATA%\\Programs\\terminal-buddy\\terminal-buddy.exe"
+      ]
+    }
+  },
+  "actions": [
+    { "id": "install", "handler": "terminal-buddy.install", "nameKey": "tb.action.install" },
+    { "id": "uninstall", "handler": "terminal-buddy.uninstall", "nameKey": "tb.action.uninstall" }
+  ]
+}

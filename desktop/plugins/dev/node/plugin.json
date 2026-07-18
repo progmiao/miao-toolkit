@@ -1,0 +1,18 @@
+{
+  "id": "node",
+  "sort": 10,
+  "nameKey": "node.name",
+  "descriptionKey": "node.description",
+  "tags": ["runtime"],
+  "ui": { "mode": "panel", "entry": "ui/index" },
+  "install": {
+    "strategy": "custom",
+    "detect": {
+      "command": "node",
+      "commandArgs": "-v"
+    }
+  },
+  "actions": [
+    { "id": "install", "handler": "node.install", "nameKey": "node.action.install" }
+  ]
+}

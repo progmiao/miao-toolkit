@@ -1,0 +1,5 @@
+{
+  "node.name": "Node.js",
+  "node.description": "通过 Volta 安装并管理 Node 运行时（默认 LTS）",
+  "node.action.install": "安装 Node（LTS）"
+}

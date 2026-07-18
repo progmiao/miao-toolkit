@@ -1,0 +1,6 @@
+{
+  "tb.name": "TerminalBuddy",
+  "tb.description": "Install terminal from Gitee Release (custom post-steps)",
+  "tb.action.install": "Install",
+  "tb.action.uninstall": "Uninstall"
+}

@@ -1,0 +1,6 @@
+{
+  "wechat.name": "WeChat",
+  "wechat.description": "Tencent WeChat for Windows (download and launch installer)",
+  "wechat.action.install": "Install",
+  "wechat.action.uninstall": "Uninstall"
+}

@@ -1,0 +1,6 @@
+{
+  "wechat.name": "微信",
+  "wechat.description": "腾讯微信 PC 客户端（下载安装包并拉起安装向导）",
+  "wechat.action.install": "安装",
+  "wechat.action.uninstall": "卸载"
+}

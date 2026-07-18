@@ -1,0 +1,5 @@
+{
+  "ccc.name": "CC Connect",
+  "ccc.description": "Bridge local AI coding agents to IM (npm global CLI)",
+  "ccc.action.install": "Install"
+}

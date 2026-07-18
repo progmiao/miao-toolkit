@@ -1,0 +1,6 @@
+{
+  "groups": [
+    { "id": "daily", "sort": 10, "nameKey": "group.daily", "enabled": true },
+    { "id": "dev", "sort": 20, "nameKey": "group.dev", "enabled": true }
+  ]
+}

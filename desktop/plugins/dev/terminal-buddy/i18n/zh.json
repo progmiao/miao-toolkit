@@ -1,0 +1,6 @@
+{
+  "tb.name": "TerminalBuddy",
+  "tb.description": "从 Gitee Release 安装终端（含快捷方式等二次处理）",
+  "tb.action.install": "安装",
+  "tb.action.uninstall": "卸载"
+}

@@ -1,0 +1,6 @@
+{
+  "ccs.name": "CC Switch",
+  "ccs.description": "Official desktop app to manage AI CLI provider configs",
+  "ccs.action.install": "Install",
+  "ccs.action.uninstall": "Uninstall"
+}

@@ -19,9 +19,9 @@ x86/
 [Aa][Rr][Mm]64/
 bld/
 [Bb]in/
-# Miao CLI entry (must stay versioned; see package/bin/)
-!package/bin/
-!package/bin/**
+# Miao CLI entry (legacy backup; must stay versioned)
+!cli/package/bin/
+!cli/package/bin/**
 [Oo]bj/
 [Ll]og/
 [Ll]ogs/
@@ -59,8 +59,13 @@ CodeCoverage/
 TestResult.xml
 nunit-*.xml
 
-# Miao release zip output (see release/pack.ps1)
+# Desktop Vue
+desktop/ui/node_modules/
+desktop/ui/dist/
+desktop/src/Miao.App/wwwroot/
+
+# Miao release zip output (legacy pack)
 # dist/
 
 # Repo release tooling (.NET template ignores [Rr]elease/)
-!/release/
+!/cli/release/

@@ -1,0 +1,262 @@
+:root,
+:root[data-theme='light'] {
+  color-scheme: light;
+  --bg: #f3f5f8;
+  --panel: #ffffff;
+  --ink: #1a1f2a;
+  --muted: #6b7280;
+  --line: #e2e8f0;
+  --accent: #0f766e;
+  --accent-ink: #ecfdf5;
+  --danger: #b91c1c;
+  font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  line-height: 1.5;
+  color: var(--ink);
+  background: var(--bg);
+}
+
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --bg: #141a24;
+  --panel: #1c2433;
+  --ink: #e8eef6;
+  --muted: #9aa6b8;
+  --line: #2a3548;
+  --accent: #2dd4bf;
+  --accent-ink: #042f2e;
+  --danger: #f87171;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  margin: 0;
+  min-height: 100%;
+  height: 100%;
+  transition: background 0.35s ease, color 0.35s ease;
+}
+
+.page-head h1 {
+  margin: 0 0 0.35rem;
+  font-size: 1.55rem;
+}
+
+.page-head p {
+  margin: 0;
+  color: var(--muted);
+  max-width: 42rem;
+}
+
+.page-head.row {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: flex-start;
+  margin-bottom: 1.25rem;
+}
+
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 1rem;
+  margin: 1.5rem 0;
+}
+
+.card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 0.85rem;
+  padding: 1.1rem 1.2rem;
+}
+
+.card h2 {
+  margin: 0 0 0.4rem;
+  font-size: 1.1rem;
+}
+
+.card p {
+  margin: 0 0 1rem;
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 0.5rem;
+  padding: 0.45rem 0.9rem;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn.secondary {
+  background: #e7e5e4;
+  color: var(--ink);
+}
+
+.btn.danger {
+  background: var(--danger);
+  color: #fff;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.mono,
+.guid {
+  font-family: ui-monospace, Consolas, monospace;
+  word-break: break-all;
+}
+
+.toolbox-layout {
+  display: grid;
+  grid-template-columns: 1.1fr 1fr;
+  gap: 1rem;
+  min-height: 420px;
+}
+
+.tool-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 0.85rem;
+  overflow: auto;
+  max-height: 560px;
+}
+
+.tool-list li label {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-rows: auto auto;
+  column-gap: 0.65rem;
+  padding: 0.75rem 0.9rem;
+  border-bottom: 1px solid var(--line);
+  cursor: pointer;
+}
+
+.tool-list input {
+  grid-row: 1 / span 2;
+  margin-top: 0.25rem;
+}
+
+.tool-name {
+  font-weight: 600;
+}
+
+.tool-desc {
+  grid-column: 2;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.tool-meta {
+  grid-column: 2;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.15rem 0;
+}
+
+.tag {
+  display: inline-block;
+  margin-top: 0.25rem;
+  margin-right: 0.35rem;
+  font-size: 0.7rem;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  padding: 0.1rem 0.4rem;
+  border-radius: 999px;
+}
+
+.tag.status-installed {
+  color: #0f766e;
+  background: color-mix(in srgb, #14b8a6 22%, transparent);
+}
+
+.tag.status-missing {
+  color: #b45309;
+  background: color-mix(in srgb, #f59e0b 22%, transparent);
+}
+
+.tag.status-unknown {
+  color: var(--muted);
+  background: color-mix(in srgb, var(--muted) 18%, transparent);
+}
+
+[data-theme='dark'] .tag.status-installed {
+  color: #5eead4;
+}
+
+[data-theme='dark'] .tag.status-missing {
+  color: #fbbf24;
+}
+
+.job-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  min-height: 0;
+}
+
+.progress-wrap {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 0.75rem;
+  padding: 0.75rem 0.9rem;
+}
+
+.progress-label {
+  font-size: 0.85rem;
+  margin-bottom: 0.4rem;
+}
+
+.progress-bar {
+  height: 0.55rem;
+  background: #e7e5e4;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.progress-bar i {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  width: 0;
+}
+
+.log {
+  flex: 1;
+  margin: 0;
+  padding: 0.85rem;
+  background: #1c1917;
+  color: #e7e5e4;
+  border-radius: 0.75rem;
+  font-size: 0.78rem;
+  overflow: auto;
+  min-height: 280px;
+  white-space: pre-wrap;
+}
+
+@media (max-width: 900px) {
+  .toolbox-layout {
+    grid-template-columns: 1fr;
+  }
+}

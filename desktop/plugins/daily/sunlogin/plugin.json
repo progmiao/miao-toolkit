@@ -1,0 +1,20 @@
+{
+  "id": "sunlogin",
+  "sort": 20,
+  "nameKey": "sunlogin.name",
+  "descriptionKey": "sunlogin.description",
+  "tags": ["remote"],
+  "ui": { "mode": "generic" },
+  "install": {
+    "strategy": "installer-launch",
+    "downloadUrl": "https://down.oray.com/sunlogin/windows/SunloginClient.exe",
+    "installerFileName": "SunloginClient.exe",
+    "detect": {
+      "registryUninstallNames": ["向日葵", "Sunlogin", "Oray"]
+    }
+  },
+  "actions": [
+    { "id": "install", "handler": "generic.installer-launch", "nameKey": "sunlogin.action.install" },
+    { "id": "uninstall", "handler": "generic.uninstall", "nameKey": "sunlogin.action.uninstall" }
+  ]
+}
