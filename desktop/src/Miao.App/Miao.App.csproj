@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <!-- WinExe：无控制台窗口的桌面应用入口 -->
@@ -19,12 +19,14 @@
   <ItemGroup>
     <ProjectReference Include="..\Miao.Common\Miao.Common.csproj" />
     <ProjectReference Include="..\Miao.Data\Miao.Data.csproj" />
-    <ProjectReference Include="..\Miao.Tools\Miao.Tools.csproj" />
+    <ProjectReference Include="..\Miao.Software\Miao.Software.csproj" />
+    <ProjectReference Include="..\Miao.Sites\Miao.Sites.csproj" />
+    <ProjectReference Include="..\Miao.Utilities\Miao.Utilities.csproj" />
   </ItemGroup>
 
   <ItemGroup>
     <Content Include="wwwroot\**\*" CopyToOutputDirectory="PreserveNewest" Condition="Exists('wwwroot')" />
-    <Content Include="..\..\plugins\**\*" Link="plugins\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\seeds\**\*" Link="seeds\%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

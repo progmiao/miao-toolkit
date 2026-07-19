@@ -1,34 +1,44 @@
 /**
- * 前端路由：首页 / 日常工具 / 开发工具（Hash 模式）。
+ * 前端路由：网站 / 日常 / 开发 / Volta / Claude / 工具集 / 设置。
  */
 import { createRouter, createWebHashHistory } from 'vue-router'
 import HomeView from './views/HomeView.vue'
-import GroupToolsView from './views/GroupToolsView.vue'
+import DailyToolsView from './views/DailyToolsView.vue'
+import DevToolsView from './views/DevToolsView.vue'
+import VoltaManageView from './views/VoltaManageView.vue'
+import ClaudeCodeView from './views/ClaudeCodeView.vue'
+import SitesView from './views/SitesView.vue'
+import UtilitiesView from './views/UtilitiesView.vue'
+import SettingsView from './views/SettingsView.vue'
 
 export const router = createRouter({
   history: createWebHashHistory(),
   routes: [
     { path: '/', name: 'home', component: HomeView },
+    { path: '/sites', name: 'sites', component: SitesView },
+    { path: '/daily', name: 'daily', component: DailyToolsView },
+    { path: '/dev', name: 'dev', component: DevToolsView },
     {
-      path: '/daily',
-      name: 'daily',
-      component: GroupToolsView,
-      props: {
-        group: 'daily',
-        title: '日常工具',
-        subtitle: '通讯、远程等日常应用；多数为下载安装包并拉起厂商向导。',
-      },
+      path: '/dev/node',
+      name: 'node',
+      component: VoltaManageView,
+      props: { toolId: 'node', title: 'Node.js' },
     },
     {
-      path: '/dev',
-      name: 'dev',
-      component: GroupToolsView,
-      props: {
-        group: 'dev',
-        title: '开发工具',
-        subtitle: '编辑器/终端、运行时、AI 编码及配套（如 CC Switch）。',
-      },
+      path: '/dev/pnpm',
+      name: 'pnpm',
+      component: VoltaManageView,
+      props: { toolId: 'pnpm', title: 'Pnpm' },
     },
+    {
+      path: '/dev/yarn',
+      name: 'yarn',
+      component: VoltaManageView,
+      props: { toolId: 'yarn', title: 'Yarn' },
+    },
+    { path: '/dev/claude', name: 'claude', component: ClaudeCodeView },
+    { path: '/utilities', name: 'utilities', component: UtilitiesView },
+    { path: '/settings', name: 'settings', component: SettingsView },
     { path: '/toolbox', redirect: '/dev' },
   ],
 })

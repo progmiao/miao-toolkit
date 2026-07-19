@@ -1,0 +1,77 @@
+﻿{
+    "tools":  [
+                  {
+                      "id":  "wechat",
+                      "sort":  10,
+                      "nameKey":  "wechat.name",
+                      "descriptionKey":  "wechat.description",
+                      "tags":  [
+                                   "chat"
+                               ],
+                      "ui":  {
+                                 "mode":  "generic"
+                             },
+                      "install":  {
+                                      "strategy":  "installer-launch",
+                                      "downloadUrl":  "https://dldir1.qq.com/weixin/Windows/WeChatSetup.exe",
+                                      "installerFileName":  "WeChatSetup.exe",
+                                      "detect":  {
+                                                     "registryUninstallNames":  [
+                                                                                    "微信",
+                                                                                    "WeChat"
+                                                                                ]
+                                                 }
+                                  },
+                      "actions":  [
+                                      {
+                                          "id":  "install",
+                                          "handler":  "generic.installer-launch",
+                                          "nameKey":  "wechat.action.install"
+                                      },
+                                      {
+                                          "id":  "uninstall",
+                                          "handler":  "generic.uninstall",
+                                          "nameKey":  "wechat.action.uninstall"
+                                      }
+                                  ],
+                      "group":  "daily"
+                  },
+                  {
+                      "id":  "sunlogin",
+                      "sort":  20,
+                      "nameKey":  "sunlogin.name",
+                      "descriptionKey":  "sunlogin.description",
+                      "tags":  [
+                                   "remote"
+                               ],
+                      "ui":  {
+                                 "mode":  "generic"
+                             },
+                      "install":  {
+                                      "strategy":  "installer-launch",
+                                      "downloadUrl":  "https://down.oray.com/sunlogin/windows/SunloginClient.exe",
+                                      "installerFileName":  "SunloginClient.exe",
+                                      "detect":  {
+                                                     "registryUninstallNames":  [
+                                                                                    "向日葵",
+                                                                                    "Sunlogin",
+                                                                                    "Oray"
+                                                                                ]
+                                                 }
+                                  },
+                      "actions":  [
+                                      {
+                                          "id":  "install",
+                                          "handler":  "generic.installer-launch",
+                                          "nameKey":  "sunlogin.action.install"
+                                      },
+                                      {
+                                          "id":  "uninstall",
+                                          "handler":  "generic.uninstall",
+                                          "nameKey":  "sunlogin.action.uninstall"
+                                      }
+                                  ],
+                      "group":  "daily"
+                  }
+              ]
+}

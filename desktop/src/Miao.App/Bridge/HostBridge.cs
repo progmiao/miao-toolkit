@@ -1,11 +1,14 @@
-﻿using System.Text.Json;
+﻿using System.Diagnostics;
+using System.Text.Json;
+using System.Windows;
 using System.Windows.Threading;
-using Miao.Tools.Jobs;
+using Microsoft.Win32;
+using Miao.Software.Jobs;
 
 namespace Miao.App.Bridge;
 
 /// <summary>
-/// Vue ↔ C# IPC：目录（按 daily/dev）、分组、Job。
+/// Vue ↔ C# IPC：软件目录、Volta、Claude、网站、工具集、设置、Job。
 /// </summary>
 public sealed class HostBridge
 {
@@ -47,11 +50,82 @@ public sealed class HostBridge
                 postToUi(new { type = "pong", at = DateTimeOffset.Now });
                 break;
 
+            case "get-i18n":
+            {
+                var locale = AppServices.Db.GetSetting("locale", "zh");
+                postToUi(new { type = "i18n", locale, map = AppServices.Db.GetI18nMap(locale) });
+                break;
+            }
+
+            case "settings.get":
+            {
+                var appearanceJson = AppServices.Db.GetSetting("appearance_json", "");
+                object? appearance = null;
+                if (!string.IsNullOrWhiteSpace(appearanceJson))
+                {
+                    try { appearance = System.Text.Json.JsonSerializer.Deserialize<object>(appearanceJson); }
+                    catch { appearance = null; }
+                }
+                postToUi(new
+                {
+                    type = "settings",
+                    locale = AppServices.Db.GetSetting("locale", "zh"),
+                    appearance,
+                });
+                break;
+            }
+
+            case "settings.set-locale":
+            {
+                var locale = root.TryGetProperty("locale", out var l) ? l.GetString() : null;
+                if (locale is not "zh" and not "en")
+                {
+                    postToUi(new { type = "error", message = "locale 仅支持 zh / en" });
+                    break;
+                }
+
+                AppServices.Db.SetSetting("locale", locale);
+                postToUi(new
+                {
+                    type = "settings",
+                    locale,
+                    appearance = (object?)null,
+                });
+                postToUi(new { type = "i18n", locale, map = AppServices.Db.GetI18nMap(locale) });
+                break;
+            }
+
+            case "settings.set-appearance":
+            {
+                if (!root.TryGetProperty("appearance", out var apEl))
+                {
+                    postToUi(new { type = "error", message = "缺少 appearance" });
+                    break;
+                }
+                var appearanceJsonBody = apEl.GetRawText();
+                if (appearanceJsonBody.Length > 64_000)
+                {
+                    postToUi(new { type = "error", message = "appearance 过大" });
+                    break;
+                }
+                AppServices.Db.SetSetting("appearance_json", appearanceJsonBody);
+                object? appearanceObj = null;
+                try { appearanceObj = System.Text.Json.JsonSerializer.Deserialize<object>(appearanceJsonBody); }
+                catch { appearanceObj = null; }
+                postToUi(new
+                {
+                    type = "settings",
+                    locale = AppServices.Db.GetSetting("locale", "zh"),
+                    appearance = appearanceObj,
+                });
+                break;
+            }
+
             case "get-groups":
                 postToUi(new
                 {
                     type = "groups",
-                    groups = AppServices.Plugins.GetGroups(AppServices.Db.GetSetting("locale", "zh"))
+                    groups = AppServices.Software.GetGroups(AppServices.Db.GetSetting("locale", "zh"))
                 });
                 break;
 
@@ -71,6 +145,134 @@ public sealed class HostBridge
                 });
                 break;
 
+            case "volta.list":
+            case "node.list":
+            {
+                var tool = root.TryGetProperty("tool", out var tEl) ? tEl.GetString() : "node";
+                if (string.IsNullOrWhiteSpace(tool)) tool = "node";
+                var ltsOnly = !root.TryGetProperty("ltsOnly", out var lo) || lo.ValueKind != JsonValueKind.False;
+                try
+                {
+                    var items = await AppServices.Volta.ListAsync(tool!, ltsOnly).ConfigureAwait(false);
+                    postToUi(new
+                    {
+                        type = "volta.versions",
+                        tool,
+                        ltsOnly,
+                        items,
+                        voltaAvailable = AppServices.Volta.IsVoltaAvailable(),
+                        conflicts = AppServices.Volta.DetectConflicts(),
+                    });
+                }
+                catch (Exception ex)
+                {
+                    postToUi(new { type = "error", message = $"拉取版本失败: {ex.Message}" });
+                }
+
+                break;
+            }
+
+            case "dialog.pick-folder":
+            {
+                string? path = null;
+                await Application.Current.Dispatcher.InvokeAsync(() =>
+                {
+                    var dlg = new OpenFolderDialog
+                    {
+                        Title = "选择项目目录（含 package.json）",
+                    };
+                    if (dlg.ShowDialog() == true)
+                        path = dlg.FolderName;
+                });
+                postToUi(new { type = "dialog.folder", path });
+                break;
+            }
+
+            case "open-url":
+            {
+                var url = root.TryGetProperty("url", out var u) ? u.GetString() : null;
+                if (string.IsNullOrWhiteSpace(url) ||
+                    (!url.StartsWith("https://", StringComparison.OrdinalIgnoreCase) &&
+                     !url.StartsWith("http://", StringComparison.OrdinalIgnoreCase)))
+                {
+                    postToUi(new { type = "error", message = "无效 URL" });
+                    break;
+                }
+
+                try
+                {
+                    Process.Start(new ProcessStartInfo(url) { UseShellExecute = true });
+                    postToUi(new { type = "open-url.ok", url });
+                }
+                catch (Exception ex)
+                {
+                    postToUi(new { type = "error", message = ex.Message });
+                }
+
+                break;
+            }
+
+            case "claude.status":
+                postToUi(new
+                {
+                    type = "claude.status",
+                    status = AppServices.Claude.GetStatus(),
+                    secrets = AppServices.Claude.GetSecretsPublic(),
+                    plugins = AppServices.Claude.ListFeaturedPlugins(),
+                });
+                break;
+
+            case "claude.set-api":
+            {
+                try
+                {
+                    var mode = root.TryGetProperty("mode", out var m) ? m.GetString() ?? "clear" : "clear";
+                    var apiKey = root.TryGetProperty("apiKey", out var k) ? k.GetString() : null;
+                    var baseUrl = root.TryGetProperty("baseUrl", out var b) ? b.GetString() : null;
+                    var authToken = root.TryGetProperty("authToken", out var a) ? a.GetString() : null;
+                    var path = AppServices.Claude.ApplyApi(mode, apiKey, baseUrl, authToken);
+                    postToUi(new { type = "claude.saved", path, kind = "api" });
+                    postToUi(new
+                    {
+                        type = "claude.status",
+                        status = AppServices.Claude.GetStatus(),
+                        secrets = AppServices.Claude.GetSecretsPublic(),
+                        plugins = AppServices.Claude.ListFeaturedPlugins(),
+                    });
+                }
+                catch (Exception ex)
+                {
+                    postToUi(new { type = "error", message = ex.Message });
+                }
+
+                break;
+            }
+
+            case "claude.set-proxy":
+            {
+                try
+                {
+                    var mode = root.TryGetProperty("mode", out var m) ? m.GetString() ?? "clear" : "clear";
+                    var httpProxy = root.TryGetProperty("httpProxy", out var h) ? h.GetString() : null;
+                    var httpsProxy = root.TryGetProperty("httpsProxy", out var s) ? s.GetString() : null;
+                    var path = AppServices.Claude.ApplyProxy(mode, httpProxy, httpsProxy);
+                    postToUi(new { type = "claude.saved", path, kind = "proxy" });
+                    postToUi(new
+                    {
+                        type = "claude.status",
+                        status = AppServices.Claude.GetStatus(),
+                        secrets = AppServices.Claude.GetSecretsPublic(),
+                        plugins = AppServices.Claude.ListFeaturedPlugins(),
+                    });
+                }
+                catch (Exception ex)
+                {
+                    postToUi(new { type = "error", message = ex.Message });
+                }
+
+                break;
+            }
+
             case "run-job":
                 await StartJobAsync(root, postToUi).ConfigureAwait(false);
                 break;
@@ -79,16 +281,119 @@ public sealed class HostBridge
                 CancelJob(root);
                 break;
 
+            case "sites.list":
+                PostSites(postToUi);
+                break;
+
+            case "sites.open":
+            {
+                var id = root.TryGetProperty("id", out var idEl) ? idEl.GetString() : null;
+                var err = string.IsNullOrWhiteSpace(id) ? "缺少 id" : AppServices.Sites.OpenSite(id!);
+                if (err is not null)
+                    postToUi(new { type = "error", message = err });
+                else
+                    postToUi(new { type = "sites.opened", id });
+                break;
+            }
+
+            case "sites.save-category":
+            {
+                var id = root.TryGetProperty("id", out var i) ? i.GetString() : null;
+                var name = root.TryGetProperty("name", out var n) ? n.GetString() ?? "" : "";
+                var sort = root.TryGetProperty("sort", out var s) && s.TryGetInt32(out var si) ? si : 100;
+                var err = AppServices.Sites.SaveCategory(id, name, sort);
+                if (err is not null) postToUi(new { type = "error", message = err });
+                else PostSites(postToUi);
+                break;
+            }
+
+            case "sites.save":
+            {
+                var id = root.TryGetProperty("id", out var i) ? i.GetString() : null;
+                var categoryId = root.TryGetProperty("categoryId", out var c) ? c.GetString() ?? "" : "";
+                var title = root.TryGetProperty("title", out var t) ? t.GetString() ?? "" : "";
+                var url = root.TryGetProperty("url", out var u) ? u.GetString() ?? "" : "";
+                var sort = root.TryGetProperty("sort", out var s) && s.TryGetInt32(out var si) ? si : 100;
+                var note = root.TryGetProperty("note", out var no) ? no.GetString() : null;
+                var err = AppServices.Sites.SaveSite(id, categoryId, title, url, sort, note);
+                if (err is not null) postToUi(new { type = "error", message = err });
+                else PostSites(postToUi);
+                break;
+            }
+
+            case "sites.delete":
+            {
+                var id = root.TryGetProperty("id", out var i) ? i.GetString() : null;
+                var err = string.IsNullOrWhiteSpace(id) ? "缺少 id" : AppServices.Sites.DeleteSite(id!);
+                if (err is not null) postToUi(new { type = "error", message = err });
+                else PostSites(postToUi);
+                break;
+            }
+
+            case "sites.delete-category":
+            {
+                var id = root.TryGetProperty("id", out var i) ? i.GetString() : null;
+                var err = string.IsNullOrWhiteSpace(id) ? "缺少 id" : AppServices.Sites.DeleteCategory(id!);
+                if (err is not null) postToUi(new { type = "error", message = err });
+                else PostSites(postToUi);
+                break;
+            }
+
+            case "sites.export":
+                postToUi(new { type = "sites.export", json = AppServices.Sites.ExportJson() });
+                break;
+
+            case "sites.import":
+            {
+                var payload = root.TryGetProperty("json", out var j) ? j.GetString() : null;
+                var err = string.IsNullOrWhiteSpace(payload)
+                    ? "缺少 json"
+                    : AppServices.Sites.ImportJson(payload!);
+                if (err is not null) postToUi(new { type = "error", message = err });
+                else PostSites(postToUi);
+                break;
+            }
+
+            case "utilities.list":
+            {
+                var locale = AppServices.Db.GetSetting("locale", "zh");
+                postToUi(new { type = "utilities", data = AppServices.Utilities.GetPage(locale) });
+                break;
+            }
+
+            case "utilities.guid":
+            {
+                var count = root.TryGetProperty("count", out var c) && c.TryGetInt32(out var ci) ? ci : 1;
+                var uppercase = root.TryGetProperty("uppercase", out var u) && u.ValueKind == JsonValueKind.True;
+                var braces = root.TryGetProperty("braces", out var b) && b.ValueKind == JsonValueKind.True;
+                postToUi(new
+                {
+                    type = "utilities.guid",
+                    data = AppServices.Utilities.GenerateGuids(count, uppercase, braces),
+                });
+                break;
+            }
+
             default:
                 postToUi(new { type = "error", message = $"未知消息类型: {type}" });
                 break;
         }
     }
 
+    private static void PostSites(Action<object> postToUi)
+    {
+        postToUi(new
+        {
+            type = "sites",
+            categories = AppServices.Sites.ListCategories(),
+            sites = AppServices.Sites.ListSites(),
+        });
+    }
+
     private static void PostCatalog(Action<object> postToUi, string? group)
     {
         var locale = AppServices.Db.GetSetting("locale", "zh");
-        var items = AppServices.Plugins.GetCatalog(locale, group);
+        var items = AppServices.Software.GetCatalog(locale, group);
         postToUi(new { type = "catalog", group, items });
     }
 
@@ -100,6 +405,8 @@ public sealed class HostBridge
 
         var toolId = root.TryGetProperty("toolId", out var t) ? t.GetString() : null;
         var action = root.TryGetProperty("action", out var a) ? a.GetString() : "install";
+        var versions = ReadVersions(root);
+        var options = ReadOptions(root);
 
         if (string.IsNullOrWhiteSpace(toolId))
         {
@@ -107,25 +414,25 @@ public sealed class HostBridge
             return;
         }
 
-        if (!AppServices.Plugins.Contains(toolId!))
+        if (!AppServices.Software.Contains(toolId!))
         {
-            postToUi(new { type = "job-event", jobId, kind = "error", message = $"未知插件: {toolId}" });
+            postToUi(new { type = "job-event", jobId, kind = "error", message = $"未知软件: {toolId}" });
             return;
         }
 
         var cts = new CancellationTokenSource();
         lock (_running) { _running[jobId] = cts; }
 
-        postToUi(new { type = "job-started", jobId, toolId, action });
+        postToUi(new { type = "job-started", jobId, toolId, action, versions });
 
         try
         {
-            var result = await AppServices.Plugins
-                .ExecuteAsync(jobId, toolId!, action ?? "install", _jobs, cts.Token)
+            var result = await AppServices.Software
+                .ExecuteAsync(jobId, toolId!, action ?? "install", _jobs, versions, options, cts.Token)
                 .ConfigureAwait(false);
 
-            AppServices.Plugins.ProbeTool(toolId!);
-            var row = AppServices.Db.GetPlugin(toolId!);
+            AppServices.Software.ProbeTool(toolId!);
+            var row = AppServices.Db.GetSoftware(toolId!);
             PostCatalog(postToUi, row?.Group);
 
             postToUi(new
@@ -141,6 +448,53 @@ public sealed class HostBridge
         {
             lock (_running) { _running.Remove(jobId); }
         }
+    }
+
+    private static List<string>? ReadVersions(JsonElement root)
+    {
+        var list = new List<string>();
+        if (root.TryGetProperty("versions", out var arr) && arr.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var el in arr.EnumerateArray())
+            {
+                var s = el.GetString();
+                if (!string.IsNullOrWhiteSpace(s)) list.Add(s.Trim());
+            }
+        }
+        else if (root.TryGetProperty("version", out var one))
+        {
+            var s = one.GetString();
+            if (!string.IsNullOrWhiteSpace(s)) list.Add(s.Trim());
+        }
+
+        return list.Count > 0 ? list : null;
+    }
+
+    private static Dictionary<string, string>? ReadOptions(JsonElement root)
+    {
+        var dict = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var key in new[] { "projectPath", "plugins" })
+        {
+            if (root.TryGetProperty(key, out var el) && el.ValueKind == JsonValueKind.String)
+            {
+                var s = el.GetString();
+                if (!string.IsNullOrWhiteSpace(s)) dict[key] = s;
+            }
+        }
+
+        if (root.TryGetProperty("options", out var opt) && opt.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var p in opt.EnumerateObject())
+            {
+                if (p.Value.ValueKind == JsonValueKind.String)
+                {
+                    var s = p.Value.GetString();
+                    if (!string.IsNullOrWhiteSpace(s)) dict[p.Name] = s!;
+                }
+            }
+        }
+
+        return dict.Count > 0 ? dict : null;
     }
 
     private void CancelJob(JsonElement root)

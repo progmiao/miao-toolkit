@@ -15,12 +15,12 @@ export default defineConfig({
     },
   },
   server: {
-    /** 开发端口；与宿主探测、dev.ps1 打开浏览器的地址一致 */
+    /** 开发端口；与宿主 MainWindow 探测地址一致 */
     port: 5173,
     strictPort: true,
     /**
      * 启动 Vite 时自动打开系统浏览器，便于用 F12 调样式。
-     * 与 WebView2 宿主并行：浏览器看样式，宿主测 IPC。
+     * 宿主 WebView2 另开窗口联调 IPC；dev.ps1 不再重复打开浏览器。
      */
     open: true,
   },

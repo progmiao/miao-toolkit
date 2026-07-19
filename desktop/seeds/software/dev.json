@@ -1,0 +1,187 @@
+{
+  "tools": [
+    {
+      "id": "volta",
+      "sort": 5,
+      "nameKey": "voltaApp.name",
+      "descriptionKey": "voltaApp.description",
+      "tags": ["runtime"],
+      "ui": { "mode": "generic" },
+      "install": {
+        "strategy": "winget",
+        "packageId": "Volta.Volta",
+        "detect": { "command": "volta", "commandArgs": "--version" }
+      },
+      "actions": [
+        { "id": "install", "handler": "generic.winget", "nameKey": "voltaApp.action.install" },
+        { "id": "uninstall", "handler": "generic.winget-uninstall", "nameKey": "voltaApp.action.uninstall" }
+      ],
+      "group": "dev"
+    },
+    {
+      "id": "node",
+      "sort": 10,
+      "nameKey": "node.name",
+      "descriptionKey": "node.description",
+      "tags": ["runtime", "needs-volta"],
+      "ui": { "mode": "panel", "entry": "volta" },
+      "install": {
+        "strategy": "custom",
+        "detect": { "command": "node", "commandArgs": "-v" }
+      },
+      "actions": [
+        { "id": "install", "handler": "volta.install", "nameKey": "volta.action.install" },
+        { "id": "uninstall", "handler": "volta.uninstall", "nameKey": "volta.action.uninstall" },
+        { "id": "set-default", "handler": "volta.set-default", "nameKey": "volta.action.setDefault" },
+        { "id": "pin", "handler": "volta.pin", "nameKey": "volta.action.pin" }
+      ],
+      "group": "dev"
+    },
+    {
+      "id": "pnpm",
+      "sort": 15,
+      "nameKey": "pnpm.name",
+      "descriptionKey": "pnpm.description",
+      "tags": ["runtime", "needs-volta"],
+      "ui": { "mode": "panel", "entry": "volta" },
+      "install": {
+        "strategy": "custom",
+        "detect": { "command": "pnpm", "commandArgs": "--version" }
+      },
+      "actions": [
+        { "id": "install", "handler": "volta.install", "nameKey": "volta.action.install" },
+        { "id": "uninstall", "handler": "volta.uninstall", "nameKey": "volta.action.uninstall" },
+        { "id": "set-default", "handler": "volta.set-default", "nameKey": "volta.action.setDefault" },
+        { "id": "pin", "handler": "volta.pin", "nameKey": "volta.action.pin" }
+      ],
+      "group": "dev"
+    },
+    {
+      "id": "yarn",
+      "sort": 16,
+      "nameKey": "yarn.name",
+      "descriptionKey": "yarn.description",
+      "tags": ["runtime", "needs-volta"],
+      "ui": { "mode": "panel", "entry": "volta" },
+      "install": {
+        "strategy": "custom",
+        "detect": { "command": "yarn", "commandArgs": "--version" }
+      },
+      "actions": [
+        { "id": "install", "handler": "volta.install", "nameKey": "volta.action.install" },
+        { "id": "uninstall", "handler": "volta.uninstall", "nameKey": "volta.action.uninstall" },
+        { "id": "set-default", "handler": "volta.set-default", "nameKey": "volta.action.setDefault" },
+        { "id": "pin", "handler": "volta.pin", "nameKey": "volta.action.pin" }
+      ],
+      "group": "dev"
+    },
+    {
+      "id": "claude-code",
+      "sort": 25,
+      "nameKey": "claude.name",
+      "descriptionKey": "claude.description",
+      "tags": ["ai", "cli"],
+      "ui": { "mode": "panel", "entry": "claude" },
+      "install": {
+        "strategy": "winget",
+        "packageId": "Anthropic.ClaudeCode",
+        "detect": { "command": "claude", "commandArgs": "--version" }
+      },
+      "actions": [
+        { "id": "install", "handler": "claude.install", "nameKey": "claude.action.install" },
+        { "id": "uninstall", "handler": "claude.uninstall", "nameKey": "claude.action.uninstall" },
+        { "id": "init", "handler": "claude.init", "nameKey": "claude.action.init" },
+        { "id": "plugin-install", "handler": "claude.plugin-install", "nameKey": "claude.action.pluginInstall" },
+        { "id": "plugin-uninstall", "handler": "claude.plugin-uninstall", "nameKey": "claude.action.pluginUninstall" }
+      ],
+      "group": "dev"
+    },
+    {
+      "id": "terminal-buddy",
+      "sort": 30,
+      "nameKey": "tb.name",
+      "descriptionKey": "tb.description",
+      "tags": ["terminal"],
+      "ui": { "mode": "generic" },
+      "install": {
+        "strategy": "custom",
+        "giteeOwner": "updateme",
+        "giteeRepo": "terminal-buddy",
+        "assetName": "terminal-buddy.exe",
+        "detect": {
+          "exePaths": ["%LOCALAPPDATA%\\Programs\\terminal-buddy\\terminal-buddy.exe"]
+        }
+      },
+      "actions": [
+        { "id": "install", "handler": "terminal-buddy.install", "nameKey": "tb.action.install" },
+        { "id": "uninstall", "handler": "terminal-buddy.uninstall", "nameKey": "tb.action.uninstall" }
+      ],
+      "group": "dev"
+    },
+    {
+      "id": "cc-switch",
+      "sort": 40,
+      "nameKey": "ccs.name",
+      "descriptionKey": "ccs.description",
+      "tags": ["ai"],
+      "ui": { "mode": "generic" },
+      "install": {
+        "strategy": "winget",
+        "packageId": "farion1231.CC-Switch",
+        "detect": {
+          "registryUninstallNames": ["CC Switch", "CC-Switch"]
+        }
+      },
+      "actions": [
+        { "id": "install", "handler": "generic.winget", "nameKey": "ccs.action.install" },
+        { "id": "uninstall", "handler": "generic.uninstall", "nameKey": "ccs.action.uninstall" }
+      ],
+      "group": "dev"
+    },
+    {
+      "id": "cc-connect",
+      "sort": 50,
+      "nameKey": "ccc.name",
+      "descriptionKey": "ccc.description",
+      "tags": ["ai"],
+      "ui": { "mode": "generic" },
+      "install": {
+        "strategy": "winget",
+        "packageId": "9NHCNC0N2LBJ",
+        "wingetSource": "msstore",
+        "detect": {
+          "registryUninstallNames": ["CC Connect", "cc-connect"]
+        }
+      },
+      "actions": [
+        { "id": "install", "handler": "generic.winget", "nameKey": "ccc.action.install" },
+        { "id": "uninstall", "handler": "generic.winget-uninstall", "nameKey": "ccc.action.uninstall" }
+      ],
+      "group": "dev"
+    },
+    {
+      "id": "hermes",
+      "sort": 60,
+      "nameKey": "hermes.name",
+      "descriptionKey": "hermes.description",
+      "tags": ["ai", "cli"],
+      "ui": { "mode": "generic" },
+      "install": {
+        "strategy": "custom",
+        "detect": {
+          "exePaths": [
+            "%LOCALAPPDATA%\\hermes\\hermes-agent\\venv\\Scripts\\hermes.exe",
+            "%LOCALAPPDATA%\\hermes\\bin\\hermes.cmd"
+          ],
+          "command": "hermes",
+          "commandArgs": "--version"
+        }
+      },
+      "actions": [
+        { "id": "install", "handler": "hermes.install", "nameKey": "hermes.action.install" },
+        { "id": "uninstall", "handler": "hermes.uninstall", "nameKey": "hermes.action.uninstall" }
+      ],
+      "group": "dev"
+    }
+  ]
+}

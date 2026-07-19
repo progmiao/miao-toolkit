@@ -1,0 +1,110 @@
+/**
+ * 全局 Toast 样式：顶部居中，自顶边滑入 / 滑出。
+ */
+
+.app-toast-host {
+  position: fixed;
+  top: 0.85rem;
+  left: 50%;
+  z-index: 10000;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.45rem;
+  width: min(28rem, calc(100vw - 2rem));
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.app-toast {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  width: max-content;
+  max-width: 100%;
+  padding: 0.55rem 0.75rem 0.55rem 1rem;
+  border-radius: 0.65rem;
+  border: 1px solid color-mix(in srgb, var(--line) 90%, transparent);
+  background: color-mix(in srgb, var(--panel-strong) 92%, transparent);
+  color: var(--ink);
+  box-shadow:
+    0 10px 28px color-mix(in srgb, #000 28%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--accent) 18%, transparent),
+    inset 0 1px 0 color-mix(in srgb, #fff 22%, transparent);
+  backdrop-filter: blur(16px) saturate(1.35);
+  -webkit-backdrop-filter: blur(16px) saturate(1.35);
+  font-size: 0.92rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.app-toast.kind-ok {
+  border-color: color-mix(in srgb, var(--ok) 45%, transparent);
+  box-shadow:
+    0 10px 28px color-mix(in srgb, #000 28%, transparent),
+    0 0 18px color-mix(in srgb, var(--ok) 22%, transparent);
+}
+.app-toast.kind-warn {
+  border-color: color-mix(in srgb, var(--warn) 45%, transparent);
+}
+.app-toast.kind-error {
+  border-color: color-mix(in srgb, var(--danger) 50%, transparent);
+  color: color-mix(in srgb, var(--danger) 85%, var(--ink));
+}
+
+.app-toast-text {
+  flex: 1;
+  min-width: 0;
+  line-height: 1.35;
+  word-break: break-word;
+}
+
+.app-toast-close {
+  flex: 0 0 auto;
+  width: 1.5rem;
+  height: 1.5rem;
+  display: grid;
+  place-items: center;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 0.35rem;
+  background: transparent;
+  color: var(--muted);
+  font-size: 1.15rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.app-toast-close:hover {
+  color: var(--ink);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+/* 自顶边滑入 / 滑出 */
+.app-toast-enter-active,
+.app-toast-leave-active {
+  transition:
+    opacity 0.32s ease,
+    transform 0.38s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.app-toast-enter-from,
+.app-toast-leave-to {
+  opacity: 0;
+  transform: translateY(-120%);
+}
+.app-toast-move {
+  transition: transform 0.32s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-toast-enter-active,
+  .app-toast-leave-active,
+  .app-toast-move {
+    transition: opacity 0.15s ease;
+  }
+  .app-toast-enter-from,
+  .app-toast-leave-to {
+    transform: none;
+  }
+}

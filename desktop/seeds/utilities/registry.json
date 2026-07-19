@@ -1,0 +1,9 @@
+{
+  "items": [
+    {
+      "id": "guid",
+      "nameKey": "util.guid.name",
+      "descriptionKey": "util.guid.description"
+    }
+  ]
+}

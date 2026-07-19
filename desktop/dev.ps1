@@ -1,4 +1,4 @@
-# One-command desktop development: Vite (HMR) + browser + Miao host
+# One-command desktop development: Vite (HMR) + Miao host（UI 仅在宿主 WebView2 中打开）
 # Usage:  cd desktop; .\dev.ps1
 #
 # 依赖：Volta 管理的 Node（见 ui/package.json → volta.node）、.NET 10 SDK
@@ -112,10 +112,7 @@ try {
         Write-Host 'Vite already running; reusing it.'
     }
 
-    # 浏览器打开同一页，便于 F12 调样式；宿主窗口仍用于联调 IPC
-    Write-Host "Opening browser: $viteUrl"
-    Start-Process $viteUrl | Out-Null
-
+    # UI 由宿主 WebView2 加载 Vite；不再额外打开系统浏览器
     $env:MIAO_UI_DEV = '1'
     Write-Host 'Starting Miao host (edit desktop/ui for HMR)...'
     Write-Host 'Close the app window or press Ctrl+C here to stop.'

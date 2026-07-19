@@ -1,0 +1,46 @@
+﻿{
+    "categories":  [
+                       {
+                           "source":  "system",
+                           "name":  "开发",
+                           "id":  "sys-dev",
+                           "sort":  10
+                       },
+                       {
+                           "source":  "system",
+                           "name":  "文档",
+                           "id":  "sys-docs",
+                           "sort":  20
+                       }
+                   ],
+    "sites":  [
+                  {
+                      "id":  "sys-github",
+                      "categoryId":  "sys-dev",
+                      "source":  "system",
+                      "note":  "",
+                      "sort":  10,
+                      "title":  "GitHub",
+                      "url":  "https://github.com"
+                  },
+                  {
+                      "id":  "sys-nodejs",
+                      "categoryId":  "sys-dev",
+                      "source":  "system",
+                      "note":  "",
+                      "sort":  20,
+                      "title":  "Node.js",
+                      "url":  "https://nodejs.org"
+                  },
+                  {
+                      "id":  "sys-mdn",
+                      "categoryId":  "sys-docs",
+                      "source":  "system",
+                      "note":  "",
+                      "sort":  10,
+                      "title":  "MDN",
+                      "url":  "https://developer.mozilla.org"
+                  }
+              ],
+    "seedVersion":  1
+}

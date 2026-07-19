@@ -99,9 +99,9 @@ Miao Desktop（个人工具百宝箱）
 | 桌面壳 | **.NET 10 + WPF + WebView2（C#）** |
 | UI | **Vue 3 + TypeScript + Vite** |
 | 原生侧 | **C#**：起进程、杀进程树、文件、托盘/定时（后续） |
-| 安装任务 | **插件 `handler` → `IToolActionHandler`**（C# + 必要子进程）；对照 `cli/` 功能结果重写 |
-| 本地状态 | **SQLite**（`%LocalAppData%\Miao\miao.db`）：插件缓存、tool_state、设置 |
-| 工具清单 | **`desktop/plugins/{daily\|dev}/*/plugin.json`** + `_registry.json`；用户扩展目录 `%LocalAppData%\Miao\plugins\` |
+| 安装任务 | **软件 `handler` → `IToolActionHandler`**（C# + 必要子进程）；对照 `cli/` 功能结果重写 |
+| 本地状态 | **SQLite**（`%LocalAppData%\Miao\miao.db`）：software / i18n / sites / tool_state / 设置 |
+| 种子数据 | **`desktop/seeds/`**（software、sites、i18n、groups）；启动灌库，无第三方插件目录 |
 | 打包安装 | MSIX / Inno / VS Installer 等（后续） |
 | 更新 | GitHub Releases + C# 检查下载 |
 
@@ -110,23 +110,23 @@ Miao Desktop（个人工具百宝箱）
 ### 5.2 逻辑架构
 
 ```text
-Vue UI（日常工具 / 开发工具 / 通用页+panel / Job）
+Vue UI（常用网站 / 日常·开发软件 / 工具集 / 设置）
         │  WebView2 postMessage
 C# HostBridge（Miao.App）
         │
-   PluginHost（Miao.Tools）+ JobRunner
+   SoftwareCatalog（Miao.Software）+ SiteService + Utilities + JobRunner
         │  仓储
-   AppDatabase（Miao.Data）← Common DTO
+   AppDatabase + SeedLoader（Miao.Data）← Common DTO
         │
    Handler（generic.* / node.* / terminal-buddy.*）
 ```
 
-工程：`Miao.App` 壳 · `Miao.Common` · `Miao.Data` · `Miao.Tools`；插件：[`desktop/plugins/`](desktop/plugins/)（`daily/` + `dev/`）；[`cli/`](cli/) **仅参考**。
+工程：`Miao.App` · `Miao.Common` · `Miao.Data` · `Miao.Software` · `Miao.Sites` · `Miao.Utilities`；种子：[`desktop/seeds/`](desktop/seeds/)；[`cli/`](cli/) **仅功能结果参考**。
 
-一级分类：**日常工具** / **开发工具**（文件夹定归属）。  
-UI：`generic` 壳页 + `panel` 专属面板（如 Node）。  
-安装：不继承旧 Miao CLI 途径；按工具重选（installer-launch / winget / npm / custom）。  
-自定义插件根：`%LocalAppData%\Miao\plugins\{daily|dev}\`（与内置合并，同 id 覆盖）。
+侧栏：**常用网站 → 日常工具 → 开发工具 → 工具集 → 设置**。  
+软件：`generic` 壳页 + `panel` 专用面板（如 Node）。  
+安装：不继承旧 CLI 途径；按软件重选（installer-launch / winget / npm / custom）。  
+不做第三方插件加载。
 
 ### 5.3 安装与更新（用户侧要「简单」）
 
@@ -153,9 +153,10 @@ UI：`generic` 壳页 + `panel` 专属面板（如 Node）。
 
 - [x] 新建 `desktop/`（WPF WebView2 + Vue）
 - [x] Task 引擎（PowerShell JobRunner）+ 清单 UI 骨架
-- [x] 工程拆分 Common / Data / Tools；插件按 **日常工具 / 开发工具** 文件夹分类
-- [x] 样板：微信、向日葵、TerminalBuddy、Node、CC Switch、CC Connect
-- [ ] 打通 Claude Code / Hermes 等：补 `plugins/dev/*` + Handler
+- [x] 工程拆分 Common / Data / Software / Sites / Utilities；种子 `seeds/`（非插件）
+- [x] 样板：微信、向日葵、TerminalBuddy、Node、CC Switch、CC Connect；常用网站
+- [ ] 打通 Claude Code / Hermes 等：补 `seeds/software` + Handler
+- [ ] 工具集首个小工具（如 GUID）
 - [ ] 发版：GitHub Release 挂 Desktop/Setup
 
 ### 阶段 2 — 管理中心成型

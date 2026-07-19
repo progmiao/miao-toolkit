@@ -1,7 +1,7 @@
 /**
- * WebView2 宿主探测与原始 postMessage 封装。
- * 浏览器里直接打开 Vite 时 host 不可用，post 会 console.warn，便于纯前端调试。
+ * WebView2 宿主探测；无宿主时走 Mock，便于浏览器调试。
  */
+import { handleMockRequest } from './mockHost'
 
 /** 取得 Edge WebView2 注入的 chrome.webview（非 WebView 环境为 undefined）。 */
 function getWebView() {
@@ -17,21 +17,28 @@ export const host = {
   },
 
   /**
-   * 向 C# 宿主发送一条消息（对象会被 JSON.stringify）。
+   * 是否为浏览器 Mock 调试模式（无 WebView2）。
+   */
+  isMock(): boolean {
+    return !getWebView()
+  },
+
+  /**
+   * 向 C# 宿主发送消息；无宿主时转交 Mock。
    * @param message - 任意可序列化载荷；通常含 `type` 字段
    */
   post(message: unknown) {
     const wv = getWebView()
     if (!wv) {
-      console.warn('[miao] host unavailable', message)
+      handleMockRequest((message ?? {}) as Record<string, unknown>)
       return
     }
     wv.postMessage(JSON.stringify(message))
   },
 
   /**
-   * 订阅宿主回传的 message 事件。
-   * @param listener - 标准 MessageEvent 回调；data 多为 JSON 字符串
+   * 订阅宿主回传的 message 事件（Mock 模式由 bus 另接 emitter）。
+   * @param listener - 标准 MessageEvent 回调
    */
   addMessageListener(listener: (event: MessageEvent) => void) {
     const wv = getWebView()

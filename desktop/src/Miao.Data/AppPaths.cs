@@ -1,10 +1,7 @@
-using System.IO;
-using Microsoft.Data.Sqlite;
-
 namespace Miao.Data;
 
 /// <summary>
-/// 应用数据与插件目录路径（LocalAppData + 内置 plugins + 用户自定义 plugins）。
+/// 应用数据与种子目录路径（LocalAppData + 打包内 seeds）。
 /// </summary>
 public static class AppPaths
 {
@@ -28,46 +25,20 @@ public static class AppPaths
     public static string DatabasePath => Path.Combine(DataRoot, "miao.db");
 
     /// <summary>
-    /// 用户自定义插件根：%LocalAppData%\Miao\plugins\（结构同 daily/dev）。
-    /// 目录始终确保存在，便于后续放入插件而无需改扫描逻辑。
+    /// 解析种子根目录：优先输出目录旁 seeds，开发期回退到仓库 desktop/seeds。
     /// </summary>
-    public static string UserPluginsRoot
+    public static string? ResolveSeedsRoot()
     {
-        get
-        {
-            var root = Path.Combine(DataRoot, "plugins");
-            Directory.CreateDirectory(root);
-            // 预留分类空目录，方便用户直接丢插件
-            Directory.CreateDirectory(Path.Combine(root, "daily"));
-            Directory.CreateDirectory(Path.Combine(root, "dev"));
-            return root;
-        }
-    }
-
-    /// <summary>
-    /// 解析插件扫描根：先内置（输出目录 / 开发期仓库），再用户目录（同 id 后者覆盖）。
-    /// </summary>
-    public static IReadOnlyList<string> ResolvePluginRoots()
-    {
-        var list = new List<string>();
-
-        var besideExe = Path.Combine(AppContext.BaseDirectory, "plugins");
+        var besideExe = Path.Combine(AppContext.BaseDirectory, "seeds");
         if (Directory.Exists(besideExe))
-            list.Add(Path.GetFullPath(besideExe));
+            return Path.GetFullPath(besideExe);
 
         // bin/Debug/net10.0-windows -> Miao.App -> src -> desktop
-        var desktopPlugins = Path.GetFullPath(
-            Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "plugins"));
-        if (Directory.Exists(desktopPlugins) &&
-            !list.Any(p => string.Equals(p, desktopPlugins, StringComparison.OrdinalIgnoreCase)))
-        {
-            list.Add(desktopPlugins);
-        }
+        var desktopSeeds = Path.GetFullPath(
+            Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "seeds"));
+        if (Directory.Exists(desktopSeeds))
+            return desktopSeeds;
 
-        var user = Path.GetFullPath(UserPluginsRoot);
-        if (!list.Any(p => string.Equals(p, user, StringComparison.OrdinalIgnoreCase)))
-            list.Add(user);
-
-        return list;
+        return null;
     }
 }

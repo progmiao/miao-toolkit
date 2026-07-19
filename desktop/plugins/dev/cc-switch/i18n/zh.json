@@ -1,6 +1,0 @@
-{
-  "ccs.name": "CC Switch",
-  "ccs.description": "官方桌面端：管理 Claude Code 等 AI CLI 的供应商配置",
-  "ccs.action.install": "安装",
-  "ccs.action.uninstall": "卸载"
-}
