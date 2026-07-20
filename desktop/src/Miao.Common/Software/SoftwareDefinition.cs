@@ -43,7 +43,10 @@ public sealed class SoftwareUiManifest
     [JsonPropertyName("mode")]
     public string Mode { get; set; } = "generic";
 
-    /// <summary>panel 入口相对路径（预留）。</summary>
+    /// <summary>
+    /// panel 入口路由段：前端跳转 `/dev/{entry}`（如 node / pnpm / yarn / claude）。
+    /// 与 `ui/src/dev/<entry>/index.vue` 及 router 注册保持一致。
+    /// </summary>
     [JsonPropertyName("entry")]
     public string? Entry { get; set; }
 }
@@ -165,6 +168,7 @@ public sealed class SoftwareGroupDefinition
 /// <param name="Version">探测到的版本；可空。</param>
 /// <param name="Actions">可用动作 id。</param>
 /// <param name="UiMode">generic | panel。</param>
+/// <param name="UiEntry">panel 路由段：与前端 `/dev/{entry}` 对应；generic 时可空。</param>
 /// <param name="Tags">分类标签。</param>
 /// <param name="UpdateAvailable">已安装且检测到可更新时为 true（驱动「更新」按钮）。</param>
 public sealed record CatalogItemDto(
@@ -176,6 +180,7 @@ public sealed record CatalogItemDto(
     [property: JsonPropertyName("version")] string? Version,
     [property: JsonPropertyName("actions")] string[] Actions,
     [property: JsonPropertyName("uiMode")] string UiMode,
+    [property: JsonPropertyName("uiEntry")] string? UiEntry,
     [property: JsonPropertyName("tags")] string[] Tags,
     [property: JsonPropertyName("updateAvailable")] bool UpdateAvailable);
 

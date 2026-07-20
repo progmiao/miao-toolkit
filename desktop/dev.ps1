@@ -1,7 +1,9 @@
-# One-command desktop development: Vite (HMR) + Miao host（UI 仅在宿主 WebView2 中打开）
+# One-click desktop dev: Vite (HMR) + Miao host (UI only in WebView2)
 # Usage:  cd desktop; .\dev.ps1
 #
-# 依赖：Volta 管理的 Node（见 ui/package.json → volta.node）、.NET 10 SDK
+# Requires: .NET 10 SDK, Volta (auto-installed by this script), WebView2 Runtime.
+# Volta provides the Node version pinned in ui/package.json for local UI work.
+# In-app "Dev Tools -> Volta" remains the product install path for release testing.
 $ErrorActionPreference = 'Stop'
 $ui = Join-Path $PSScriptRoot 'ui'
 $proj = Join-Path $PSScriptRoot 'src\Miao.App\Miao.App.csproj'
@@ -35,7 +37,7 @@ function Stop-PortListeners([int]$Port) {
     }
 }
 
-# 从 package.json 的 volta.node 读取期望版本；没有则默认 22.23.1
+# Read pinned Node from package.json volta.node; default 22.23.1
 function Get-PinnedNodeVersion {
     param([string]$PackageJsonPath)
     $raw = Get-Content -Raw -Path $PackageJsonPath
@@ -46,19 +48,95 @@ function Get-PinnedNodeVersion {
     return '22.23.1'
 }
 
-# 确保 Volta 已安装，并安装 package.json 指定的 Node 版本
+# Refresh session PATH and prepend common Volta install dirs
+function Update-SessionPathForVolta {
+    $pf86 = [Environment]::GetEnvironmentVariable('ProgramFiles(x86)')
+    $extra = @(
+        (Join-Path $env:USERPROFILE '.volta\bin'),
+        (Join-Path $env:LOCALAPPDATA 'Volta\bin'),
+        (Join-Path $env:ProgramFiles 'Volta')
+    )
+    if ($pf86) {
+        $extra += (Join-Path $pf86 'Volta')
+    }
+    $extra = $extra | Where-Object { $_ -and (Test-Path -LiteralPath $_) }
+
+    $machine = [Environment]::GetEnvironmentVariable('Path', 'Machine')
+    $user = [Environment]::GetEnvironmentVariable('Path', 'User')
+    $parts = @($extra) + @(($user -split ';') + ($machine -split ';') + ($env:Path -split ';')) |
+        Where-Object { $_ -and $_.Trim() } |
+        Select-Object -Unique
+    $env:Path = ($parts -join ';')
+}
+
+# Resolve volta.exe from PATH or common install locations
+function Resolve-VoltaCommand {
+    Update-SessionPathForVolta
+    $cmd = Get-Command volta -ErrorAction SilentlyContinue
+    if ($cmd) { return $cmd }
+
+    $pf86 = [Environment]::GetEnvironmentVariable('ProgramFiles(x86)')
+    $candidates = @(
+        (Join-Path $env:USERPROFILE '.volta\bin\volta.exe'),
+        (Join-Path $env:LOCALAPPDATA 'Volta\bin\volta.exe'),
+        (Join-Path $env:ProgramFiles 'Volta\volta.exe')
+    )
+    if ($pf86) {
+        $candidates += (Join-Path $pf86 'Volta\volta.exe')
+    }
+    foreach ($c in $candidates) {
+        if (Test-Path -LiteralPath $c) {
+            $bin = Split-Path -Parent $c
+            if ($env:Path -notlike "*$bin*") {
+                $env:Path = "$bin;$env:Path"
+            }
+            return (Get-Command volta -ErrorAction SilentlyContinue)
+        }
+    }
+    return $null
+}
+
+# Install Volta via winget when missing (local bootstrap only, not product flow)
+function Install-VoltaWithWinget {
+    $winget = Get-Command winget -ErrorAction SilentlyContinue
+    if (-not $winget) {
+        throw 'winget not found. Install Volta from https://volta.sh then re-run .\dev.ps1'
+    }
+    Write-Host 'Volta not found. Installing via winget (Volta.Volta) for local UI development...'
+    Write-Host 'If a UAC / install dialog appears, please allow it (cancel = exit 1602).'
+    & winget install --id Volta.Volta -e `
+        --accept-package-agreements `
+        --accept-source-agreements `
+        --disable-interactivity
+    # exit 0 or -1978335189 (already installed) count as success
+    $code = $LASTEXITCODE
+    if ($code -ne 0 -and $code -ne -1978335189) {
+        throw (
+            "winget install Volta.Volta failed (exit $code).`n" +
+            "Allow the installer dialog, or run: winget install Volta.Volta`n" +
+            "Then re-run .\dev.ps1"
+        )
+    }
+    Update-SessionPathForVolta
+}
+
+# Ensure Volta + package.json-pinned Node are available
 function Ensure-VoltaNode {
     param([string]$Version)
 
-    $voltaCmd = Get-Command volta -ErrorAction SilentlyContinue
+    $voltaCmd = Resolve-VoltaCommand
     if (-not $voltaCmd) {
-        throw @"
-未找到 Volta。请先安装：https://volta.sh
-或：winget install Volta.Volta
-安装后重新打开终端，再运行 .\dev.ps1
-"@
+        Install-VoltaWithWinget
+        $voltaCmd = Resolve-VoltaCommand
+    }
+    if (-not $voltaCmd) {
+        throw (
+            "Volta still not found after install. Open a NEW terminal and run .\dev.ps1 again.`n" +
+            "Or install manually: winget install Volta.Volta / https://volta.sh"
+        )
     }
 
+    Write-Host ("Volta: " + $voltaCmd.Source)
     Write-Host "Volta: ensuring node@$Version ..."
     & volta install "node@$Version"
     if ($LASTEXITCODE -ne 0) {
@@ -75,7 +153,7 @@ Ensure-VoltaNode -Version $nodeVersion
 
 Push-Location $ui
 try {
-    # 在 ui 目录下 pin，保证本目录 npm/node 走 Volta 版本
+    # Pin in ui dir so npm/node use Volta-managed version
     & volta pin "node@$nodeVersion" | Out-Null
     Write-Host ("Node (volta): " + (& node -v))
 
@@ -94,7 +172,6 @@ $startedVite = $false
 try {
     if (-not (Test-ViteUp)) {
         Write-Host 'Starting Vite on :5173 ...'
-        # WorkingDirectory=ui → Volta 按 package.json 选用 Node
         Start-Process -FilePath 'npm.cmd' -ArgumentList 'run', 'dev' `
             -WorkingDirectory $ui -WindowStyle Minimized | Out-Null
         $startedVite = $true
@@ -112,7 +189,6 @@ try {
         Write-Host 'Vite already running; reusing it.'
     }
 
-    # UI 由宿主 WebView2 加载 Vite；不再额外打开系统浏览器
     $env:MIAO_UI_DEV = '1'
     Write-Host 'Starting Miao host (edit desktop/ui for HMR)...'
     Write-Host 'Close the app window or press Ctrl+C here to stop.'

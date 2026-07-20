@@ -1,9 +1,9 @@
 using Miao.Data;
 using Miao.Sites;
 using Miao.Software.Catalog;
-using Miao.Software.Claude;
+using Miao.Software.Dev.Claude;
 using Miao.Software.Jobs;
-using Miao.Software.Volta;
+using Miao.Software.Dev.Volta;
 using Miao.Utilities;
 
 namespace Miao.App;

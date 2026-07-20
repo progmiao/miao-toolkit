@@ -1,0 +1,41 @@
+{
+    "tools":  [
+                  {
+                      "id":  "volta",
+                      "sort":  5,
+                      "nameKey":  "voltaApp.name",
+                      "descriptionKey":  "voltaApp.description",
+                      "tags":  [
+                                   "runtime"
+                               ],
+                      "ui":  {
+                                 "mode":  "panel",
+                                 "entry":  "volta"
+                             },
+                      "install":  {
+                                      "strategy":  "winget",
+                                      "packageId":  "Volta.Volta",
+                                      "detect":  {
+                                                     "command":  "volta",
+                                                     "commandArgs":  "--version"
+                                                 },
+                                      "update":  {
+                                                     "strategy":  "winget"
+                                                 }
+                                  },
+                      "actions":  [
+                                      {
+                                          "id":  "install",
+                                          "handler":  "generic.winget",
+                                          "nameKey":  "voltaApp.action.install"
+                                      },
+                                      {
+                                          "id":  "uninstall",
+                                          "handler":  "generic.winget-uninstall",
+                                          "nameKey":  "voltaApp.action.uninstall"
+                                      }
+                                  ],
+                      "group":  "dev"
+                  }
+              ]
+}

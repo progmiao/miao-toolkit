@@ -1,0 +1,51 @@
+{
+    "tools":  [
+                  {
+                      "id":  "pnpm",
+                      "sort":  15,
+                      "nameKey":  "pnpm.name",
+                      "descriptionKey":  "pnpm.description",
+                      "tags":  [
+                                   "runtime",
+                                   "needs-volta"
+                               ],
+                      "ui":  {
+                                 "mode":  "panel",
+                                 "entry":  "pnpm"
+                             },
+                      "install":  {
+                                      "strategy":  "custom",
+                                      "detect":  {
+                                                     "command":  "pnpm",
+                                                     "commandArgs":  "--version"
+                                                 },
+                                      "update":  {
+                                                     "strategy":  "none"
+                                                 }
+                                  },
+                      "actions":  [
+                                      {
+                                          "id":  "install",
+                                          "handler":  "volta.install",
+                                          "nameKey":  "volta.action.install"
+                                      },
+                                      {
+                                          "id":  "uninstall",
+                                          "handler":  "volta.uninstall",
+                                          "nameKey":  "volta.action.uninstall"
+                                      },
+                                      {
+                                          "id":  "set-default",
+                                          "handler":  "volta.set-default",
+                                          "nameKey":  "volta.action.setDefault"
+                                      },
+                                      {
+                                          "id":  "pin",
+                                          "handler":  "volta.pin",
+                                          "nameKey":  "volta.action.pin"
+                                      }
+                                  ],
+                      "group":  "dev"
+                  }
+              ]
+}

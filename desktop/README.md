@@ -8,30 +8,28 @@
 
 ## 结构
 
-```
-desktop/
-├── Miao.sln
-├── seeds/                # 种子数据（打包进输出目录，启动灌库）
-│   ├── groups.json
-│   ├── software/         # daily.json / dev.json
-│   ├── sites/seed.json
-│   ├── utilities/registry.json
-│   └── i18n/             # 集中多语言
-├── src/
-│   ├── Miao.App/         # 壳（输出 Miao.exe）
-│   ├── Miao.Common/      # DTO / 分组常量
-│   ├── Miao.Data/        # SQLite + 路径 + SeedLoader
-│   ├── Miao.Software/    # 软件目录 + Handlers + JobRunner
-│   ├── Miao.Sites/       # 常用网站
-│   └── Miao.Utilities/   # 工具集（占位）
-└── ui/                   # Vue 3 + Vite
-```
+按侧栏英文分区，详见 [`STRUCTURE.md`](./STRUCTURE.md)。  
+开发约定（新增工具、公共子组件）见 [`DEVELOPMENT.md`](./DEVELOPMENT.md)。
 
-侧栏顺序：**常用网站 → 日常工具 → 开发工具 → 工具集 → 设置（最后）**。
+| 中文 | 目录 |
+|------|------|
+| 常用网站 | `sites` |
+| 日常工具 | `daily` |
+| 开发工具 | `dev`（不用 tools） |
+| 工具集 | `utilities` |
+
+入口页均为分区内 `index.vue`。
+
+侧栏顺序：**常用网站 → 日常工具 → 开发工具 → 工具集 → 设置**。
 
 ## 开发
 
-需要：**.NET 10 SDK**、**Volta**（管理 Node）、已安装 WebView2 Runtime。
+需要：**.NET 10 SDK**、**Volta**（提供 UI 用 Node）、已安装 WebView2 Runtime。
+
+`.\dev.ps1` 会检测 Volta；若本机没有则用 winget 补装，再按 `ui/package.json` 锁定 Node，然后启动 Vite + 宿主。  
+（这是**本地开发引导**；应用内「开发工具 → Volta」的产品安装链路等打包发布后再测。）
+
+若出现安装弹窗请允许；取消会导致 winget 失败（如 exit 1602）。
 
 ```powershell
 cd desktop

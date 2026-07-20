@@ -1,0 +1,51 @@
+{
+    "tools":  [
+                  {
+                      "id":  "yarn",
+                      "sort":  16,
+                      "nameKey":  "yarn.name",
+                      "descriptionKey":  "yarn.description",
+                      "tags":  [
+                                   "runtime",
+                                   "needs-volta"
+                               ],
+                      "ui":  {
+                                 "mode":  "panel",
+                                 "entry":  "yarn"
+                             },
+                      "install":  {
+                                      "strategy":  "custom",
+                                      "detect":  {
+                                                     "command":  "yarn",
+                                                     "commandArgs":  "--version"
+                                                 },
+                                      "update":  {
+                                                     "strategy":  "none"
+                                                 }
+                                  },
+                      "actions":  [
+                                      {
+                                          "id":  "install",
+                                          "handler":  "volta.install",
+                                          "nameKey":  "volta.action.install"
+                                      },
+                                      {
+                                          "id":  "uninstall",
+                                          "handler":  "volta.uninstall",
+                                          "nameKey":  "volta.action.uninstall"
+                                      },
+                                      {
+                                          "id":  "set-default",
+                                          "handler":  "volta.set-default",
+                                          "nameKey":  "volta.action.setDefault"
+                                      },
+                                      {
+                                          "id":  "pin",
+                                          "handler":  "volta.pin",
+                                          "nameKey":  "volta.action.pin"
+                                      }
+                                  ],
+                      "group":  "dev"
+                  }
+              ]
+}

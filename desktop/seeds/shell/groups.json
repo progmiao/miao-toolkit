@@ -1,0 +1,16 @@
+﻿{
+    "groups":  [
+                   {
+                       "nameKey":  "group.daily",
+                       "sort":  10,
+                       "id":  "daily",
+                       "enabled":  true
+                   },
+                   {
+                       "nameKey":  "group.dev",
+                       "sort":  20,
+                       "id":  "dev",
+                       "enabled":  true
+                   }
+               ]
+}

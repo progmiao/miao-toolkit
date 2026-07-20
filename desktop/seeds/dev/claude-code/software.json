@@ -1,0 +1,57 @@
+{
+    "tools":  [
+                  {
+                      "id":  "claude-code",
+                      "sort":  25,
+                      "nameKey":  "claude.name",
+                      "descriptionKey":  "claude.description",
+                      "tags":  [
+                                   "ai",
+                                   "cli"
+                               ],
+                      "ui":  {
+                                 "mode":  "panel",
+                                 "entry":  "claude"
+                             },
+                      "install":  {
+                                      "strategy":  "winget",
+                                      "packageId":  "Anthropic.ClaudeCode",
+                                      "detect":  {
+                                                     "command":  "claude",
+                                                     "commandArgs":  "--version"
+                                                 },
+                                      "update":  {
+                                                     "strategy":  "winget"
+                                                 }
+                                  },
+                      "actions":  [
+                                      {
+                                          "id":  "install",
+                                          "handler":  "claude.install",
+                                          "nameKey":  "claude.action.install"
+                                      },
+                                      {
+                                          "id":  "uninstall",
+                                          "handler":  "claude.uninstall",
+                                          "nameKey":  "claude.action.uninstall"
+                                      },
+                                      {
+                                          "id":  "init",
+                                          "handler":  "claude.init",
+                                          "nameKey":  "claude.action.init"
+                                      },
+                                      {
+                                          "id":  "plugin-install",
+                                          "handler":  "claude.plugin-install",
+                                          "nameKey":  "claude.action.pluginInstall"
+                                      },
+                                      {
+                                          "id":  "plugin-uninstall",
+                                          "handler":  "claude.plugin-uninstall",
+                                          "nameKey":  "claude.action.pluginUninstall"
+                                      }
+                                  ],
+                      "group":  "dev"
+                  }
+              ]
+}

@@ -2,16 +2,18 @@ using System.Text.Json;
 using Miao.Common.Jobs;
 using Miao.Common.Software;
 using Miao.Data;
-using Miao.Software.Claude;
 using Miao.Software.Detect;
-using Miao.Software.Handlers;
 using Miao.Software.Jobs;
-using Miao.Software.Volta;
+using Miao.Software.Dev.Claude;
+using Miao.Software.Dev.Hermes;
+using Miao.Software.Dev.TerminalBuddy;
+using Miao.Software.Dev.Volta;
+using Miao.Software.Install;
 
 namespace Miao.Software.Catalog;
 
 /// <summary>
-/// 软件目录：从 DB（由 seeds 灌入）组装清单并调度 Handler。
+/// 软件目录：从 DB（由 seeds 灌入）组装清单，并按 action.handler 调度到对应 Handler。
 /// </summary>
 public sealed class SoftwareCatalog
 {
@@ -21,9 +23,9 @@ public sealed class SoftwareCatalog
     private List<SoftwareGroupDefinition> _groups = new();
 
     /// <summary>
-    /// 创建目录并注册内置 Handler。
+    /// 创建目录并注册全部内置 Handler。
     /// </summary>
-    /// <param name="db">数据库。</param>
+    /// <param name="db">应用数据库。</param>
     /// <param name="claude">Claude Code 服务。</param>
     /// <param name="volta">Volta 版本查询（目录展示默认/当前版）。</param>
     public SoftwareCatalog(AppDatabase db, ClaudeCodeService claude, VoltaPackageService volta)
@@ -55,7 +57,8 @@ public sealed class SoftwareCatalog
         ReloadGroupsFromSeeds();
     }
 
-    /// <summary>已登记且启用的软件分组。</summary>
+    /// <summary>返回已启用的一级分组（按 sort）。</summary>
+    /// <param name="locale">界面语言，用于解析 nameKey。</param>
     public IReadOnlyList<CatalogGroupDto> GetGroups(string locale)
     {
         return _groups
@@ -68,7 +71,7 @@ public sealed class SoftwareCatalog
             .ToList();
     }
 
-    /// <summary>种子灌库后刷新分组定义并探测安装状态。</summary>
+    /// <summary>重新加载分组种子并对库中每条软件做探测。</summary>
     public void Refresh()
     {
         ReloadGroupsFromSeeds();
@@ -78,7 +81,9 @@ public sealed class SoftwareCatalog
         }
     }
 
-    /// <summary>组装目录；可按 group 过滤。</summary>
+    /// <summary>组装发给 UI 的目录项列表。</summary>
+    /// <param name="locale">界面语言。</param>
+    /// <param name="group">可选过滤：daily / dev；null 表示全部。</param>
     public IReadOnlyList<CatalogItemDto> GetCatalog(string locale, string? group = null)
     {
         var items = new List<CatalogItemDto>();
@@ -91,12 +96,15 @@ public sealed class SoftwareCatalog
             var desc = _db.T(locale, manifest.DescriptionKey, "");
             var state = _db.GetToolState(row.Id);
             var uiMode = manifest.Ui?.Mode ?? "generic";
+            var uiEntry = string.IsNullOrWhiteSpace(manifest.Ui?.Entry)
+                ? null
+                : manifest.Ui!.Entry!.Trim();
             var updateAvailable = string.Equals(state?.Status, "installed", StringComparison.OrdinalIgnoreCase)
                 && state?.Detail is { Length: > 0 } d
                 && d.StartsWith("update:", StringComparison.OrdinalIgnoreCase);
 
-            // 多版本运行时：永不展示目录级「有更新」
-            if (row.Id is "node" or "pnpm" or "yarn")
+            // 种子声明 update.strategy=none 时不展示「有更新」
+            if (IsUpdateSuppressed(manifest, row.Id))
                 updateAvailable = false;
 
             var version = ResolveDisplayVersion(row.Id, state);
@@ -110,6 +118,7 @@ public sealed class SoftwareCatalog
                 version,
                 manifest.Actions.Select(a => a.Id).ToArray(),
                 uiMode,
+                uiEntry,
                 manifest.Tags.ToArray(),
                 updateAvailable));
         }
@@ -117,10 +126,20 @@ public sealed class SoftwareCatalog
         return items;
     }
 
-    /// <summary>是否存在软件条目。</summary>
+    /// <summary>库中是否存在该软件 id。</summary>
     public bool Contains(string toolId) => _db.GetSoftware(toolId) is not null;
 
-    /// <summary>执行软件动作。</summary>
+    /// <summary>
+    /// 按种子 actions[].handler 执行动作。
+    /// </summary>
+    /// <param name="jobId">任务 id（与 UI 约定）。</param>
+    /// <param name="toolId">软件 id。</param>
+    /// <param name="action">动作 id（如 install）。</param>
+    /// <param name="jobs">任务运行器。</param>
+    /// <param name="versions">可选版本列表（Volta 类动作）。</param>
+    /// <param name="options">可选键值（如 projectPath）。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
+    /// <returns>任务结果；找不到工具/动作/Handler 时 ok=false。</returns>
     public Task<JobResult> ExecuteAsync(
         string jobId,
         string toolId,
@@ -138,12 +157,12 @@ public sealed class SoftwareCatalog
         var act = manifest?.Actions.FirstOrDefault(a =>
             string.Equals(a.Id, action, StringComparison.OrdinalIgnoreCase));
         if (act is null || string.IsNullOrWhiteSpace(act.Handler))
-            return Task.FromResult(new JobResult(jobId, false, 1, $"软件未声明动作: {toolId}/{action}"));
+            return Task.FromResult(new JobResult(jobId, false, 1, $"未知动作: {toolId}/{action}"));
 
         if (!_handlers.TryGetValue(act.Handler, out var handler))
         {
             return Task.FromResult(new JobResult(
-                jobId, false, 1, $"未注册处理器: {act.Handler}（软件 {toolId}）"));
+                jobId, false, 1, $"未注册 Handler: {act.Handler}（工具 {toolId}）"));
         }
 
         var seedsRoot = AppPaths.ResolveSeedsRoot() ?? "";
@@ -151,7 +170,8 @@ public sealed class SoftwareCatalog
         return handler.ExecuteAsync(ctx, cancellationToken);
     }
 
-    /// <summary>安装后刷新单工具状态（含 Volta 系展示版本回写）。</summary>
+    /// <summary>探测安装状态，并同步 Volta 管理工具的展示版本。</summary>
+    /// <param name="toolId">软件 id。</param>
     public void ProbeTool(string toolId)
     {
         var row = _db.GetSoftware(toolId);
@@ -159,8 +179,8 @@ public sealed class SoftwareCatalog
         var manifest = JsonSerializer.Deserialize<SoftwareDefinition>(row.ManifestJson);
         InstallDetector.ProbeAndStore(_db, toolId, manifest?.Install?.Detect);
 
-        // 分工具更新探测（node/pnpm/yarn 等无 update 策略则清除）
-        UpdateProbe.ProbeAndStore(_db, toolId, manifest);
+        if (!IsUpdateSuppressed(manifest, toolId))
+            UpdateProbe.ProbeAndStore(_db, toolId, manifest);
 
         var state = _db.GetToolState(toolId);
         if (state is null || !string.Equals(state.Status, "installed", StringComparison.OrdinalIgnoreCase))
@@ -170,14 +190,14 @@ public sealed class SoftwareCatalog
         if (!string.IsNullOrWhiteSpace(display) &&
             !string.Equals(display, state.Version, StringComparison.OrdinalIgnoreCase))
         {
-            // 保留 update: 标记
+            // 保留既有 detail（如 update:…），只刷新展示版本
             state = _db.GetToolState(toolId);
             _db.UpsertToolState(toolId, "installed", display, state?.Detail);
         }
     }
 
     /// <summary>
-    /// 解析列表展示版本：volta=当前装；node/pnpm/yarn=默认版；其它用探测结果。
+    /// 解析列表展示版本：volta/node/pnpm/yarn 走 Volta 查询，其余用探测结果。
     /// </summary>
     private string? ResolveDisplayVersion(string toolId, ToolStateRow? state)
     {
@@ -188,6 +208,23 @@ public sealed class SoftwareCatalog
             return _volta.GetCatalogDisplayVersion(toolId) ?? state.Version;
 
         return state.Version;
+    }
+
+    /// <summary>
+    /// 是否抑制更新探测/角标：种子 <c>install.update.strategy=none</c>，
+    /// 或未声明 update 且为 Volta 管理的 node/pnpm/yarn。
+    /// </summary>
+    /// <param name="manifest">清单；可空。</param>
+    /// <param name="toolId">软件 id（以库行为准）。</param>
+    private static bool IsUpdateSuppressed(SoftwareDefinition? manifest, string toolId)
+    {
+        var strategy = manifest?.Install?.Update?.Strategy;
+        if (string.Equals(strategy, "none", StringComparison.OrdinalIgnoreCase))
+            return true;
+        // 兼容尚未写 update 块的旧种子
+        if (strategy is null && toolId is "node" or "pnpm" or "yarn")
+            return true;
+        return false;
     }
 
     private void ReloadGroupsFromSeeds()
@@ -205,7 +242,9 @@ public sealed class SoftwareCatalog
             return;
         }
 
-        var path = Path.Combine(root, "groups.json");
+        var path = Path.Combine(root, "shell", "groups.json");
+        if (!File.Exists(path))
+            path = Path.Combine(root, "groups.json");
         if (!File.Exists(path))
         {
             _groups = defaults;

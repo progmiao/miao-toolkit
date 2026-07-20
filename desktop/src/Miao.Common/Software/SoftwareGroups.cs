@@ -1,7 +1,7 @@
 namespace Miao.Common.Software;
 
 /// <summary>
-/// 软件一级分组 id（与 seeds/software/{id}.json 及条目 group 字段一致）。
+/// 软件一级分组 id（与 seeds/shell/groups.json 及条目 group / 文件夹分区一致）。
 /// </summary>
 public static class SoftwareGroups
 {

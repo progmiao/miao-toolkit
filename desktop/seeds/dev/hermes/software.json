@@ -1,0 +1,44 @@
+{
+    "tools":  [
+                  {
+                      "id":  "hermes",
+                      "sort":  60,
+                      "nameKey":  "hermes.name",
+                      "descriptionKey":  "hermes.description",
+                      "tags":  [
+                                   "ai",
+                                   "cli"
+                               ],
+                      "ui":  {
+                                 "mode":  "generic"
+                             },
+                      "install":  {
+                                      "strategy":  "custom",
+                                      "detect":  {
+                                                     "exePaths":  [
+                                                                      "%LOCALAPPDATA%\\hermes\\hermes-agent\\venv\\Scripts\\hermes.exe",
+                                                                      "%LOCALAPPDATA%\\hermes\\bin\\hermes.cmd"
+                                                                  ],
+                                                     "command":  "hermes",
+                                                     "commandArgs":  "--version"
+                                                 },
+                                      "update":  {
+                                                     "strategy":  "hermes"
+                                                 }
+                                  },
+                      "actions":  [
+                                      {
+                                          "id":  "install",
+                                          "handler":  "hermes.install",
+                                          "nameKey":  "hermes.action.install"
+                                      },
+                                      {
+                                          "id":  "uninstall",
+                                          "handler":  "hermes.uninstall",
+                                          "nameKey":  "hermes.action.uninstall"
+                                      }
+                                  ],
+                      "group":  "dev"
+                  }
+              ]
+}

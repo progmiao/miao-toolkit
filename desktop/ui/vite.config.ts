@@ -1,27 +1,37 @@
 /**
- * Vite 配置：Vue SFC、`@` 别名、固定 5173、相对 base 以适配 WebView2 本地资源。
+ * Vite 配置：Vue SFC、按侧栏英文分区的别名、固定 5173。
+ *
+ * 别名（与中文标题对应）：
+ * - @shell      壳
+ * - @kernel     内核
+ * - @sites      常用网站
+ * - @daily      日常工具
+ * - @dev        开发工具
+ * - @utilities  工具集
  */
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { fileURLToPath, URL } from 'node:url'
 
+const src = (p: string) => fileURLToPath(new URL(p, import.meta.url))
+
 export default defineConfig({
   plugins: [vue()],
-  /** 使用相对路径，便于 file/虚拟主机下解析 assets */
   base: './',
   resolve: {
     alias: {
-      '@': fileURLToPath(new URL('./src', import.meta.url)),
+      '@': src('./src'),
+      '@shell': src('./src/shell'),
+      '@kernel': src('./src/kernel'),
+      '@sites': src('./src/sites'),
+      '@daily': src('./src/daily'),
+      '@dev': src('./src/dev'),
+      '@utilities': src('./src/utilities'),
     },
   },
   server: {
-    /** 开发端口；与宿主 MainWindow 探测地址一致 */
     port: 5173,
     strictPort: true,
-    /**
-     * 启动 Vite 时自动打开系统浏览器，便于用 F12 调样式。
-     * 宿主 WebView2 另开窗口联调 IPC；dev.ps1 不再重复打开浏览器。
-     */
     open: true,
   },
   build: {

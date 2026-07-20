@@ -17,7 +17,15 @@
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true,
     "noUncheckedSideEffectImports": true,
-    "paths": { "@/*": ["./src/*"] }
+    "paths": {
+      "@/*": ["./src/*"],
+      "@shell/*": ["./src/shell/*"],
+      "@kernel/*": ["./src/kernel/*"],
+      "@sites/*": ["./src/sites/*"],
+      "@daily/*": ["./src/daily/*"],
+      "@dev/*": ["./src/dev/*"],
+      "@utilities/*": ["./src/utilities/*"]
+    }
   },
   "include": ["src/**/*.ts", "src/**/*.tsx", "src/**/*.vue"]
 }

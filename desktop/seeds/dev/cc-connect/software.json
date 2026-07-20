@@ -1,0 +1,43 @@
+{
+    "tools":  [
+                  {
+                      "id":  "cc-connect",
+                      "sort":  50,
+                      "nameKey":  "ccc.name",
+                      "descriptionKey":  "ccc.description",
+                      "tags":  [
+                                   "ai"
+                               ],
+                      "ui":  {
+                                 "mode":  "generic"
+                             },
+                      "install":  {
+                                      "strategy":  "winget",
+                                      "packageId":  "9NHCNC0N2LBJ",
+                                      "wingetSource":  "msstore",
+                                      "detect":  {
+                                                     "registryUninstallNames":  [
+                                                                                    "CC Connect",
+                                                                                    "cc-connect"
+                                                                                ]
+                                                 },
+                                      "update":  {
+                                                     "strategy":  "winget"
+                                                 }
+                                  },
+                      "actions":  [
+                                      {
+                                          "id":  "install",
+                                          "handler":  "generic.winget",
+                                          "nameKey":  "ccc.action.install"
+                                      },
+                                      {
+                                          "id":  "uninstall",
+                                          "handler":  "generic.winget-uninstall",
+                                          "nameKey":  "ccc.action.uninstall"
+                                      }
+                                  ],
+                      "group":  "dev"
+                  }
+              ]
+}
