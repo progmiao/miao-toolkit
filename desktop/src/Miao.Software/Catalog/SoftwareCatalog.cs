@@ -6,6 +6,7 @@ using Miao.Software.Claude;
 using Miao.Software.Detect;
 using Miao.Software.Handlers;
 using Miao.Software.Jobs;
+using Miao.Software.Volta;
 
 namespace Miao.Software.Catalog;
 
@@ -15,13 +16,20 @@ namespace Miao.Software.Catalog;
 public sealed class SoftwareCatalog
 {
     private readonly AppDatabase _db;
+    private readonly VoltaPackageService _volta;
     private readonly Dictionary<string, IToolActionHandler> _handlers;
     private List<SoftwareGroupDefinition> _groups = new();
 
-    /// <summary>创建目录并注册内置 Handler。</summary>
-    public SoftwareCatalog(AppDatabase db, ClaudeCodeService claude)
+    /// <summary>
+    /// 创建目录并注册内置 Handler。
+    /// </summary>
+    /// <param name="db">数据库。</param>
+    /// <param name="claude">Claude Code 服务。</param>
+    /// <param name="volta">Volta 版本查询（目录展示默认/当前版）。</param>
+    public SoftwareCatalog(AppDatabase db, ClaudeCodeService claude, VoltaPackageService volta)
     {
         _db = db;
+        _volta = volta;
         var list = new IToolActionHandler[]
         {
             new InstallerLaunchHandler(),
@@ -66,8 +74,7 @@ public sealed class SoftwareCatalog
         ReloadGroupsFromSeeds();
         foreach (var row in _db.ListSoftware())
         {
-            var manifest = JsonSerializer.Deserialize<SoftwareDefinition>(row.ManifestJson);
-            InstallDetector.ProbeAndStore(_db, row.Id, manifest?.Install?.Detect);
+            ProbeTool(row.Id);
         }
     }
 
@@ -84,17 +91,23 @@ public sealed class SoftwareCatalog
             var desc = _db.T(locale, manifest.DescriptionKey, "");
             var state = _db.GetToolState(row.Id);
             var uiMode = manifest.Ui?.Mode ?? "generic";
-            // 更新探测：tool_state.detail 以 "update:" 前缀标记时可更新（后续接真实版本比对）
             var updateAvailable = string.Equals(state?.Status, "installed", StringComparison.OrdinalIgnoreCase)
                 && state?.Detail is { Length: > 0 } d
                 && d.StartsWith("update:", StringComparison.OrdinalIgnoreCase);
+
+            // 多版本运行时：永不展示目录级「有更新」
+            if (row.Id is "node" or "pnpm" or "yarn")
+                updateAvailable = false;
+
+            var version = ResolveDisplayVersion(row.Id, state);
+
             items.Add(new CatalogItemDto(
                 row.Id,
                 name,
                 desc,
                 row.Group,
                 state?.Status ?? "unknown",
-                state?.Version,
+                version,
                 manifest.Actions.Select(a => a.Id).ToArray(),
                 uiMode,
                 manifest.Tags.ToArray(),
@@ -138,13 +151,43 @@ public sealed class SoftwareCatalog
         return handler.ExecuteAsync(ctx, cancellationToken);
     }
 
-    /// <summary>安装后刷新单工具状态。</summary>
+    /// <summary>安装后刷新单工具状态（含 Volta 系展示版本回写）。</summary>
     public void ProbeTool(string toolId)
     {
         var row = _db.GetSoftware(toolId);
         if (row is null) return;
         var manifest = JsonSerializer.Deserialize<SoftwareDefinition>(row.ManifestJson);
         InstallDetector.ProbeAndStore(_db, toolId, manifest?.Install?.Detect);
+
+        // 分工具更新探测（node/pnpm/yarn 等无 update 策略则清除）
+        UpdateProbe.ProbeAndStore(_db, toolId, manifest);
+
+        var state = _db.GetToolState(toolId);
+        if (state is null || !string.Equals(state.Status, "installed", StringComparison.OrdinalIgnoreCase))
+            return;
+
+        var display = _volta.GetCatalogDisplayVersion(toolId);
+        if (!string.IsNullOrWhiteSpace(display) &&
+            !string.Equals(display, state.Version, StringComparison.OrdinalIgnoreCase))
+        {
+            // 保留 update: 标记
+            state = _db.GetToolState(toolId);
+            _db.UpsertToolState(toolId, "installed", display, state?.Detail);
+        }
+    }
+
+    /// <summary>
+    /// 解析列表展示版本：volta=当前装；node/pnpm/yarn=默认版；其它用探测结果。
+    /// </summary>
+    private string? ResolveDisplayVersion(string toolId, ToolStateRow? state)
+    {
+        if (state is null || !string.Equals(state.Status, "installed", StringComparison.OrdinalIgnoreCase))
+            return null;
+
+        if (toolId is "volta" or "node" or "pnpm" or "yarn")
+            return _volta.GetCatalogDisplayVersion(toolId) ?? state.Version;
+
+        return state.Version;
     }
 
     private void ReloadGroupsFromSeeds()

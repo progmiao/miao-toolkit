@@ -24,20 +24,19 @@ const filtered = computed(() => {
   return items.value.filter((i) => i.tags.includes(tagFilter.value))
 })
 
+/**
+ * 卡片状态标签：已装有版本则只显示版本；「有更新」单独标签。
+ * @param it - 目录项
+ */
 function statusLabel(it: CatalogItem): string {
-  if (it.status === 'installed' && it.updateAvailable) return '有更新'
-  switch (it.status) {
-    case 'installed':
-      return '已安装'
-    case 'missing':
-      return '未安装'
-    default:
-      return '未知'
+  if (it.status === 'installed') {
+    return it.version ? `v${it.version}` : '已安装'
   }
+  if (it.status === 'missing') return '未安装'
+  return '未知'
 }
 
 function statusClass(it: CatalogItem): string {
-  if (it.status === 'installed' && it.updateAvailable) return 'status-outdated'
   return 'status-' + it.status
 }
 
@@ -107,8 +106,8 @@ function run(it: CatalogItem, action: string) {
             <h2>{{ it.name }}</h2>
             <span class="tag" :class="statusClass(it)">
               {{ statusLabel(it) }}
-              <template v-if="it.version"> · v{{ it.version }}</template>
             </span>
+            <span v-if="it.updateAvailable" class="tag status-outdated">有更新</span>
           </div>
         </div>
         <div class="actions">

@@ -21,6 +21,7 @@ const ltsOnly = ref(props.toolId === 'node')
 const filter = ref('')
 const loading = ref(false)
 const logs = ref<string[]>([])
+const consoleLines = ref<string[]>([])
 const progress = ref(0)
 const busy = ref(false)
 const currentJob = ref<string | null>(null)
@@ -46,9 +47,15 @@ const selectedList = computed(() =>
   filtered.value.filter((v) => selected.value[v.version]).map((v) => v.version),
 )
 
-function appendLog(line: string) {
+function appendStatus(line: string) {
   logs.value.push(line)
-  if (logs.value.length > 500) logs.value.shift()
+  if (logs.value.length > 80) logs.value.shift()
+}
+
+function appendConsole(line: string) {
+  if (/##progress\s+\d+/i.test(line)) return
+  consoleLines.value.push(line)
+  if (consoleLines.value.length > 800) consoleLines.value.shift()
 }
 
 function requestList() {
@@ -74,7 +81,7 @@ onMounted(() => {
         projectPath.value = String(msg.path)
         run('pin', [pendingPinVersion.value], { projectPath: projectPath.value })
       } else {
-        appendLog('已取消选择项目目录')
+        appendStatus('已取消选择项目目录')
       }
       pendingPinVersion.value = null
     }
@@ -82,22 +89,28 @@ onMounted(() => {
       busy.value = true
       currentJob.value = msg.jobId ?? null
       progress.value = 0
-      appendLog(`—— 开始 ${msg.action ?? 'job'} ——`)
+      logs.value = []
+      consoleLines.value = []
+      appendStatus(`开始：${msg.action ?? 'job'}`)
     }
     if (msg.type === 'job-event') {
       if (msg.kind === 'progress' && msg.message) {
         progress.value = Number(msg.message) || progress.value
+      } else if (msg.kind === 'console' && msg.message) {
+        appendConsole(msg.message)
+      } else if (msg.kind === 'log' && msg.message) {
+        appendStatus(msg.message)
       } else if (msg.message) {
-        appendLog(msg.message)
+        appendConsole(msg.message)
       }
     }
     if (msg.type === 'job-finished') {
       busy.value = false
       progress.value = msg.ok ? 100 : progress.value
-      appendLog(
+      appendStatus(
         msg.ok
-          ? `完成 (exit ${msg.exitCode})`
-          : `失败 (exit ${msg.exitCode}) ${msg.detail ?? ''}`,
+          ? `完成（exit ${msg.exitCode}）`
+          : `失败（exit ${msg.exitCode}） ${msg.detail ?? ''}`,
       )
       currentJob.value = null
       requestList()
@@ -106,7 +119,7 @@ onMounted(() => {
       error.value = msg.message
       loading.value = false
       busy.value = false
-      appendLog(`[错误] ${msg.message}`)
+      appendStatus(`[错误] ${msg.message}`)
     }
   })
   requestList()
@@ -242,7 +255,13 @@ function installVoltaTool() {
       </div>
 
       <aside class="job-panel">
-        <JobConsole :progress="progress" :logs="logs" :busy="busy" placeholder="选择版本后执行操作…" />
+        <JobConsole
+          :progress="progress"
+          :logs="logs"
+          :console-lines="consoleLines"
+          :busy="busy"
+          placeholder="选择版本后执行操作…"
+        />
       </aside>
     </div>
   </section>

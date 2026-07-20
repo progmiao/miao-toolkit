@@ -45,15 +45,22 @@ const httpProxy = ref('')
 const httpsProxy = ref('')
 
 const logs = ref<string[]>([])
+const consoleLines = ref<string[]>([])
 const progress = ref(0)
 const busy = ref(false)
 const currentJob = ref<string | null>(null)
 
 let unsub: (() => void) | undefined
 
-function appendLog(line: string) {
+function appendStatus(line: string) {
   logs.value.push(line)
-  if (logs.value.length > 500) logs.value.shift()
+  if (logs.value.length > 80) logs.value.shift()
+}
+
+function appendConsole(line: string) {
+  if (/##progress\s+\d+/i.test(line)) return
+  consoleLines.value.push(line)
+  if (consoleLines.value.length > 800) consoleLines.value.shift()
 }
 
 function refresh() {
@@ -80,21 +87,25 @@ onMounted(() => {
       busy.value = true
       currentJob.value = msg.jobId ?? null
       progress.value = 0
-      appendLog(`—— 开始 ${msg.action} ——`)
+      logs.value = []
+      consoleLines.value = []
+      appendStatus(`开始：${msg.action}`)
     }
     if (msg.type === 'job-event') {
       if (msg.kind === 'progress' && msg.message) progress.value = Number(msg.message) || progress.value
-      else if (msg.message) appendLog(msg.message)
+      else if (msg.kind === 'console' && msg.message) appendConsole(msg.message)
+      else if (msg.kind === 'log' && msg.message) appendStatus(msg.message)
+      else if (msg.message) appendConsole(msg.message)
     }
     if (msg.type === 'job-finished') {
       busy.value = false
       progress.value = msg.ok ? 100 : progress.value
-      appendLog(msg.ok ? '完成' : `失败 ${msg.detail ?? ''}`)
+      appendStatus(msg.ok ? '完成' : `失败 ${msg.detail ?? ''}`)
       currentJob.value = null
       refresh()
     }
     if (msg.type === 'error' && msg.message) {
-      appendLog(`[错误] ${msg.message}`)
+      appendStatus(`[错误] ${msg.message}`)
       busy.value = false
     }
   })
@@ -136,7 +147,7 @@ function pluginIds(): string[] {
 function installPlugins() {
   const ids = pluginIds()
   if (!ids.length) {
-    appendLog('请勾选或填写插件 id')
+    appendStatus('请勾选或填写插件 id')
     return
   }
   runJob('plugin-install', { versions: ids, plugins: ids.join(',') })
@@ -145,7 +156,7 @@ function installPlugins() {
 function uninstallPlugins() {
   const ids = pluginIds()
   if (!ids.length) {
-    appendLog('请勾选或填写插件 id')
+    appendStatus('请勾选或填写插件 id')
     return
   }
   runJob('plugin-uninstall', { versions: ids, plugins: ids.join(',') })
@@ -294,7 +305,13 @@ function cancel() {
       </div>
 
       <aside class="job-panel">
-        <JobConsole :progress="progress" :logs="logs" :busy="busy" placeholder="任务日志…" />
+        <JobConsole
+          :progress="progress"
+          :logs="logs"
+          :console-lines="consoleLines"
+          :busy="busy"
+          placeholder="任务日志…"
+        />
       </aside>
     </div>
   </section>

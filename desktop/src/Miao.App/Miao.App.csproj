@@ -10,6 +10,8 @@
     <ApplicationTitle>Miao</ApplicationTitle>
     <RootNamespace>Miao.App</RootNamespace>
     <AssemblyName>Miao</AssemblyName>
+    <!-- 任务栏 / 资源管理器显示的程序图标 -->
+    <ApplicationIcon>Assets\app.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>
@@ -22,6 +24,12 @@
     <ProjectReference Include="..\Miao.Software\Miao.Software.csproj" />
     <ProjectReference Include="..\Miao.Sites\Miao.Sites.csproj" />
     <ProjectReference Include="..\Miao.Utilities\Miao.Utilities.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- 窗口左上角 Icon（pack URI） -->
+    <Resource Include="Assets\app.ico" />
+    <None Include="Assets\miao-icon-source.png" />
   </ItemGroup>
 
   <ItemGroup>

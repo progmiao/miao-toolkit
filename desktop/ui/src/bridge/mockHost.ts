@@ -172,6 +172,13 @@ export function handleMockRequest(message: Record<string, unknown>) {
       reply({ type: 'job-started', jobId, toolId, action })
       setTimeout(() => {
         reply({ type: 'job-event', jobId, kind: 'log', message: '[Mock] 浏览器调试模式：未真实执行安装' })
+        reply({
+          type: 'job-event',
+          jobId,
+          kind: 'console',
+          message: '> powershell.exe -NoProfile -Command "(mock)"',
+        })
+        reply({ type: 'job-event', jobId, kind: 'console', message: '[Mock] skip real winget/volta' })
         reply({ type: 'job-event', jobId, kind: 'progress', message: '100' })
         // 同步更新 Mock 目录状态，便于「安装 Volta」后解锁 Node 等工具
         const all = [...MOCK_DAILY, ...MOCK_DEV]

@@ -70,10 +70,11 @@ export function showInstallAction(it: CatalogItem): boolean {
 }
 
 /**
- * 是否显示「更新」：已安装且有更新。
+ * 是否显示「更新」：已安装、有更新标记，且非 node/pnpm/yarn（多版本面板自管）。
  * @param it - 目录项
  */
 export function showUpdateAction(it: CatalogItem): boolean {
+  if (it.id === 'node' || it.id === 'pnpm' || it.id === 'yarn') return false
   return it.actions.includes('install') && it.status === 'installed' && Boolean(it.updateAvailable)
 }
 

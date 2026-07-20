@@ -74,11 +74,11 @@ public static class AppServices
             _db = new AppDatabase(AppPaths.DatabasePath);
             SeedLoader.ApplyIfNeeded(_db);
             _claude = new ClaudeCodeService();
-            _software = new SoftwareCatalog(_db, _claude);
+            _volta = new VoltaPackageService();
+            _software = new SoftwareCatalog(_db, _claude, _volta);
             _software.Refresh();
             _sites = new SiteService(_db);
             _utilities = new UtilitiesService(_db);
-            _volta = new VoltaPackageService();
             _jobs = new JobRunner();
         }
     }

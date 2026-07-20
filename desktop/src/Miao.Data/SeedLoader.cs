@@ -9,7 +9,7 @@ namespace Miao.Data;
 public static class SeedLoader
 {
     /// <summary>当前打包种子版本（与 seeds 内容同步递增）。</summary>
-    public const int PackagedSeedVersion = 6;
+    public const int PackagedSeedVersion = 7;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
     {

@@ -1,4 +1,4 @@
-{
+﻿{
   "tools": [
     {
       "id": "volta",
@@ -10,7 +10,8 @@
       "install": {
         "strategy": "winget",
         "packageId": "Volta.Volta",
-        "detect": { "command": "volta", "commandArgs": "--version" }
+        "detect": { "command": "volta", "commandArgs": "--version" },
+        "update": { "strategy": "winget" }
       },
       "actions": [
         { "id": "install", "handler": "generic.winget", "nameKey": "voltaApp.action.install" },
@@ -85,7 +86,8 @@
       "install": {
         "strategy": "winget",
         "packageId": "Anthropic.ClaudeCode",
-        "detect": { "command": "claude", "commandArgs": "--version" }
+        "detect": { "command": "claude", "commandArgs": "--version" },
+        "update": { "strategy": "winget" }
       },
       "actions": [
         { "id": "install", "handler": "claude.install", "nameKey": "claude.action.install" },
@@ -110,7 +112,8 @@
         "assetName": "terminal-buddy.exe",
         "detect": {
           "exePaths": ["%LOCALAPPDATA%\\Programs\\terminal-buddy\\terminal-buddy.exe"]
-        }
+        },
+        "update": { "strategy": "gitee-release" }
       },
       "actions": [
         { "id": "install", "handler": "terminal-buddy.install", "nameKey": "tb.action.install" },
@@ -130,7 +133,8 @@
         "packageId": "farion1231.CC-Switch",
         "detect": {
           "registryUninstallNames": ["CC Switch", "CC-Switch"]
-        }
+        },
+        "update": { "strategy": "winget" }
       },
       "actions": [
         { "id": "install", "handler": "generic.winget", "nameKey": "ccs.action.install" },
@@ -151,7 +155,8 @@
         "wingetSource": "msstore",
         "detect": {
           "registryUninstallNames": ["CC Connect", "cc-connect"]
-        }
+        },
+        "update": { "strategy": "winget" }
       },
       "actions": [
         { "id": "install", "handler": "generic.winget", "nameKey": "ccc.action.install" },
@@ -175,7 +180,8 @@
           ],
           "command": "hermes",
           "commandArgs": "--version"
-        }
+        },
+        "update": { "strategy": "hermes" }
       },
       "actions": [
         { "id": "install", "handler": "hermes.install", "nameKey": "hermes.action.install" },

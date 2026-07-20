@@ -74,6 +74,31 @@ public sealed class VoltaPackageService
     /// <summary>Volta 是否在 PATH 中。</summary>
     public bool IsVoltaAvailable() => GetCommandPath("volta") is not null;
 
+    /// <summary>
+    /// 目录列表展示用版本：
+    /// <list type="bullet">
+    /// <item><c>volta</c>：当前安装版本（<c>volta --version</c>）</item>
+    /// <item><c>node</c> / <c>pnpm</c> / <c>yarn</c>：Volta 默认版本；无 default 标记时回退 PATH 当前版</item>
+    /// </list>
+    /// 未安装返回 <c>null</c>。
+    /// </summary>
+    /// <param name="toolId">volta | node | pnpm | yarn。</param>
+    public string? GetCatalogDisplayVersion(string toolId)
+    {
+        if (string.Equals(toolId, "volta", StringComparison.OrdinalIgnoreCase))
+            return GetActiveCommandVersion("volta");
+
+        if (!IsSupported(toolId))
+            return null;
+
+        var local = GetVoltaInstalled(toolId);
+        if (!string.IsNullOrWhiteSpace(local.Default))
+            return local.Default;
+
+        // 已装但未设 default：回退 PATH 当前可解析版本
+        return GetActiveCommandVersion(toolId);
+    }
+
     private static async Task<List<VoltaVersionDto>> FetchNodeRemoteAsync(bool ltsOnly, CancellationToken ct)
     {
         var releases = await Http
@@ -173,9 +198,11 @@ public sealed class VoltaPackageService
 
     private static string? GetActiveCommandVersion(string toolId)
     {
-        if (GetCommandPath(toolId) is null) return null;
         try
         {
+            RefreshProcessPath();
+            if (GetCommandPath(toolId) is null) return null;
+
             var args = toolId == "node" ? "-v" : "--version";
             var psi = new ProcessStartInfo
             {
@@ -189,7 +216,6 @@ public sealed class VoltaPackageService
             if (p is null) return null;
             var v = p.StandardOutput.ReadToEnd().Trim();
             p.WaitForExit(5000);
-            // yarn/pnpm 可能输出多行，取首个版本号
             var m = Regex.Match(v, @"([0-9]+(?:\.[0-9]+)*)");
             return m.Success ? m.Groups[1].Value : null;
         }
@@ -203,6 +229,7 @@ public sealed class VoltaPackageService
     {
         try
         {
+            RefreshProcessPath();
             var psi = new ProcessStartInfo
             {
                 FileName = "where.exe",
@@ -220,6 +247,21 @@ public sealed class VoltaPackageService
         catch
         {
             return null;
+        }
+    }
+
+    /// <summary>合并 Machine/User PATH，避免宿主启动时未含 Volta shim。</summary>
+    private static void RefreshProcessPath()
+    {
+        try
+        {
+            var machine = Environment.GetEnvironmentVariable("Path", EnvironmentVariableTarget.Machine) ?? "";
+            var user = Environment.GetEnvironmentVariable("Path", EnvironmentVariableTarget.User) ?? "";
+            Environment.SetEnvironmentVariable("Path", machine + ";" + user);
+        }
+        catch
+        {
+            /* ignore */
         }
     }
 

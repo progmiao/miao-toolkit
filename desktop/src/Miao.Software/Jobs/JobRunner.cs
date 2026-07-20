@@ -6,10 +6,11 @@ namespace Miao.Software.Jobs;
 
 /// <summary>
 /// 以无窗口方式启动 powershell.exe，流式转发 stdout/stderr，并解析约定进度行。
+/// 状态类消息用 kind=log；原始命令输出用 kind=console。
 /// </summary>
 public sealed class JobRunner
 {
-    /// <summary>任务过程事件（日志、进度等）。</summary>
+    /// <summary>任务过程事件（日志、进度、命令输出等）。</summary>
     public event Action<JobEvent>? Event;
 
     /// <summary>
@@ -53,7 +54,8 @@ public sealed class JobRunner
                 psi.ArgumentList.Add(arg);
         }
 
-        Emit(jobId, "log", $"启动: {psi.FileName} {string.Join(' ', psi.ArgumentList)}");
+        Emit(jobId, "log", "已启动 PowerShell 任务");
+        Emit(jobId, "console", $"> {psi.FileName} {string.Join(' ', psi.ArgumentList)}");
 
         using var process = new Process { StartInfo = psi, EnableRaisingEvents = true };
         var stderr = new StringBuilder();
@@ -61,14 +63,14 @@ public sealed class JobRunner
         process.OutputDataReceived += (_, e) =>
         {
             if (e.Data is null) return;
-            Emit(jobId, "log", e.Data);
+            Emit(jobId, "console", e.Data);
             TryParseProgress(jobId, e.Data);
         };
         process.ErrorDataReceived += (_, e) =>
         {
             if (e.Data is null) return;
             stderr.AppendLine(e.Data);
-            Emit(jobId, "log", e.Data);
+            Emit(jobId, "console", e.Data);
         };
 
         if (!process.Start())
@@ -85,10 +87,12 @@ public sealed class JobRunner
         {
             try { process.Kill(entireProcessTree: true); } catch { /* ignore */ }
             Emit(jobId, "log", "任务已取消");
+            Emit(jobId, "console", "^C 任务已取消");
             return new JobResult(jobId, false, -1, "cancelled");
         }
 
         var ok = process.ExitCode == 0;
+        Emit(jobId, "log", ok ? "PowerShell 执行完成" : $"PowerShell 退出码 {process.ExitCode}");
         Emit(jobId, ok ? "done" : "error", ok ? "完成" : $"退出码 {process.ExitCode}");
         return new JobResult(jobId, ok, process.ExitCode, stderr.ToString());
     }
@@ -103,8 +107,11 @@ public sealed class JobRunner
             Emit(jobId, "progress", pct.ToString());
     }
 
-    /// <summary>向 UI 推送一条日志（供非 PowerShell Handler 使用）。</summary>
+    /// <summary>向 UI 推送一条状态日志（供非 PowerShell Handler 使用）。</summary>
     public void EmitLog(string jobId, string message) => Emit(jobId, "log", message);
+
+    /// <summary>向 UI 推送一行命令输出。</summary>
+    public void EmitConsole(string jobId, string message) => Emit(jobId, "console", message);
 
     /// <summary>向 UI 推送进度 0–100。</summary>
     public void EmitProgress(string jobId, int percent) =>

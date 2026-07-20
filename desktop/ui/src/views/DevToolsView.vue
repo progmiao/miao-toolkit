@@ -20,6 +20,7 @@ const items = ref<CatalogItem[]>([])
 const tagFilter = ref('all')
 const activeId = ref<string | null>(null)
 const logs = ref<string[]>([])
+const consoleLines = ref<string[]>([])
 const progress = ref(0)
 const busy = ref(false)
 const currentJob = ref<string | null>(null)
@@ -66,33 +67,39 @@ const panelRoute: Record<string, string> = {
   'claude-code': '/dev/claude',
 }
 
-/** 安装状态短文案（配合「状态：」前缀）。 */
+/**
+ * 列表状态标签：已装优先显示版本；「有更新」由独立标签展示，不拼在此处。
+ * @param it - 目录项
+ */
 function statusLabel(it: CatalogItem): string {
-  if (it.status === 'installed' && it.updateAvailable) return '有更新'
-  switch (it.status) {
-    case 'installed':
-      return '已安装'
-    case 'missing':
-      return '未安装'
-    default:
-      return '未知'
+  if (it.status === 'installed') {
+    return it.version ? `v${it.version}` : '已安装'
   }
+  if (it.status === 'missing') return '未安装'
+  return '未知'
 }
 
 function statusClass(it: CatalogItem): string {
-  if (it.status === 'installed' && it.updateAvailable) return 'status-outdated'
   return 'status-' + it.status
 }
 
-function appendLog(line: string) {
+function appendStatus(line: string) {
   logs.value.push(line)
-  if (logs.value.length > 500) logs.value.shift()
+  if (logs.value.length > 80) logs.value.shift()
 }
 
-/** 切换工具时清空上一任务日志，避免空闲控制台残留。 */
+function appendConsole(line: string) {
+  // 进度约定行只驱动进度条，不刷命令窗
+  if (/##progress\s+\d+/i.test(line)) return
+  consoleLines.value.push(line)
+  if (consoleLines.value.length > 800) consoleLines.value.shift()
+}
+
+/** 切换工具时清空上一任务输出。 */
 function resetConsole() {
   if (busy.value) return
   logs.value = []
+  consoleLines.value = []
   progress.value = 0
 }
 
@@ -117,24 +124,30 @@ onMounted(() => {
       currentJob.value = msg.jobId ?? null
       progress.value = 0
       logs.value = []
-      appendLog(`—— 开始任务 ——`)
+      consoleLines.value = []
+      appendStatus(`开始：${msg.action ?? '任务'}（${msg.toolId ?? ''}）`)
     }
     if (msg.type === 'job-event') {
       if (msg.kind === 'progress' && msg.message) {
         progress.value = Number(msg.message) || progress.value
+      } else if (msg.kind === 'console' && msg.message) {
+        appendConsole(msg.message)
+      } else if (msg.kind === 'log' && msg.message) {
+        appendStatus(msg.message)
       } else if (msg.message) {
-        appendLog(msg.message)
+        // 兼容旧 Handler：未区分 console/log 时进命令窗
+        appendConsole(msg.message)
       }
     }
     if (msg.type === 'job-finished') {
       busy.value = false
       progress.value = msg.ok ? 100 : progress.value
-      appendLog(msg.ok ? `完成 (exit ${msg.exitCode})` : `失败 ${msg.detail ?? ''}`)
+      appendStatus(msg.ok ? `完成（exit ${msg.exitCode}）` : `失败：${msg.detail ?? ''}`)
       currentJob.value = null
       requestCatalog()
     }
     if (msg.type === 'error' && msg.message) {
-      appendLog(`[错误] ${msg.message}`)
+      appendStatus(`[错误] ${msg.message}`)
       busy.value = false
     }
   })
@@ -161,6 +174,14 @@ function goToVolta() {
 }
 
 function runAction(action: string, id: string) {
+  if (action === 'uninstall') {
+    const name = items.value.find((i) => i.id === id)?.name ?? id
+    const tip =
+      id === 'volta'
+        ? `确认卸载 ${name}？卸载后 Node / pnpm / Yarn 将无法通过 Volta 管理。`
+        : `确认卸载 ${name}？`
+    if (!window.confirm(tip)) return
+  }
   const jobId = crypto.randomUUID().replaceAll('-', '')
   post({ type: 'run-job', jobId, toolId: id, action })
 }
@@ -209,8 +230,9 @@ function openDoc(which: 'gitee' | 'github') {
           <div class="tool-body">
             <span class="tool-name">{{ it.name }}</span>
             <div class="tool-meta">
-              <span class="meta meta-status" :class="statusClass(it)">状态：{{ statusLabel(it) }}</span>
-              <span v-if="needsVolta(it)" class="meta meta-prereq">前置：Volta</span>
+              <span class="meta meta-status" :class="statusClass(it)">{{ statusLabel(it) }}</span>
+              <span v-if="needsVolta(it)" class="meta meta-prereq">Volta</span>
+              <span v-if="it.updateAvailable" class="meta meta-update">有更新</span>
             </div>
           </div>
         </li>
@@ -284,7 +306,12 @@ function openDoc(which: 'gitee' | 'github') {
           <p v-if="featureTip" class="panel-tip tip-feature">{{ featureTip }}</p>
         </div>
 
-        <JobConsole :progress="progress" :logs="logs" :busy="busy" />
+        <JobConsole
+          :progress="progress"
+          :logs="logs"
+          :console-lines="consoleLines"
+          :busy="busy"
+        />
       </aside>
     </div>
   </section>
@@ -479,6 +506,7 @@ function openDoc(which: 'gitee' | 'github') {
   color: var(--ok);
   background: color-mix(in srgb, var(--ok) 14%, transparent);
   border-color: color-mix(in srgb, var(--ok) 28%, transparent);
+  font-variant-numeric: tabular-nums;
 }
 .meta-status.status-outdated {
   color: var(--warn);
@@ -494,6 +522,11 @@ function openDoc(which: 'gitee' | 'github') {
   color: var(--muted);
   background: color-mix(in srgb, var(--muted) 10%, transparent);
   border-color: color-mix(in srgb, var(--muted) 20%, transparent);
+}
+.meta-update {
+  color: var(--warn);
+  background: color-mix(in srgb, var(--warn) 14%, transparent);
+  border-color: color-mix(in srgb, var(--warn) 28%, transparent);
 }
 .job-panel {
   min-height: 0;
@@ -562,8 +595,7 @@ function openDoc(which: 'gitee' | 'github') {
   min-height: 0;
 }
 .job-panel :deep(.progress-wrap),
-.job-panel :deep(.log) {
-  background: color-mix(in srgb, var(--panel) 40%, transparent);
+.job-panel :deep(.status-log) {
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
 }

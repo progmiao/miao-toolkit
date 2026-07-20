@@ -238,45 +238,53 @@ watch(
         <RouterLink to="/utilities">工具集</RouterLink>
       </nav>
 
-      <div class="shell-dock" aria-label="主题与设置">
-        <button
-          type="button"
-          class="theme-switch"
-          :class="theme"
-          role="switch"
-          :aria-checked="theme === 'dark'"
-          :aria-label="theme === 'light' ? '切换为黑夜主题' : '切换为白天主题'"
-          :title="theme === 'light' ? '黑夜' : '白天'"
-          @click="toggleTheme"
-        >
-          <span class="theme-switch-track" aria-hidden="true">
-            <span class="theme-switch-thumb">
-              <svg class="theme-icon theme-icon-sun" viewBox="0 0 24 24" fill="none">
-                <circle cx="12" cy="12" r="3.6" fill="currentColor" />
-                <path
-                  stroke="currentColor"
-                  stroke-width="1.8"
-                  stroke-linecap="round"
-                  d="M12 2.8v1.8M12 19.4v1.8M4.6 12H2.8M21.2 12h-1.8M5.9 5.9l1.3 1.3M16.8 16.8l1.3 1.3M5.9 18.1l1.3-1.3M16.8 7.2l1.3-1.3"
-                />
-              </svg>
-              <svg class="theme-icon theme-icon-moon" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M20.2 14.2A7.6 7.6 0 0 1 9.8 3.8 7.8 7.8 0 1 0 20.2 14.2Z" />
-              </svg>
-            </span>
+      <div class="shell-dock" aria-label="账号与系统">
+        <div class="shell-user" title="游客" aria-label="游客（占位）">
+          <span class="shell-user-avatar" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none">
+              <circle cx="12" cy="9" r="3.2" stroke="currentColor" stroke-width="1.6" />
+              <path
+                stroke="currentColor"
+                stroke-width="1.6"
+                stroke-linecap="round"
+                d="M5.5 19.2c1.4-3 3.6-4.4 6.5-4.4s5.1 1.4 6.5 4.4"
+              />
+            </svg>
           </span>
-        </button>
-        <RouterLink class="shell-settings-btn" to="/settings" aria-label="设置" title="设置">
-          <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-            <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.7" />
-            <path
-              stroke="currentColor"
-              stroke-width="1.7"
-              stroke-linecap="round"
-              d="M12 3.5v1.6M12 18.9v1.6M3.5 12h1.6M18.9 12h1.6M6.05 6.05l1.13 1.13M16.82 16.82l1.13 1.13M6.05 17.95l1.13-1.13M16.82 7.18l1.13-1.13"
-            />
-          </svg>
-        </RouterLink>
+        </div>
+        <div class="shell-dock-actions">
+          <button
+            type="button"
+            class="shell-dock-btn"
+            :aria-label="theme === 'light' ? '切换为黑夜主题' : '切换为白天主题'"
+            :title="theme === 'light' ? '黑夜' : '白天'"
+            @click="toggleTheme"
+          >
+            <svg v-if="theme === 'light'" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <circle cx="12" cy="12" r="3.4" fill="currentColor" />
+              <path
+                stroke="currentColor"
+                stroke-width="1.7"
+                stroke-linecap="round"
+                d="M12 2.8v1.7M12 19.5v1.7M4.6 12H2.9M21.1 12h-1.7M5.9 5.9l1.2 1.2M16.9 16.9l1.2 1.2M5.9 18.1l1.2-1.2M16.9 7.1l1.2-1.2"
+              />
+            </svg>
+            <svg v-else viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <path d="M20.2 14.2A7.6 7.6 0 0 1 9.8 3.8 7.8 7.8 0 1 0 20.2 14.2Z" />
+            </svg>
+          </button>
+          <RouterLink class="shell-dock-btn" to="/settings" aria-label="设置" title="设置">
+            <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
+              <circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.7" />
+              <path
+                stroke="currentColor"
+                stroke-width="1.7"
+                stroke-linejoin="round"
+                d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09A1.65 1.65 0 0 0 15 4.6a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"
+              />
+            </svg>
+          </RouterLink>
+        </div>
       </div>
     </aside>
 

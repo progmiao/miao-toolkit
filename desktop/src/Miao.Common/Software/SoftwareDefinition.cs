@@ -73,6 +73,12 @@ public sealed class SoftwareInstallManifest
     [JsonPropertyName("detect")]
     public SoftwareDetectManifest? Detect { get; set; }
 
+    /// <summary>
+    /// 更新检测；缺省或 strategy=none 表示不提供「有更新」能力（如 node/pnpm/yarn）。
+    /// </summary>
+    [JsonPropertyName("update")]
+    public SoftwareUpdateManifest? Update { get; set; }
+
     /// <summary>TerminalBuddy 等自定义字段。</summary>
     [JsonPropertyName("giteeOwner")]
     public string? GiteeOwner { get; set; }
@@ -101,6 +107,16 @@ public sealed class SoftwareDetectManifest
 
     [JsonPropertyName("commandArgs")]
     public string? CommandArgs { get; set; }
+}
+
+/// <summary>更新检测配置（各工具策略不同）。</summary>
+public sealed class SoftwareUpdateManifest
+{
+    /// <summary>
+    /// 策略：<c>winget</c> / <c>gitee-release</c> / <c>hermes</c> / <c>none</c>。
+    /// </summary>
+    [JsonPropertyName("strategy")]
+    public string Strategy { get; set; } = "none";
 }
 
 /// <summary>软件声明的一个可执行动作。</summary>
