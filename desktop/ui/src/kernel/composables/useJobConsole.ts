@@ -60,7 +60,7 @@ export type JobConsoleApi = {
    */
   appendStatus: (line: string) => void
   /**
-   * 追加命令窗一行（自动过滤 `##progress` / `##task` / `##batch`）。
+   * 追加命令窗一行（自动过滤 `##progress` / `##task` / `##batch` / `##log`）。
    * @param line - 输出
    */
   appendConsole: (line: string) => void
@@ -100,7 +100,7 @@ export function useJobConsole(options: UseJobConsoleOptions = {}): JobConsoleApi
   }
 
   function appendConsole(line: string) {
-    if (/##(?:progress|task|batch)\b/i.test(line)) return
+    if (/##(?:progress|task|batch|log)\b/i.test(line)) return
     consoleLines.value.push(line)
     if (consoleLines.value.length > MAX_CONSOLE_LINES) consoleLines.value.shift()
   }
@@ -146,7 +146,10 @@ export function useJobConsole(options: UseJobConsoleOptions = {}): JobConsoleApi
         progress.value = Number(msg.message) || progress.value
       } else if (msg.kind === 'task' && msg.message) {
         statusText.value = msg.message
+        // 任务切换也记入实时日志，保证每步可追溯
+        appendStatus(msg.message)
       } else if (msg.kind === 'batch' && msg.message) {
+        // 保留解析（兼容旧 Handler）；UI 不再展示 xx/xx
         const parts = msg.message.trim().split(/\s+/)
         const cur = Number(parts[0])
         const total = Number(parts[1])

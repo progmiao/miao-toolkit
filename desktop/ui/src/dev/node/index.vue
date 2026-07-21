@@ -46,8 +46,6 @@ const {
   consoleLines,
   progress,
   statusText,
-  batchCurrent,
-  batchTotal,
   busy,
   consumeJobMessage,
   cancel,
@@ -351,7 +349,7 @@ void cancel
               />
               <button
                 type="button"
-                class="btn"
+                class="btn btn-install"
                 :disabled="busy || loading || !selectedList.length"
                 :title="!selectedList.length ? '请先勾选要安装的版本' : '安装所选版本'"
                 @click="runBatchInstall"
@@ -519,8 +517,6 @@ void cancel
             always-show
             :progress="progress"
             :status-text="statusText"
-            :batch-current="batchCurrent"
-            :batch-total="batchTotal"
             :logs="logs"
             :console-lines="consoleLines"
             :busy="busy"
@@ -703,6 +699,22 @@ void cancel
   font-size: 0.82rem;
 }
 
+/* 批量安装：缩小主按钮，避免 hover 位移/光晕撑破对齐行 */
+.ver-head > .btn.btn-install {
+  align-self: center;
+  height: 1.85rem;
+  padding: 0 0.7rem;
+  font-size: 0.74rem;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  box-shadow: 0 0 8px color-mix(in srgb, var(--glow) 35%, transparent);
+  transform: none;
+}
+.ver-head > .btn.btn-install:hover:not(:disabled) {
+  transform: none;
+  filter: brightness(1.06);
+}
+
 .node-split :deep(.node-job.job-console),
 .node-split :deep(.job-console) {
   display: contents;
@@ -742,9 +754,8 @@ void cancel
   height: 0.28rem;
 }
 
-.node-split :deep(.progress-batch) {
-  font-size: 0.65rem;
-  min-width: 2.4rem;
+.node-split :deep(.progress-pct) {
+  font-size: 0.62rem;
 }
 
 .node-split :deep(.job-panes) {

@@ -45,8 +45,6 @@ const {
   consoleLines,
   progress,
   statusText,
-  batchCurrent,
-  batchTotal,
   busy,
   appendStatus,
   consumeJobMessage,
@@ -222,8 +220,6 @@ function installVoltaTool() {
         <JobConsole
           :progress="progress"
           :status-text="statusText"
-          :batch-current="batchCurrent"
-          :batch-total="batchTotal"
           :logs="logs"
           :console-lines="consoleLines"
           :busy="busy"

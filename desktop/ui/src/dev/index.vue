@@ -86,8 +86,6 @@ const {
   consoleLines,
   progress,
   statusText,
-  batchCurrent,
-  batchTotal,
   busy,
   consumeJobMessage,
   resetWhenIdle,
@@ -412,8 +410,6 @@ function openDoc(which: 'gitee' | 'github') {
           v-if="!workspaceOwnsConsole"
           :progress="progress"
           :status-text="statusText"
-          :batch-current="batchCurrent"
-          :batch-total="batchTotal"
           :logs="logs"
           :console-lines="consoleLines"
           :busy="busy"

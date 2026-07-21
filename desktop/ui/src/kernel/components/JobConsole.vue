@@ -1,8 +1,7 @@
 <script setup lang="ts">
 /**
  * 任务控制台：顶部进度条 + 下方实时输出区。
- * - 进度条：当前单项任务进度。
- * - 右侧 xx/xx：整个任务集合进度（两位补零）。
+ * - 进度条：整体任务进度（批量安装时由后端按任务数平分）。
  * - 上方文案：当前正在进行的任务。
  * - 同时有状态日志与 PowerShell 命令输出：左日志、右命令窗（或 stack 上下）。
  */
@@ -10,7 +9,7 @@ import { computed, nextTick, ref, watch } from 'vue'
 
 const props = withDefaults(
   defineProps<{
-    /** 0–100 单项进度 */
+    /** 0–100 整体进度 */
     progress: number
     /** 状态日志行（左栏 / 仅日志时整块） */
     logs: string[]
@@ -34,17 +33,11 @@ const props = withDefaults(
     alwaysShow?: boolean
     /** 当前任务文案（进度条上方） */
     statusText?: string
-    /** 集合进度：当前项（从 0/1 起） */
-    batchCurrent?: number
-    /** 集合进度：总项数；0 表示不显示 xx/xx */
-    batchTotal?: number
   }>(),
   {
     busy: false,
     alwaysShow: false,
     statusText: '',
-    batchCurrent: 0,
-    batchTotal: 0,
   },
 )
 
@@ -110,18 +103,7 @@ const labelText = computed(() => {
   return '就绪'
 })
 
-const showBatch = computed(() => (props.batchTotal ?? 0) > 0)
-
-/** 两位补零（超过两位原样显示）。 */
-function pad2(n: number) {
-  const v = Math.max(0, Math.floor(n))
-  return String(v).padStart(2, '0')
-}
-
-const batchLabel = computed(() => {
-  if (!showBatch.value) return ''
-  return `${pad2(props.batchCurrent ?? 0)}/${pad2(props.batchTotal ?? 0)}`
-})
+const fillWidth = computed(() => Math.min(100, Math.max(0, props.progress)))
 
 async function scrollPanes() {
   await nextTick()
@@ -142,21 +124,22 @@ watch(
     <div class="progress-wrap">
       <div class="progress-label">
         <span class="progress-status" :title="labelText">{{ labelText }}</span>
+        <span v-if="busy || fillWidth > 0" class="progress-pct">{{ Math.round(fillWidth) }}%</span>
       </div>
       <div class="progress-track-row">
         <div
           class="progress-bar"
+          :class="{ 'is-busy': busy, 'is-done': !busy && fillWidth >= 100 }"
           role="progressbar"
-          :aria-valuenow="progress"
+          :aria-valuenow="fillWidth"
           aria-valuemin="0"
           aria-valuemax="100"
           :aria-label="labelText"
         >
-          <i :style="{ width: Math.min(100, Math.max(0, progress)) + '%' }" />
+          <i class="progress-fill" :style="{ width: fillWidth + '%' }">
+            <span class="progress-sheen" aria-hidden="true" />
+          </i>
         </div>
-        <span v-if="showBatch" class="progress-batch" :title="`集合进度 ${batchLabel}`">
-          {{ batchLabel }}
-        </span>
       </div>
     </div>
 
@@ -200,6 +183,7 @@ watch(
 .progress-label {
   display: flex;
   align-items: center;
+  gap: 0.5rem;
   margin-bottom: 0.28rem;
   min-height: 1em;
 }
@@ -216,43 +200,102 @@ watch(
   text-overflow: ellipsis;
 }
 
+.progress-pct {
+  flex: 0 0 auto;
+  font-size: 0.68rem;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: color-mix(in srgb, var(--accent) 85%, var(--ink));
+  letter-spacing: 0.04em;
+}
+
 .progress-track-row {
   display: flex;
   align-items: center;
-  gap: 0.55rem;
 }
 
 .progress-bar {
+  position: relative;
   flex: 1;
   min-width: 0;
-  height: 0.45rem;
+  height: 0.5rem;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--line) 55%, transparent);
+  background: color-mix(in srgb, var(--line) 50%, transparent);
   overflow: hidden;
+  box-shadow: inset 0 1px 2px color-mix(in srgb, #000 18%, transparent);
 }
 
-.progress-bar i {
+.progress-fill {
+  position: relative;
   display: block;
   height: 100%;
   border-radius: inherit;
+  overflow: hidden;
   background: linear-gradient(
     90deg,
-    color-mix(in srgb, var(--accent) 70%, #0ff),
-    var(--accent)
+    color-mix(in srgb, var(--accent) 75%, #0ff),
+    var(--accent),
+    color-mix(in srgb, var(--accent-2, var(--accent)) 70%, var(--accent))
   );
-  transition: width 0.2s ease;
+  background-size: 200% 100%;
+  box-shadow: 0 0 10px color-mix(in srgb, var(--glow, var(--accent)) 55%, transparent);
+  transition: width 0.35s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-.progress-batch {
-  flex: 0 0 auto;
-  font-size: 0.72rem;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  font-family: var(--font-mono);
-  font-variant-numeric: tabular-nums;
-  color: var(--ink);
-  min-width: 2.75rem;
-  text-align: right;
+.progress-bar.is-busy .progress-fill {
+  animation: progress-flow 1.6s linear infinite;
+}
+
+.progress-sheen {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    105deg,
+    transparent 0%,
+    transparent 40%,
+    color-mix(in srgb, #fff 45%, transparent) 50%,
+    transparent 60%,
+    transparent 100%
+  );
+  background-size: 220% 100%;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.progress-bar.is-busy .progress-sheen {
+  opacity: 1;
+  animation: progress-sheen 1.4s ease-in-out infinite;
+}
+
+.progress-bar.is-done .progress-fill {
+  animation: none;
+  background-position: 0 0;
+}
+
+@keyframes progress-flow {
+  to {
+    background-position: 200% 0;
+  }
+}
+
+@keyframes progress-sheen {
+  0% {
+    background-position: 100% 0;
+  }
+  100% {
+    background-position: -100% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .progress-fill {
+    transition: none;
+  }
+  .progress-bar.is-busy .progress-fill,
+  .progress-bar.is-busy .progress-sheen {
+    animation: none;
+  }
 }
 
 .job-panes {
