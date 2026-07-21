@@ -3,15 +3,22 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
+using Miao.Data;
 
 namespace Miao.Software.Dev.Volta;
 
 /// <summary>
 /// Volta 托管包（node / pnpm / yarn）：远程版本清单 + 本机已装/默认/当前。
+/// Node 版本优先读 SQLite 缓存；刷新时按「从新到旧，直到碰到库中已有版本」增量写入。
 /// </summary>
 public sealed class VoltaPackageService
 {
     private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(45) };
+
+    private readonly AppDatabase _db;
+
+    /// <summary>创建服务。</summary>
+    public VoltaPackageService(AppDatabase db) => _db = db;
 
     /// <summary>支持的工具 id → Volta 包名。</summary>
     public static bool IsSupported(string toolId) =>
@@ -21,19 +28,34 @@ public sealed class VoltaPackageService
     /// 列出远程与本机合并后的版本。
     /// </summary>
     /// <param name="toolId">node | pnpm | yarn。</param>
-    /// <param name="ltsOnly">仅 node 有效：只显示 LTS（仍附带本机已装非 LTS）。</param>
+    /// <param name="ltsOnly">兼容字段（已忽略）。</param>
+    /// <param name="forceRemote">true 强制与远程增量同步；false 且有缓存则只读库。</param>
     /// <param name="ct">取消令牌。</param>
     public async Task<IReadOnlyList<VoltaVersionDto>> ListAsync(
         string toolId,
         bool ltsOnly,
+        bool forceRemote = true,
         CancellationToken ct = default)
     {
         if (!IsSupported(toolId))
             throw new ArgumentException($"不支持的 Volta 工具: {toolId}", nameof(toolId));
 
-        var remote = toolId == "node"
-            ? await FetchNodeRemoteAsync(ltsOnly, ct).ConfigureAwait(false)
-            : await FetchNpmPackageVersionsAsync(toolId, ct).ConfigureAwait(false);
+        _ = ltsOnly;
+
+        if (toolId == "node")
+        {
+            var cached = _db.ListPackageVersions("node");
+            if (forceRemote || cached.Count == 0)
+                await SyncNodeRemoteIncrementalAsync(ct).ConfigureAwait(false);
+        }
+        else if (forceRemote || _db.ListPackageVersions(toolId).Count == 0)
+        {
+            await SyncNpmPackageCacheAsync(toolId, ct).ConfigureAwait(false);
+        }
+
+        var remote = _db.ListPackageVersions(toolId)
+            .Select(r => new VoltaVersionDto(r.Version, r.Lts, r.ReleaseDate, false, false, false))
+            .ToList();
 
         var local = GetVoltaInstalled(toolId);
         var active = GetActiveCommandVersion(toolId);
@@ -62,7 +84,72 @@ public sealed class VoltaPackageService
         return map.Values.OrderByDescending(v => ParseVersion(v.Version)).ToList();
     }
 
-    /// <summary>检测是否存在 nvm / fnm（与 Volta 冲突提示用）。</summary>
+    /// <summary>
+    /// 拉取 nodejs.org/dist/index.json，按新→旧写入，直到碰到库中已有版本即停止。
+    /// </summary>
+    private async Task SyncNodeRemoteIncrementalAsync(CancellationToken ct)
+    {
+        var releases = await Http
+            .GetFromJsonAsync<List<NodeReleaseJson>>("https://nodejs.org/dist/index.json", ct)
+            .ConfigureAwait(false) ?? [];
+
+        var now = DateTimeOffset.UtcNow.ToString("O");
+        var batch = new List<PackageVersionRow>();
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var r in releases)
+        {
+            var ver = (r.Version ?? "").TrimStart('v');
+            if (string.IsNullOrWhiteSpace(ver) || !seen.Add(ver)) continue;
+
+            if (_db.HasPackageVersion("node", ver))
+                break;
+
+            batch.Add(new PackageVersionRow("node", ver, ParseLts(r.Lts), r.Date, now));
+        }
+
+        if (batch.Count > 0)
+            _db.UpsertPackageVersions(batch);
+    }
+
+    private async Task SyncNpmPackageCacheAsync(string package, CancellationToken ct)
+    {
+        using var resp = await Http.GetAsync($"https://registry.npmjs.org/{package}", ct).ConfigureAwait(false);
+        resp.EnsureSuccessStatusCode();
+        await using var stream = await resp.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
+        using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: ct).ConfigureAwait(false);
+
+        var root = doc.RootElement;
+        if (!root.TryGetProperty("versions", out var versions) || versions.ValueKind != JsonValueKind.Object)
+            return;
+
+        string? latest = null;
+        if (root.TryGetProperty("dist-tags", out var tags) &&
+            tags.TryGetProperty("latest", out var latestEl))
+        {
+            latest = latestEl.GetString();
+        }
+
+        var now = DateTimeOffset.UtcNow.ToString("O");
+        var list = new List<PackageVersionRow>();
+        foreach (var prop in versions.EnumerateObject())
+        {
+            var ver = prop.Name;
+            if (ver.Contains('-', StringComparison.Ordinal)) continue;
+            var tag = string.Equals(ver, latest, StringComparison.OrdinalIgnoreCase) ? "latest" : null;
+            list.Add(new PackageVersionRow(package, ver, tag, null, now));
+        }
+
+        var top = list
+            .OrderByDescending(v => ParseVersion(v.Version))
+            .Take(80)
+            .ToList();
+
+        if (top.Count > 0)
+            _db.UpsertPackageVersions(top);
+    }
+
+    /// <summary>检测是否存在 nvm / fnm。</summary>
     public IReadOnlyList<string> DetectConflicts()
     {
         var list = new List<string>();
@@ -74,15 +161,7 @@ public sealed class VoltaPackageService
     /// <summary>Volta 是否在 PATH 中。</summary>
     public bool IsVoltaAvailable() => GetCommandPath("volta") is not null;
 
-    /// <summary>
-    /// 目录列表展示用版本：
-    /// <list type="bullet">
-    /// <item><c>volta</c>：当前安装版本（<c>volta --version</c>）</item>
-    /// <item><c>node</c> / <c>pnpm</c> / <c>yarn</c>：Volta 默认版本；无 default 标记时回退 PATH 当前版</item>
-    /// </list>
-    /// 未安装返回 <c>null</c>。
-    /// </summary>
-    /// <param name="toolId">volta | node | pnpm | yarn。</param>
+    /// <summary>目录列表展示用版本。</summary>
     public string? GetCatalogDisplayVersion(string toolId)
     {
         if (string.Equals(toolId, "volta", StringComparison.OrdinalIgnoreCase))
@@ -95,62 +174,7 @@ public sealed class VoltaPackageService
         if (!string.IsNullOrWhiteSpace(local.Default))
             return local.Default;
 
-        // 已装但未设 default：回退 PATH 当前可解析版本
         return GetActiveCommandVersion(toolId);
-    }
-
-    private static async Task<List<VoltaVersionDto>> FetchNodeRemoteAsync(bool ltsOnly, CancellationToken ct)
-    {
-        var releases = await Http
-            .GetFromJsonAsync<List<NodeReleaseJson>>("https://nodejs.org/dist/index.json", ct)
-            .ConfigureAwait(false) ?? [];
-
-        var list = new List<VoltaVersionDto>();
-        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var r in releases)
-        {
-            var ver = (r.Version ?? "").TrimStart('v');
-            if (string.IsNullOrWhiteSpace(ver) || !seen.Add(ver)) continue;
-            var ltsName = ParseLts(r.Lts);
-            if (ltsOnly && string.IsNullOrWhiteSpace(ltsName)) continue;
-            list.Add(new VoltaVersionDto(ver, ltsName, r.Date, false, false, false));
-        }
-
-        return list;
-    }
-
-    private static async Task<List<VoltaVersionDto>> FetchNpmPackageVersionsAsync(string package, CancellationToken ct)
-    {
-        using var resp = await Http.GetAsync($"https://registry.npmjs.org/{package}", ct).ConfigureAwait(false);
-        resp.EnsureSuccessStatusCode();
-        await using var stream = await resp.Content.ReadAsStreamAsync(ct).ConfigureAwait(false);
-        using var doc = await JsonDocument.ParseAsync(stream, cancellationToken: ct).ConfigureAwait(false);
-
-        var root = doc.RootElement;
-        var list = new List<VoltaVersionDto>();
-        if (!root.TryGetProperty("versions", out var versions) || versions.ValueKind != JsonValueKind.Object)
-            return list;
-
-        string? latest = null;
-        if (root.TryGetProperty("dist-tags", out var tags) &&
-            tags.TryGetProperty("latest", out var latestEl))
-        {
-            latest = latestEl.GetString();
-        }
-
-        foreach (var prop in versions.EnumerateObject())
-        {
-            var ver = prop.Name;
-            if (ver.Contains('-', StringComparison.Ordinal)) continue; // 跳过预发布，降低噪声
-            var tag = string.Equals(ver, latest, StringComparison.OrdinalIgnoreCase) ? "latest" : null;
-            list.Add(new VoltaVersionDto(ver, tag, null, false, false, false));
-        }
-
-        // npm 版本很多：保留最近 80 个稳定版
-        return list
-            .OrderByDescending(v => ParseVersion(v.Version))
-            .Take(80)
-            .ToList();
     }
 
     private static string? ParseLts(JsonElement el) =>
@@ -250,7 +274,6 @@ public sealed class VoltaPackageService
         }
     }
 
-    /// <summary>合并 Machine/User PATH，避免宿主启动时未含 Volta shim。</summary>
     private static void RefreshProcessPath()
     {
         try

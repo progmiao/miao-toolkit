@@ -1,4 +1,4 @@
-﻿using System.Diagnostics;
+using System.Diagnostics;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Threading;
@@ -16,12 +16,17 @@ public sealed class HostBridge
     private readonly Dictionary<string, CancellationTokenSource> _running = new();
     private Action<object>? _post;
 
-    /// <summary>创建消息桥。</summary>
-    public HostBridge(JobRunner jobs, Dispatcher _)
+    /// <summary>
+    /// 创建消息桥。
+    /// 可在完整 <see cref="AppServices"/> 初始化前创建（仅需 <see cref="JobRunner"/>）；
+    /// 业务消息仍会通过属性访问触发幂等初始化。
+    /// </summary>
+    public HostBridge(JobRunner jobs, Dispatcher? _ = null)
     {
         _jobs = jobs;
         _jobs.Event += OnJobEvent;
-        AppServices.EnsureInitialized();
+        AppServices.Silent.TaskChanged += OnSilentTaskChanged;
+        AppServices.Silent.QueueChanged += OnSilentQueueChanged;
     }
 
     private void OnJobEvent(Miao.Common.Jobs.JobEvent ev)
@@ -36,6 +41,34 @@ public sealed class HostBridge
         });
     }
 
+    private void OnSilentTaskChanged(SilentTaskInfo task)
+    {
+        _post?.Invoke(new { type = "silent.task", task = ToSilentTaskDto(task) });
+    }
+
+    private void OnSilentQueueChanged(SilentQueueSnapshot queue)
+    {
+        _post?.Invoke(ToSilentQueueDto(queue));
+    }
+
+    private static object ToSilentTaskDto(SilentTaskInfo t) => new
+    {
+        id = t.Id,
+        title = t.Title,
+        status = t.Status,
+        progress = t.Progress,
+        detail = t.Detail,
+        updatedAt = t.UpdatedAt,
+    };
+
+    private static object ToSilentQueueDto(SilentQueueSnapshot queue) => new
+    {
+        type = "silent.queue",
+        activeCount = queue.ActiveCount,
+        totalQueued = queue.TotalQueued,
+        tasks = queue.Tasks.Select(ToSilentTaskDto).ToArray(),
+    };
+
     /// <summary>处理来自 Vue 的 JSON。</summary>
     public async Task HandleWebMessageAsync(string json, Action<object> postToUi)
     {
@@ -49,6 +82,26 @@ public sealed class HostBridge
             case "ping":
                 postToUi(new { type = "pong", at = DateTimeOffset.Now });
                 break;
+
+            case "silent.list":
+            {
+                postToUi(ToSilentQueueDto(AppServices.Silent.GetSnapshot()));
+                break;
+            }
+
+            case "silent.cancel":
+            {
+                var sid = root.TryGetProperty("id", out var idEl) ? idEl.GetString() : null;
+                if (string.IsNullOrWhiteSpace(sid))
+                {
+                    postToUi(new { type = "error", message = "silent.cancel 需要 id" });
+                    break;
+                }
+
+                var ok = AppServices.Silent.Cancel(sid);
+                postToUi(new { type = "silent.cancel.ok", id = sid, ok });
+                break;
+            }
 
             case "get-i18n":
             {
@@ -150,10 +203,12 @@ public sealed class HostBridge
             {
                 var tool = root.TryGetProperty("tool", out var tEl) ? tEl.GetString() : "node";
                 if (string.IsNullOrWhiteSpace(tool)) tool = "node";
-                var ltsOnly = !root.TryGetProperty("ltsOnly", out var lo) || lo.ValueKind != JsonValueKind.False;
+                var ltsOnly = root.TryGetProperty("ltsOnly", out var lo) && lo.ValueKind == JsonValueKind.True;
+                // 默认强制远程增量同步；显式 forceRemote:false 则优先读缓存
+                var forceRemote = !root.TryGetProperty("forceRemote", out var fr) || fr.ValueKind != JsonValueKind.False;
                 try
                 {
-                    var items = await AppServices.Volta.ListAsync(tool!, ltsOnly).ConfigureAwait(false);
+                    var items = await AppServices.Volta.ListAsync(tool!, ltsOnly, forceRemote).ConfigureAwait(false);
                     postToUi(new
                     {
                         type = "volta.versions",

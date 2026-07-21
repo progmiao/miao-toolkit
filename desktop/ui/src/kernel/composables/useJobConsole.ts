@@ -42,8 +42,14 @@ export type JobConsoleApi = {
   logs: Ref<string[]>
   /** 命令窗行（PowerShell 原始输出）。 */
   consoleLines: Ref<string[]>
-  /** 0–100 进度。 */
+  /** 0–100 单项任务进度。 */
   progress: Ref<number>
+  /** 当前进行中的任务文案（进度条上方）。 */
+  statusText: Ref<string>
+  /** 集合进度：当前第几项（0 表示未开始）。 */
+  batchCurrent: Ref<number>
+  /** 集合进度：总项数（0 表示无集合信息）。 */
+  batchTotal: Ref<number>
   /** 是否有任务在跑。 */
   busy: Ref<boolean>
   /** 当前 jobId；无任务时为 null。 */
@@ -54,7 +60,7 @@ export type JobConsoleApi = {
    */
   appendStatus: (line: string) => void
   /**
-   * 追加命令窗一行（自动过滤 `##progress N`）。
+   * 追加命令窗一行（自动过滤 `##progress` / `##task` / `##batch`）。
    * @param line - 输出
    */
   appendConsole: (line: string) => void
@@ -82,6 +88,9 @@ export function useJobConsole(options: UseJobConsoleOptions = {}): JobConsoleApi
   const logs = ref<string[]>([])
   const consoleLines = ref<string[]>([])
   const progress = ref(0)
+  const statusText = ref('')
+  const batchCurrent = ref(0)
+  const batchTotal = ref(0)
   const busy = ref(false)
   const currentJob = ref<string | null>(null)
 
@@ -91,7 +100,7 @@ export function useJobConsole(options: UseJobConsoleOptions = {}): JobConsoleApi
   }
 
   function appendConsole(line: string) {
-    if (/##progress\s+\d+/i.test(line)) return
+    if (/##(?:progress|task|batch)\b/i.test(line)) return
     consoleLines.value.push(line)
     if (consoleLines.value.length > MAX_CONSOLE_LINES) consoleLines.value.shift()
   }
@@ -100,6 +109,9 @@ export function useJobConsole(options: UseJobConsoleOptions = {}): JobConsoleApi
     logs.value = []
     consoleLines.value = []
     progress.value = 0
+    statusText.value = ''
+    batchCurrent.value = 0
+    batchTotal.value = 0
   }
 
   function resetWhenIdle() {
@@ -123,13 +135,23 @@ export function useJobConsole(options: UseJobConsoleOptions = {}): JobConsoleApi
       busy.value = true
       currentJob.value = msg.jobId ?? null
       clearBuffers()
-      appendStatus((options.formatStarted ?? defaultStarted)(msg))
+      const started = (options.formatStarted ?? defaultStarted)(msg)
+      statusText.value = started
+      appendStatus(started)
       return true
     }
 
     if (msg.type === 'job-event') {
       if (msg.kind === 'progress' && msg.message) {
         progress.value = Number(msg.message) || progress.value
+      } else if (msg.kind === 'task' && msg.message) {
+        statusText.value = msg.message
+      } else if (msg.kind === 'batch' && msg.message) {
+        const parts = msg.message.trim().split(/\s+/)
+        const cur = Number(parts[0])
+        const total = Number(parts[1])
+        if (Number.isFinite(cur)) batchCurrent.value = Math.max(0, Math.floor(cur))
+        if (Number.isFinite(total)) batchTotal.value = Math.max(0, Math.floor(total))
       } else if (msg.kind === 'console' && msg.message) {
         appendConsole(msg.message)
       } else if (msg.kind === 'log' && msg.message) {
@@ -144,6 +166,8 @@ export function useJobConsole(options: UseJobConsoleOptions = {}): JobConsoleApi
     if (msg.type === 'job-finished') {
       busy.value = false
       progress.value = msg.ok ? 100 : progress.value
+      if (batchTotal.value > 0) batchCurrent.value = batchTotal.value
+      statusText.value = msg.ok ? '完成' : '失败'
       appendStatus((options.formatFinished ?? defaultFinished)(msg))
       currentJob.value = null
       options.onFinished?.(msg)
@@ -152,6 +176,7 @@ export function useJobConsole(options: UseJobConsoleOptions = {}): JobConsoleApi
 
     if (msg.type === 'error' && msg.message) {
       busy.value = false
+      statusText.value = '错误'
       appendStatus(`[错误] ${msg.message}`)
       options.onError?.(msg.message)
       return true
@@ -168,6 +193,9 @@ export function useJobConsole(options: UseJobConsoleOptions = {}): JobConsoleApi
     logs,
     consoleLines,
     progress,
+    statusText,
+    batchCurrent,
+    batchTotal,
     busy,
     currentJob,
     appendStatus,

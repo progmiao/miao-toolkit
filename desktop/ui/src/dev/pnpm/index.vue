@@ -4,20 +4,27 @@
  * 经 Volta 管理多版本；与 Yarn / Node 页面互不共用模板，仅复用 JobConsole 与 composable。
  * Host：Miao.Software/Dev/Volta；种子：seeds/dev/pnpm/software.json
  */
-import { computed, onMounted, onUnmounted, ref } from 'vue'
-import { RouterLink } from 'vue-router'
+import { computed, inject, onMounted, onUnmounted, ref } from 'vue'
 import JobConsole from '@kernel/components/JobConsole.vue'
 import { post, subscribe } from '@kernel/bridge/bus'
 import { showToast } from '@kernel/bridge/toast'
-import { useJobConsole } from '@kernel/composables/useJobConsole'
 import { useShellTitle } from '@kernel/composables/useShellTitle'
 import { useVoltaVersions } from '@kernel/composables/useVoltaVersions'
+import { DEV_SELECT_TOOL_KEY } from '../devPanelContext'
+import { useDevPanelJob } from '../useDevPanelJob'
 
 /** 本页固定工具 id（勿与其它包页混用）。 */
 const TOOL_ID = 'pnpm'
 const PAGE_TITLE = 'Pnpm'
 
-useShellTitle(PAGE_TITLE)
+const props = defineProps<{
+  /** 嵌在一级页 tool-workspace 时为 true。 */
+  embedded?: boolean
+}>()
+
+useShellTitle(computed(() => (props.embedded ? '开发工具' : PAGE_TITLE)))
+
+const selectTool = inject(DEV_SELECT_TOOL_KEY, null)
 
 const {
   selected,
@@ -37,11 +44,15 @@ const {
   logs,
   consoleLines,
   progress,
+  statusText,
+  batchCurrent,
+  batchTotal,
   busy,
   appendStatus,
   consumeJobMessage,
   cancel,
-} = useJobConsole({
+  isShared,
+} = useDevPanelJob({
   onFinished: () => requestList(),
   onError: (message) => setError(message),
   formatStarted: (msg) => `开始：${msg.action ?? 'job'}`,
@@ -69,7 +80,8 @@ onMounted(() => {
       pendingPinVersion.value = null
       return
     }
-    consumeJobMessage(msg)
+    if (msg.type === 'job-finished') requestList()
+    if (!isShared) consumeJobMessage(msg)
   })
   requestList()
 })
@@ -108,19 +120,23 @@ function pinOne(ver: string) {
   post({ type: 'dialog.pick-folder' })
 }
 
-/** 安装 Volta 工具本体（非 pnpm 包版本）。 */
+/** 安装 Volta：嵌入模式切到 Volta 项。 */
 function installVoltaTool() {
+  if (selectTool) {
+    selectTool('volta')
+    return
+  }
   const jobId = crypto.randomUUID().replaceAll('-', '')
   post({ type: 'run-job', jobId, toolId: 'volta', action: 'install' })
 }
 </script>
 
 <template>
-  <section class="page page--scroll pnpm-page">
-    <header class="page-head row">
+  <section class="pnpm-page" :class="{ 'page page--scroll': !props.embedded, embedded: props.embedded }">
+    <header v-if="!props.embedded" class="page-head row">
       <div>
         <p class="crumb">
-          <RouterLink to="/dev">开发工具</RouterLink>
+          <a href="#/dev">开发工具</a>
           <span>/</span>
           <span>{{ PAGE_TITLE }}</span>
         </p>
@@ -138,11 +154,23 @@ function installVoltaTool() {
       </div>
     </header>
 
+    <div v-else class="workspace-toolbar">
+      <button type="button" class="btn secondary" :disabled="loading || busy" @click="requestList()">
+        刷新
+      </button>
+      <button type="button" class="btn" :disabled="busy" @click="run('install')">安装所选</button>
+      <button type="button" class="btn secondary" :disabled="busy" @click="run('uninstall')">
+        卸载所选
+      </button>
+      <button type="button" class="btn danger" :disabled="!busy" @click="cancel">取消</button>
+    </div>
+
     <p v-if="!voltaAvailable" class="prereq-banner">
       未安装 Volta。请先安装「Volta」工具后再管理版本。
       <span class="actions" style="margin-top: 0.65rem; display: flex; gap: 0.5rem">
-        <button type="button" class="btn" :disabled="busy" @click="installVoltaTool">安装 Volta</button>
-        <RouterLink class="btn secondary" to="/dev">返回开发工具</RouterLink>
+        <button type="button" class="btn" :disabled="busy" @click="installVoltaTool">
+          {{ selectTool ? '前往 Volta' : '安装 Volta' }}
+        </button>
       </span>
     </p>
     <p v-else-if="conflicts.length" class="banner-warn">
@@ -150,7 +178,7 @@ function installVoltaTool() {
     </p>
     <p v-if="error" class="banner-err">{{ error }}</p>
 
-    <div v-if="voltaAvailable" class="pkg-layout">
+    <div v-if="voltaAvailable" class="pkg-layout" :class="{ 'pkg-layout--embedded': props.embedded }">
       <div class="ver-panel hud-panel">
         <div class="ver-toolbar">
           <input v-model="filter" class="search" type="search" placeholder="过滤版本…" />
@@ -190,9 +218,12 @@ function installVoltaTool() {
         </ul>
       </div>
 
-      <aside class="job-panel">
+      <aside v-if="!props.embedded" class="job-panel">
         <JobConsole
           :progress="progress"
+          :status-text="statusText"
+          :batch-current="batchCurrent"
+          :batch-total="batchTotal"
           :logs="logs"
           :console-lines="consoleLines"
           :busy="busy"
@@ -241,6 +272,21 @@ function installVoltaTool() {
   grid-template-columns: 1.15fr 0.95fr;
   gap: 1rem;
   min-height: 440px;
+}
+.pkg-layout--embedded {
+  grid-template-columns: 1fr;
+  min-height: 280px;
+}
+.workspace-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.65rem;
+}
+.pnpm-page.embedded {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 .ver-panel {
   display: flex;

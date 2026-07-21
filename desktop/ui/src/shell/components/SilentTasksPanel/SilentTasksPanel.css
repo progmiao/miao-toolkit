@@ -1,0 +1,218 @@
+.silent-tasks {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  flex: 0 0 auto;
+  max-width: min(20rem, 42vw);
+  z-index: 4;
+}
+
+.silent-tasks-summary {
+  margin: 0;
+  min-width: 0;
+  max-width: 14rem;
+  font-size: 0.68rem;
+  line-height: 1.3;
+  letter-spacing: 0.02em;
+  color: var(--shell-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.silent-tasks-btn {
+  position: relative;
+  flex: 0 0 auto;
+  width: 1.85rem;
+  height: 1.85rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, var(--line) 80%, transparent);
+  border-radius: 0.4rem;
+  background: color-mix(in srgb, var(--panel-strong) 55%, transparent);
+  color: var(--ink);
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.silent-tasks-btn:hover {
+  border-color: color-mix(in srgb, var(--accent, #3b82f6) 45%, var(--line));
+  background: color-mix(in srgb, var(--panel-strong) 78%, transparent);
+}
+
+.silent-tasks-btn svg {
+  width: 1.05rem;
+  height: 1.05rem;
+}
+
+.silent-tasks-badge {
+  position: absolute;
+  top: -0.28rem;
+  right: -0.28rem;
+  min-width: 1rem;
+  height: 1rem;
+  padding: 0 0.22rem;
+  border-radius: 999px;
+  font-size: 0.58rem;
+  font-weight: 700;
+  line-height: 1rem;
+  text-align: center;
+  color: #fff;
+  background: color-mix(in srgb, var(--accent, #2563eb) 92%, #0f172a);
+  pointer-events: none;
+}
+
+.silent-tasks-panel {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 0.45rem);
+  width: min(22rem, calc(100vw - 2rem));
+  max-height: min(22rem, 48vh);
+  overflow: auto;
+  padding: 0.7rem 0.75rem 0.8rem;
+  border: 1px solid color-mix(in srgb, var(--line) 85%, transparent);
+  border-radius: 0.55rem;
+  background: color-mix(in srgb, var(--panel-strong) 94%, transparent);
+  box-shadow: 0 10px 28px color-mix(in srgb, #000 28%, transparent);
+  backdrop-filter: blur(14px) saturate(1.25);
+  -webkit-backdrop-filter: blur(14px) saturate(1.25);
+}
+
+.silent-tasks-panel-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.55rem;
+}
+
+.silent-tasks-panel-head strong {
+  font-size: 0.78rem;
+  letter-spacing: 0.04em;
+  font-weight: 650;
+}
+
+.silent-tasks-panel-count {
+  font-size: 0.68rem;
+  color: var(--shell-muted);
+}
+
+.silent-tasks-section {
+  margin: 0 0 0.55rem;
+}
+
+.silent-tasks-section h4 {
+  margin: 0 0 0.35rem;
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--shell-muted);
+}
+
+.silent-tasks-section ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.silent-tasks-row {
+  padding: 0.45rem 0.5rem;
+  border: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
+  border-radius: 0.4rem;
+  background: color-mix(in srgb, var(--panel) 40%, transparent);
+}
+
+.silent-tasks-row.is-done {
+  opacity: 0.88;
+}
+
+.silent-tasks-row-main {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.silent-tasks-row-title {
+  min-width: 0;
+  font-size: 0.74rem;
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.silent-tasks-row-meta {
+  flex: 0 0 auto;
+  font-size: 0.64rem;
+  color: var(--shell-muted);
+}
+
+.silent-tasks-row-meta[data-status='failed'] {
+  color: color-mix(in srgb, var(--danger, #dc2626) 85%, var(--ink));
+}
+
+.silent-tasks-row-meta[data-status='succeeded'] {
+  color: color-mix(in srgb, var(--ok, #16a34a) 80%, var(--ink));
+}
+
+.silent-tasks-bar {
+  margin-top: 0.35rem;
+  height: 0.28rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--line) 55%, transparent);
+  overflow: hidden;
+}
+
+.silent-tasks-bar i {
+  display: block;
+  height: 100%;
+  width: 0;
+  border-radius: inherit;
+  background: color-mix(in srgb, var(--accent, #3b82f6) 88%, #fff);
+  transition: width 0.2s ease;
+}
+
+.silent-tasks-row-detail {
+  margin: 0.3rem 0 0;
+  font-size: 0.64rem;
+  line-height: 1.35;
+  color: var(--shell-muted);
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.silent-tasks-cancel {
+  margin-top: 0.35rem;
+  padding: 0.15rem 0.45rem;
+  border: 1px solid color-mix(in srgb, var(--line) 80%, transparent);
+  border-radius: 0.3rem;
+  background: transparent;
+  color: var(--ink);
+  font-size: 0.64rem;
+  cursor: pointer;
+}
+
+.silent-tasks-cancel:hover {
+  border-color: color-mix(in srgb, var(--danger, #dc2626) 45%, var(--line));
+}
+
+.silent-tasks-empty {
+  margin: 0.35rem 0 0.15rem;
+  font-size: 0.72rem;
+  color: var(--shell-muted);
+  text-align: center;
+}

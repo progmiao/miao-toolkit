@@ -1,31 +1,40 @@
 <script setup lang="ts">
 /**
- * 开发工具 · Node.js 独立页（入口 index.vue）。
- * Tab：批量安装 / 指定版本 / 设置默认 / 批量卸载；右侧 JobConsole。
- * Host：Miao.Software/Dev/Volta；种子：seeds/dev/node/software.json
+ * Node.js 工作区：梯形 Tab + 左版本列表 + 右进度/日志/PowerShell。
+ * 刷新清单 / 取消任务挂到父级 tool-overview。
  */
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
-import { RouterLink } from 'vue-router'
+import { computed, inject, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import JobConsole from '@kernel/components/JobConsole.vue'
 import { post, subscribe, type VoltaVersion } from '@kernel/bridge/bus'
+import { normalizeSilentTask } from '@kernel/bridge/silentTasks'
 import { showToast } from '@kernel/bridge/toast'
-import { useJobConsole } from '@kernel/composables/useJobConsole'
 import { useShellTitle } from '@kernel/composables/useShellTitle'
+import {
+  DEV_OVERVIEW_EXTRA_KEY,
+  DEV_SELECT_TOOL_KEY,
+  DEV_WORKSPACE_OWNS_CONSOLE_KEY,
+} from '../devPanelContext'
+import { useDevPanelJob } from '../useDevPanelJob'
 
-useShellTitle('Node.js')
+const props = defineProps<{
+  /** 嵌在一级页 tool-workspace 时为 true。 */
+  embedded?: boolean
+}>()
+
+useShellTitle(computed(() => (props.embedded ? '开发工具' : 'Node.js')))
+
+const selectTool = inject(DEV_SELECT_TOOL_KEY, null)
+const overviewExtra = inject(DEV_OVERVIEW_EXTRA_KEY, null)
+const workspaceOwnsConsole = inject(DEV_WORKSPACE_OWNS_CONSOLE_KEY, null)
 
 /** 功能 Tab。 */
 type NodeTab = 'batch-install' | 'specify' | 'set-default' | 'batch-uninstall'
 
 const tab = ref<NodeTab>('batch-install')
-
 const versions = ref<VoltaVersion[]>([])
 const selected = ref<Record<string, boolean>>({})
-/** 设默认：单选版本号。 */
 const defaultPick = ref<string | null>(null)
-/** 指定版本：手动输入。 */
 const specifyVersion = ref('')
-const ltsOnly = ref(true)
 const filter = ref('')
 const loading = ref(false)
 const error = ref('')
@@ -36,11 +45,15 @@ const {
   logs,
   consoleLines,
   progress,
+  statusText,
+  batchCurrent,
+  batchTotal,
   busy,
   consumeJobMessage,
   cancel,
-} = useJobConsole({
-  onFinished: () => requestList(),
+  isShared,
+} = useDevPanelJob({
+  onFinished: () => requestList(false),
   onError: (message) => {
     error.value = message
     loading.value = false
@@ -55,15 +68,61 @@ const tabs: { id: NodeTab; label: string }[] = [
   { id: 'batch-uninstall', label: '批量卸载' },
 ]
 
+/** 版本列表骨架行数（按可视高度可容纳条数）。 */
+const versionSkeletonRows = ref(8)
+const verListEl = ref<HTMLElement | null>(null)
+let verListResizeObs: ResizeObserver | undefined
+
+/** 按版本列表高度 / 实测骨架行高，计算可完整放下的条数。 */
+function recalcVersionSkeletonRows() {
+  const el = verListEl.value
+  if (!el) return
+  const styles = getComputedStyle(el)
+  const padY =
+    (Number.parseFloat(styles.paddingTop) || 0) + (Number.parseFloat(styles.paddingBottom) || 0)
+  const available = Math.max(0, el.clientHeight - padY)
+  const sample = el.querySelector('.ver-row') as HTMLElement | null
+  let rowH = Number.parseFloat(styles.getPropertyValue('--ver-row-h')) || 38
+  if (sample) {
+    const ms = getComputedStyle(sample)
+    rowH = sample.offsetHeight + (Number.parseFloat(ms.marginBottom) || 0)
+  }
+  if (rowH <= 0) return
+  versionSkeletonRows.value = Math.max(1, Math.floor(available / rowH))
+}
+
 let unsub: (() => void) | undefined
 
-/** 按当前 Tab 过滤后的版本列表。 */
+/** 去掉版本号中的点/空白，便于「265」匹配「26.5.0」。 */
+function compactVersionKey(s: string) {
+  return s.toLowerCase().replace(/[.\s_-]/g, '')
+}
+
+/**
+ * 版本过滤：子串匹配，或忽略点号的紧凑匹配；LTS 名也可匹配。
+ * @param version - 版本号
+ * @param lts - LTS 代号
+ * @param rawQuery - 用户输入
+ */
+function matchesVersionFilter(
+  version: string,
+  lts: string | null | undefined,
+  rawQuery: string,
+): boolean {
+  const q = rawQuery.trim().toLowerCase()
+  if (!q) return true
+  const ver = version.toLowerCase()
+  const ltsText = (lts ?? '').toLowerCase()
+  if (ver.includes(q) || ltsText.includes(q)) return true
+  const qCompact = compactVersionKey(q)
+  if (!qCompact) return false
+  return compactVersionKey(ver).includes(qCompact) || compactVersionKey(ltsText).includes(qCompact)
+}
+
 const listForTab = computed(() => {
-  const q = filter.value.trim().toLowerCase()
+  const q = filter.value
   return versions.value.filter((v) => {
-    if (q && !v.version.includes(q) && !(v.lts ?? '').toLowerCase().includes(q)) {
-      return false
-    }
+    if (!matchesVersionFilter(v.version, v.lts, q)) return false
     if (tab.value === 'batch-uninstall' || tab.value === 'set-default') {
       return v.installed
     }
@@ -71,18 +130,47 @@ const listForTab = computed(() => {
   })
 })
 
+/** 当前可操作的已勾选版本（批量安装排除已装）。 */
 const selectedList = computed(() =>
-  listForTab.value.filter((v) => selected.value[v.version]).map((v) => v.version),
+  listForTab.value
+    .filter((v) => {
+      if (!selected.value[v.version]) return false
+      if (tab.value === 'batch-install' && v.installed) return false
+      return true
+    })
+    .map((v) => v.version),
 )
 
-/** 向宿主拉取 Node 版本清单。 */
-function requestList() {
+/**
+ * 拉取/刷新 Node 版本清单。
+ * @param forceRemote - true 时强制与远程增量同步
+ */
+function requestList(forceRemote = true) {
   loading.value = true
   error.value = ''
-  post({ type: 'volta.list', tool: 'node', ltsOnly: ltsOnly.value })
+  if (overviewExtra) {
+    overviewExtra.value = {
+      refresh: () => requestList(true),
+      refreshLabel: '刷新清单',
+      refreshing: true,
+    }
+  }
+  post({ type: 'volta.list', tool: 'node', ltsOnly: false, forceRemote })
+}
+
+function syncOverviewExtra() {
+  if (!overviewExtra) return
+  overviewExtra.value = {
+    refresh: () => requestList(true),
+    refreshLabel: '刷新清单',
+    refreshing: loading.value,
+  }
 }
 
 onMounted(() => {
+  if (workspaceOwnsConsole) workspaceOwnsConsole.value = true
+  syncOverviewExtra()
+
   unsub = subscribe((msg) => {
     if (msg.type === 'volta.versions' && Array.isArray(msg.items)) {
       if (msg.tool && msg.tool !== 'node') return
@@ -91,41 +179,78 @@ onMounted(() => {
       voltaAvailable.value = msg.voltaAvailable !== false
       conflicts.value = (msg.conflicts as string[]) ?? []
       for (const v of versions.value) {
-        if (selected.value[v.version] === undefined) selected.value[v.version] = false
+        if (v.installed) {
+          selected.value[v.version] = false
+        } else if (selected.value[v.version] === undefined) {
+          selected.value[v.version] = false
+        }
       }
       if (!defaultPick.value) {
-        const d = versions.value.find((x) => x.isDefault) ?? versions.value.find((x) => x.installed)
+        const d =
+          versions.value.find((x) => x.isDefault) ?? versions.value.find((x) => x.installed)
         defaultPick.value = d?.version ?? null
       }
+      syncOverviewExtra()
       return
     }
-    consumeJobMessage(msg)
+    if (msg.type === 'silent.task') {
+      const task = normalizeSilentTask(msg.task)
+      if (task?.id === 'cache.versions.node' && task.status === 'succeeded') {
+        requestList(false)
+      }
+    }
+    if (msg.type === 'job-finished') requestList(false)
+    if (!isShared) consumeJobMessage(msg)
   })
-  requestList()
+  // 默认读本地缓存；远端增量由进主壳后的静默任务负责
+  requestList(false)
 })
 
-onUnmounted(() => unsub?.())
+watch(verListEl, (el) => {
+  verListResizeObs?.disconnect()
+  verListResizeObs = undefined
+  if (!el) return
+  void nextTick(() => {
+    recalcVersionSkeletonRows()
+    verListResizeObs = new ResizeObserver(() => recalcVersionSkeletonRows())
+    verListResizeObs.observe(el)
+  })
+})
+
+watch(loading, (on) => {
+  if (on && !versions.value.length) {
+    void nextTick(() => recalcVersionSkeletonRows())
+  }
+})
+
+onUnmounted(() => {
+  unsub?.()
+  verListResizeObs?.disconnect()
+  verListResizeObs = undefined
+  if (overviewExtra) overviewExtra.value = null
+  if (workspaceOwnsConsole) workspaceOwnsConsole.value = false
+})
 
 watch(tab, () => {
   selected.value = {}
   filter.value = ''
 })
 
-watch(ltsOnly, () => requestList())
+watch(busy, () => {
+  // 取消任务按钮在概览区，由父级 busy 控制；此处仅保持刷新态
+  syncOverviewExtra()
+})
 
-/**
- * 全选 / 清空当前 Tab 列表勾选。
- * @param on - true 全选
- */
 function toggleAll(on: boolean) {
-  for (const v of listForTab.value) selected.value[v.version] = on
+  for (const v of listForTab.value) {
+    if (tab.value === 'batch-install' && v.installed) {
+      selected.value[v.version] = false
+      continue
+    }
+    selected.value[v.version] = on
+  }
 }
 
-/**
- * 发起 Node 相关 Job。
- * @param action - install | uninstall | set-default
- * @param versionsArg - 版本列表；缺省用多选
- */
 function runJob(action: string, versionsArg?: string[]) {
   const list = versionsArg ?? selectedList.value
   if (!list.length) {
@@ -142,12 +267,10 @@ function runJob(action: string, versionsArg?: string[]) {
   })
 }
 
-/** 批量安装当前勾选。 */
 function runBatchInstall() {
   runJob('install')
 }
 
-/** 安装输入框中的指定版本。 */
 function runSpecifyInstall() {
   const ver = specifyVersion.value.trim().replace(/^v/i, '')
   if (!ver) {
@@ -157,7 +280,6 @@ function runSpecifyInstall() {
   runJob('install', [ver])
 }
 
-/** 将单选版本设为默认。 */
 function runSetDefault() {
   if (!defaultPick.value) {
     showToast('请选择要设为默认的已装版本', { kind: 'warn' })
@@ -166,42 +288,31 @@ function runSetDefault() {
   runJob('set-default', [defaultPick.value])
 }
 
-/** 批量卸载勾选的已装版本。 */
 function runBatchUninstall() {
   runJob('uninstall')
 }
 
-/** 安装 Volta 本体（前置）。 */
 function installVoltaTool() {
+  if (selectTool) {
+    selectTool('volta')
+    return
+  }
   const jobId = crypto.randomUUID().replaceAll('-', '')
   post({ type: 'run-job', jobId, toolId: 'volta', action: 'install' })
 }
+
+// 独立页兜底：取消仍可用
+void cancel
 </script>
 
 <template>
-  <section class="page page--scroll node-page">
-    <header class="page-head row">
-      <div>
-        <p class="crumb">
-          <RouterLink to="/dev">开发工具</RouterLink>
-          <span>/</span>
-          <span>Node.js</span>
-        </p>
-        <p>经 Volta 管理 Node：批量安装、指定版本、设默认、批量卸载（本页专属，不与其它工具共用）。</p>
-      </div>
-      <div class="actions">
-        <button type="button" class="btn secondary" :disabled="loading || busy" @click="requestList">
-          刷新清单
-        </button>
-        <button type="button" class="btn danger" :disabled="!busy" @click="cancel">取消任务</button>
-      </div>
-    </header>
-
+  <section class="node-page" :class="{ embedded: props.embedded }">
     <p v-if="!voltaAvailable" class="prereq-banner">
       未安装 Volta。请先安装后再管理 Node 版本。
       <span class="prereq-actions">
-        <button type="button" class="btn" :disabled="busy" @click="installVoltaTool">安装 Volta</button>
-        <RouterLink class="btn secondary" to="/dev">返回开发工具</RouterLink>
+        <button type="button" class="btn" :disabled="busy" @click="installVoltaTool">
+          {{ selectTool ? '前往 Volta' : '安装 Volta' }}
+        </button>
       </span>
     </p>
     <p v-else-if="conflicts.length" class="banner-warn">
@@ -210,59 +321,105 @@ function installVoltaTool() {
     <p v-if="error" class="banner-err">{{ error }}</p>
 
     <template v-if="voltaAvailable">
-      <nav class="tabs" aria-label="Node 功能">
+      <div class="folder-tabs" role="tablist" aria-label="Node 功能">
         <button
-          v-for="t in tabs"
+          v-for="(t, i) in tabs"
           :key="t.id"
           type="button"
+          role="tab"
+          class="folder-tab"
           :class="{ active: tab === t.id }"
+          :style="{ zIndex: tab === t.id ? tabs.length + 1 : tabs.length - i }"
+          :aria-selected="tab === t.id"
           @click="tab = t.id"
         >
-          {{ t.label }}
+          <span class="folder-tab-label">{{ t.label }}</span>
         </button>
-      </nav>
+      </div>
 
-      <div class="node-layout">
-        <div class="hud-panel main">
+      <div class="folder-body">
+        <div class="node-split">
           <!-- 批量安装 -->
           <template v-if="tab === 'batch-install'">
-            <h2 class="sec">批量安装</h2>
-            <p class="hint">从远程清单多选版本后安装；可仅看 LTS。</p>
-            <div class="ver-toolbar">
-              <label class="toggle">
-                <input v-model="ltsOnly" type="checkbox" />
-                仅 LTS
-              </label>
-              <input v-model="filter" class="search" type="search" placeholder="过滤版本…" />
-              <button type="button" class="btn ghost" @click="toggleAll(true)">全选</button>
-              <button type="button" class="btn ghost" @click="toggleAll(false)">清空</button>
-              <span class="count">{{ loading ? '同步中…' : `${listForTab.length} 项` }}</span>
-            </div>
-            <ul class="ver-list">
-              <li v-for="v in listForTab" :key="v.version">
-                <label>
-                  <input v-model="selected[v.version]" type="checkbox" />
-                  <span class="ver-num">{{ v.version }}</span>
-                  <span v-if="v.lts" class="tag">LTS · {{ v.lts }}</span>
-                  <span v-if="v.installed" class="tag status-installed">已装</span>
-                  <span v-if="v.isDefault" class="tag">默认</span>
-                </label>
-              </li>
-              <li v-if="!listForTab.length && !loading" class="empty-hint">无匹配版本</li>
-            </ul>
-            <div class="tab-actions">
-              <button type="button" class="btn" :disabled="busy" @click="runBatchInstall">
-                安装所选（{{ selectedList.length }}）
+            <div class="ver-head">
+              <input
+                v-model="filter"
+                class="search"
+                type="search"
+                placeholder="过滤版本…"
+                :aria-label="`过滤版本，共 ${listForTab.length} 项`"
+              />
+              <button
+                type="button"
+                class="btn"
+                :disabled="busy || loading || !selectedList.length"
+                :title="!selectedList.length ? '请先勾选要安装的版本' : '安装所选版本'"
+                @click="runBatchInstall"
+              >
+                安装
               </button>
             </div>
+            <ul
+              ref="verListEl"
+              class="ver-list ver-list--install"
+              :class="{ 'ver-list--loading': loading && !versions.length }"
+              :aria-busy="loading"
+              aria-label="Node 版本列表"
+            >
+              <template v-if="loading && !versions.length">
+                <li
+                  v-for="n in versionSkeletonRows"
+                  :key="'vsk-' + n"
+                  class="ver-row is-skel"
+                  aria-hidden="true"
+                >
+                  <div class="ver-row-label">
+                    <span class="ver-lead">
+                      <span class="ver-skel-swatch ver-skel-swatch--check" />
+                    </span>
+                    <span class="ver-skel-swatch ver-skel-swatch--ver" />
+                    <span class="ver-skel-swatch ver-skel-swatch--tag" />
+                  </div>
+                </li>
+              </template>
+              <template v-else>
+                <li
+                  v-for="v in listForTab"
+                  :key="v.version"
+                  class="ver-row"
+                  :class="{ 'is-installed': v.installed, 'is-checked': selected[v.version] && !v.installed }"
+                >
+                  <label class="ver-row-label" :class="{ 'is-disabled': v.installed }">
+                    <span class="ver-lead" :class="{ 'is-default': v.isDefault }">
+                      <span
+                        v-if="v.isDefault"
+                        class="mark-default-slot"
+                        title="默认版本"
+                        aria-label="默认版本"
+                      >
+                        <span class="mark-default-glyph" aria-hidden="true">★</span>
+                      </span>
+                      <input
+                        v-else
+                        v-model="selected[v.version]"
+                        class="ver-check"
+                        type="checkbox"
+                        :disabled="v.installed"
+                      />
+                    </span>
+                    <span class="ver-num">{{ v.version }}</span>
+                    <span v-if="v.lts" class="tag">LTS · {{ v.lts }}</span>
+                  </label>
+                </li>
+                <li v-if="!listForTab.length && !loading" class="empty-hint">无匹配版本</li>
+              </template>
+            </ul>
           </template>
 
           <!-- 指定版本 -->
           <template v-else-if="tab === 'specify'">
-            <h2 class="sec">指定版本</h2>
-            <p class="hint">直接输入版本号（如 22.23.1）或 lts / latest，由 Volta 安装。</p>
-            <div class="form-row">
-              <label>
+            <div class="ver-head ver-head--wrap">
+              <label class="ver-field">
                 版本
                 <input
                   v-model="specifyVersion"
@@ -276,18 +433,21 @@ function installVoltaTool() {
               <button type="button" class="btn" :disabled="busy" @click="runSpecifyInstall">
                 安装此版本
               </button>
-            </div>
-            <p class="hint sub">也可从下方清单点选填入（当前 {{ ltsOnly ? '仅 LTS' : '全部' }}）。</p>
-            <div class="ver-toolbar">
-              <label class="toggle">
-                <input v-model="ltsOnly" type="checkbox" />
-                仅 LTS
-              </label>
-              <input v-model="filter" class="search" type="search" placeholder="过滤…" />
+              <input
+                v-model="filter"
+                class="search search--full"
+                type="search"
+                placeholder="过滤清单…"
+              />
             </div>
             <ul class="ver-list ver-list--pick">
               <li v-for="v in listForTab" :key="v.version">
-                <button type="button" class="pick-row" :disabled="busy" @click="specifyVersion = v.version">
+                <button
+                  type="button"
+                  class="pick-row"
+                  :disabled="busy"
+                  @click="specifyVersion = v.version"
+                >
                   <span class="ver-num">{{ v.version }}</span>
                   <span v-if="v.lts" class="tag">LTS · {{ v.lts }}</span>
                   <span v-if="v.installed" class="tag status-installed">已装</span>
@@ -299,8 +459,16 @@ function installVoltaTool() {
 
           <!-- 设置默认 -->
           <template v-else-if="tab === 'set-default'">
-            <h2 class="sec">设置默认</h2>
-            <p class="hint">从已安装版本中选择一个设为 Volta 默认 Node。</p>
+            <div class="ver-head">
+              <button
+                type="button"
+                class="btn"
+                :disabled="busy || !defaultPick"
+                @click="runSetDefault"
+              >
+                设为默认
+              </button>
+            </div>
             <ul class="ver-list">
               <li v-for="v in listForTab" :key="v.version">
                 <label>
@@ -311,29 +479,31 @@ function installVoltaTool() {
                   <span v-if="v.isCurrent" class="tag">当前会话</span>
                 </label>
               </li>
-              <li v-if="!listForTab.length && !loading" class="empty-hint">暂无已安装版本，请先安装</li>
+              <li v-if="!listForTab.length && !loading" class="empty-hint">
+                暂无已安装版本，请先安装
+              </li>
             </ul>
-            <div class="tab-actions">
-              <button type="button" class="btn" :disabled="busy || !defaultPick" @click="runSetDefault">
-                设为默认
-              </button>
-            </div>
           </template>
 
           <!-- 批量卸载 -->
           <template v-else>
-            <h2 class="sec">批量卸载</h2>
-            <p class="hint">勾选已安装的 Node 版本后卸载（默认版本请先改默认再卸）。</p>
-            <div class="ver-toolbar">
+            <div class="ver-head">
               <input v-model="filter" class="search" type="search" placeholder="过滤…" />
               <button type="button" class="btn ghost" @click="toggleAll(true)">全选</button>
               <button type="button" class="btn ghost" @click="toggleAll(false)">清空</button>
-              <span class="count">{{ loading ? '同步中…' : `${listForTab.length} 项` }}</span>
+              <button
+                type="button"
+                class="btn secondary"
+                :disabled="busy || !selectedList.length"
+                @click="runBatchUninstall"
+              >
+                卸载{{ selectedList.length ? `（${selectedList.length}）` : '' }}
+              </button>
             </div>
             <ul class="ver-list">
-              <li v-for="v in listForTab" :key="v.version">
-                <label>
-                  <input v-model="selected[v.version]" type="checkbox" />
+              <li v-for="v in listForTab" :key="v.version" class="ver-row">
+                <label class="ver-row-label">
+                  <input v-model="selected[v.version]" class="ver-check" type="checkbox" />
                   <span class="ver-num">{{ v.version }}</span>
                   <span v-if="v.lts" class="tag">LTS · {{ v.lts }}</span>
                   <span v-if="v.isDefault" class="tag">默认</span>
@@ -341,241 +511,602 @@ function installVoltaTool() {
               </li>
               <li v-if="!listForTab.length && !loading" class="empty-hint">暂无已安装版本</li>
             </ul>
-            <div class="tab-actions">
-              <button
-                type="button"
-                class="btn secondary"
-                :disabled="busy || !selectedList.length"
-                @click="runBatchUninstall"
-              >
-                卸载所选（{{ selectedList.length }}）
-              </button>
-            </div>
           </template>
-        </div>
 
-        <aside class="job-side">
           <JobConsole
+            class="node-job"
+            pane-layout="stack"
+            always-show
             :progress="progress"
+            :status-text="statusText"
+            :batch-current="batchCurrent"
+            :batch-total="batchTotal"
             :logs="logs"
             :console-lines="consoleLines"
             :busy="busy"
-            placeholder="执行操作后在此显示日志与命令输出…"
+            placeholder="执行操作后在此显示 PowerShell 输出…"
           />
-        </aside>
+        </div>
       </div>
     </template>
   </section>
 </template>
 
 <style scoped>
-.crumb {
+.node-page {
   display: flex;
-  gap: 0.4rem;
-  margin: 0 0 0.35rem;
-  font-size: 0.8rem;
-  color: var(--muted);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  font-family: var(--font-display);
-}
-.crumb a {
-  color: var(--accent);
-  text-decoration: none;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1;
+  height: 100%;
+  overflow: hidden;
 }
 .prereq-banner {
-  margin: 0 0 1rem;
-  padding: 0.9rem 1rem;
+  margin: 0 0 0.75rem;
+  padding: 0.75rem 0.9rem;
   border: 1px solid color-mix(in srgb, var(--warn) 45%, var(--line));
-  border-radius: 0.75rem;
+  border-radius: 0.65rem;
   background: color-mix(in srgb, var(--warn) 12%, var(--panel));
-  color: var(--ink);
-  font-size: 0.95rem;
+  font-size: 0.9rem;
+  flex: 0 0 auto;
 }
 .prereq-actions {
   display: flex;
   gap: 0.5rem;
-  margin-top: 0.65rem;
+  margin-top: 0.55rem;
 }
 .banner-err {
   color: var(--danger);
-  margin: 0 0 0.75rem;
+  margin: 0 0 0.65rem;
+  flex: 0 0 auto;
 }
 .banner-warn {
   color: var(--warn);
   margin: 0 0 0.5rem;
-  font-size: 0.9rem;
-}
-.tabs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.35rem;
-  margin-bottom: 0.85rem;
-}
-.tabs button {
-  border: 1px solid var(--line);
-  background: color-mix(in srgb, var(--panel) 70%, transparent);
-  color: var(--ink);
-  padding: 0.45rem 0.9rem;
-  border-radius: 0.45rem;
-  cursor: pointer;
-  font-weight: 600;
-}
-.tabs button.active {
-  border-color: var(--accent);
-  box-shadow: inset 0 -2px 0 var(--accent);
-  color: var(--accent);
-}
-.node-layout {
-  display: grid;
-  grid-template-columns: 1.15fr 0.95fr;
-  gap: 1rem;
-  min-height: 420px;
-  align-items: stretch;
-}
-.main {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  max-height: 560px;
-  padding: 0.95rem 1rem;
-}
-.sec {
-  margin: 0 0 0.4rem;
-  font-family: var(--font-display);
-  font-size: 0.9rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-.hint {
-  color: var(--muted);
-  font-size: 0.9rem;
-  margin: 0 0 0.75rem;
-}
-.hint.sub {
-  margin-top: 0.85rem;
-}
-.ver-toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.45rem;
-  align-items: center;
-  margin-bottom: 0.55rem;
-}
-.search {
-  flex: 1;
-  min-width: 8rem;
-  padding: 0.4rem 0.65rem;
-  border: 1px solid var(--line);
-  border-radius: 0.4rem;
-  background: var(--panel-strong);
-  color: var(--ink);
-  font-family: var(--font-mono);
-  font-size: 0.85rem;
-}
-.toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  font-size: 0.9rem;
-  color: var(--muted);
-}
-.count {
-  margin-left: auto;
-  font-size: 0.8rem;
-  color: var(--muted);
-  font-family: var(--font-mono);
-}
-.ver-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  overflow: auto;
-  flex: 1;
-  min-height: 8rem;
-  border-top: 1px solid var(--line);
-}
-.ver-list li {
-  display: flex;
-  align-items: center;
-  gap: 0.35rem;
-  border-bottom: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
-  padding: 0.35rem 0.15rem;
-}
-.ver-list li label {
-  flex: 1;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.35rem 0.5rem;
-  cursor: pointer;
-  min-width: 0;
-}
-.ver-num {
-  font-family: var(--font-mono);
-  font-weight: 600;
-  min-width: 5.5rem;
-}
-.empty-hint {
-  justify-content: center;
-  color: var(--muted);
   font-size: 0.88rem;
-  padding: 1rem !important;
-}
-.tab-actions {
-  display: flex;
-  gap: 0.5rem;
-  margin-top: 0.75rem;
   flex: 0 0 auto;
 }
-.form-row {
+
+/* —— 文件夹式梯形 Tab —— */
+.folder-tabs {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.65rem;
   align-items: flex-end;
+  gap: 0;
+  padding: 0 0.35rem;
+  margin: 0;
+  flex: 0 0 auto;
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 85%, transparent);
 }
-.form-row label {
+.folder-tab {
+  position: relative;
+  margin: 0 0 -1px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  color: var(--muted);
+  font-weight: 650;
+  font-size: 0.82rem;
+  letter-spacing: 0.03em;
+}
+.folder-tab-label {
+  display: block;
+  padding: 0.48rem 1.05rem 0.42rem 0.85rem;
+  background: color-mix(in srgb, var(--panel) 55%, transparent);
+  border: 1px solid color-mix(in srgb, var(--line) 90%, transparent);
+  border-bottom: none;
+  clip-path: polygon(0 0, calc(100% - 0.85rem) 0, 100% 100%, 0 100%);
+  border-radius: 0.45rem 0.15rem 0 0;
+  transition:
+    color 0.15s ease,
+    background 0.15s ease,
+    box-shadow 0.15s ease;
+}
+.folder-tab:hover .folder-tab-label {
+  color: var(--ink);
+  background: color-mix(in srgb, var(--panel) 72%, transparent);
+}
+.folder-tab.active {
+  color: var(--ink);
+}
+.folder-tab.active .folder-tab-label {
+  background: color-mix(in srgb, var(--panel) 88%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--line));
+  box-shadow: inset 0 2px 0 var(--accent);
+  color: var(--ink);
+}
+
+.folder-body {
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.35rem;
-  font-size: 0.88rem;
-  color: var(--muted);
-  flex: 1;
-  min-width: 12rem;
+  border: 1px solid color-mix(in srgb, var(--line) 85%, transparent);
+  border-top: none;
+  border-radius: 0 0 0.65rem 0.65rem;
+  background: color-mix(in srgb, var(--panel) 28%, transparent);
+  padding: 0.75rem;
+  overflow: hidden;
 }
-.ver-input {
-  padding: 0.5rem 0.7rem;
+
+/**
+ * 左顶栏 | 右进度
+ * 左列表 | 右日志+命令（平分进度条下方）
+ * 列表顶与日志顶齐平。
+ */
+.node-split {
+  /* 固定左列：checkbox + 版本号 + LTS·Krypton 一行刚好 */
+  --node-list-w: 16.25rem;
+  /* 与右侧进度区（任务文案 + 条 + xx/xx）对齐 */
+  --node-head-h: 2.55rem;
+  --ver-check-size: 1rem;
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: var(--node-list-w) minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-areas:
+    'head prog'
+    'list panes';
+  gap: 0.65rem 0.75rem;
+  align-items: stretch;
+  overflow: hidden;
+}
+
+.ver-head {
+  grid-area: head;
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 0.4rem;
+  align-items: stretch;
+  min-width: 0;
+  height: var(--node-head-h);
+  align-self: start;
+}
+
+.ver-head--wrap {
+  flex-wrap: wrap;
+  height: auto;
+  align-items: center;
+}
+
+.ver-head .search,
+.ver-head > .btn {
+  box-sizing: border-box;
+  height: 100%;
+  min-height: 0;
+  margin: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+}
+
+.ver-head .search {
+  flex: 1;
+  min-width: 0;
+  padding-left: 0.55rem;
+  padding-right: 0.55rem;
   border: 1px solid var(--line);
   border-radius: 0.4rem;
   background: var(--panel-strong);
   color: var(--ink);
   font-family: var(--font-mono);
-  font-size: 0.95rem;
+  font-size: 0.82rem;
 }
-.pick-row {
-  width: 100%;
+
+.ver-head > .btn {
+  flex: 0 0 auto;
+  padding-left: 0.85rem;
+  padding-right: 0.85rem;
+  font-size: 0.82rem;
+}
+
+.node-split :deep(.node-job.job-console),
+.node-split :deep(.job-console) {
+  display: contents;
+}
+
+.node-split :deep(.progress-wrap) {
+  grid-area: prog;
+  box-sizing: border-box;
+  height: var(--node-head-h);
+  min-height: var(--node-head-h);
+  max-height: var(--node-head-h);
+  align-self: start;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.14rem;
+  padding: 0.18rem 0.55rem;
+  border-radius: 0.4rem;
+}
+
+.node-split :deep(.progress-label) {
+  margin-bottom: 0;
+  min-height: 0;
+}
+
+.node-split :deep(.progress-status) {
+  font-size: 0.65rem;
+  line-height: 1.1;
+  letter-spacing: 0.04em;
+}
+
+.node-split :deep(.progress-track-row) {
+  gap: 0.4rem;
+}
+
+.node-split :deep(.progress-bar) {
+  height: 0.28rem;
+}
+
+.node-split :deep(.progress-batch) {
+  font-size: 0.65rem;
+  min-width: 2.4rem;
+}
+
+.node-split :deep(.job-panes) {
+  grid-area: panes;
+  min-height: 0;
+  height: 100%;
+}
+
+.search {
+  flex: 1;
+  min-width: 0;
+  padding: 0.35rem 0.55rem;
+  border: 1px solid var(--line);
+  border-radius: 0.4rem;
+  background: var(--panel-strong);
+  color: var(--ink);
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+}
+.search--full {
+  flex: 1 1 100%;
+  height: auto;
+  min-height: 2.55rem;
+}
+
+.ver-list {
+  /* 仅供骨架条数估算；真实行高由内容自然撑开 */
+  --ver-row-h: 2.35rem;
+  grid-area: list;
+  list-style: none;
+  margin: 0;
+  padding: 0.28rem;
+  overflow: auto;
+  min-height: 0;
+  border: 1px solid color-mix(in srgb, var(--line) 80%, transparent);
+  border-radius: 0.5rem;
+  background: color-mix(in srgb, var(--panel) 40%, transparent);
+}
+
+.ver-list li.ver-row {
+  border: 1px solid transparent;
+  border-radius: 0.4rem;
+  padding: 0;
+  margin: 0 0 0.22rem;
+  background: transparent;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.ver-list li.ver-row:last-child {
+  margin-bottom: 0;
+}
+
+/* 骨架：复用 ver-row / ver-row-label 结构，高度与真实行一致 */
+.ver-list li.ver-row.is-skel {
+  pointer-events: none;
+  cursor: default;
+  opacity: 0.92;
+  border-color: color-mix(in srgb, var(--line) 70%, transparent);
+  background: color-mix(in srgb, var(--panel) 32%, transparent);
+}
+
+.ver-skel-swatch {
+  display: block;
+  flex: 0 0 auto;
+  border-radius: 0.28rem;
+  background: linear-gradient(
+    110deg,
+    color-mix(in srgb, var(--panel) 58%, var(--line)) 22%,
+    color-mix(in srgb, var(--accent) 24%, var(--panel)) 48%,
+    color-mix(in srgb, var(--panel) 58%, var(--line)) 74%
+  );
+  background-size: 200% 100%;
+  animation: ver-skel-shimmer 1.35s ease-in-out infinite;
+}
+
+.ver-skel-swatch--check {
+  width: var(--ver-check-size, 1rem);
+  height: var(--ver-check-size, 1rem);
+}
+
+.ver-skel-swatch--ver {
+  width: 4.8rem;
+  height: 0.85rem;
+  border-radius: 999px;
+}
+
+.ver-skel-swatch--tag {
+  width: 5.6rem;
+  height: 0.85rem;
+  animation-delay: 0.1s;
+}
+
+@keyframes ver-skel-shimmer {
+  0% {
+    background-position: 120% 0;
+  }
+  100% {
+    background-position: -120% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ver-skel-swatch {
+    animation: none;
+  }
+}
+
+/* 未安装、未勾选：悬停用原「框住」样式 */
+.ver-list--install li.ver-row:not(.is-installed):not(.is-checked):hover {
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--line));
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+/* 勾选：同形换色（accent-2） */
+.ver-list--install li.ver-row.is-checked {
+  border-color: color-mix(in srgb, var(--accent-2) 55%, var(--line));
+  background: color-mix(in srgb, var(--accent-2) 16%, var(--panel));
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--accent-2) 22%, transparent),
+    0 0 12px color-mix(in srgb, var(--accent-2) 14%, transparent);
+}
+
+/* 已安装：绿色框，无需文字标签 */
+.ver-list--install li.ver-row.is-installed {
+  border-color: color-mix(in srgb, var(--ok) 55%, var(--line));
+  background: color-mix(in srgb, var(--ok) 14%, var(--panel));
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--ok) 22%, transparent),
+    0 0 12px color-mix(in srgb, var(--ok) 12%, transparent);
+}
+
+.ver-row-label {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.35rem 0.5rem;
+  gap: 0.35rem 0.45rem;
+  width: 100%;
+  cursor: pointer;
+  text-align: left;
   border: none;
   background: transparent;
   color: inherit;
+  padding: 0.38rem 0.45rem;
+  font: inherit;
+  box-sizing: border-box;
+}
+
+/* 批量安装：版本 + LTS 同排；默认标识占复选框槽位 */
+.ver-list--install .ver-row-label {
+  flex-wrap: nowrap;
+}
+
+.ver-list--install .ver-num {
+  flex: 0 0 auto;
+}
+
+.ver-list--install .tag {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.ver-lead {
+  flex: 0 0 var(--ver-check-size);
+  width: var(--ver-check-size);
+  height: var(--ver-check-size);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+/* 默认：不显示复选框，仅占位五角星 */
+.mark-default-slot {
+  display: grid;
+  place-items: center;
+  width: var(--ver-check-size);
+  height: var(--ver-check-size);
+  max-width: var(--ver-check-size);
+  line-height: 0;
+  pointer-events: none;
+}
+
+.mark-default-glyph {
+  display: block;
+  font-size: calc(var(--ver-check-size) * 1.12);
+  line-height: 1;
+  color: color-mix(in srgb, #ffe566 55%, var(--accent));
+  text-shadow:
+    0 0 4px color-mix(in srgb, #ffd24a 80%, transparent),
+    0 0 10px color-mix(in srgb, var(--accent) 55%, transparent);
+  animation: mark-default-pulse 1.25s ease-in-out infinite;
+}
+
+@keyframes mark-default-pulse {
+  0%,
+  100% {
+    opacity: 0.78;
+    transform: scale(0.92);
+    filter: brightness(0.95);
+    text-shadow:
+      0 0 3px color-mix(in srgb, #ffd24a 55%, transparent),
+      0 0 8px color-mix(in srgb, var(--accent) 35%, transparent);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.08);
+    filter: brightness(1.35);
+    text-shadow:
+      0 0 6px color-mix(in srgb, #ffe566 95%, transparent),
+      0 0 14px color-mix(in srgb, var(--accent) 75%, transparent),
+      0 0 22px color-mix(in srgb, var(--accent-2) 45%, transparent);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mark-default-glyph {
+    animation: none;
+    opacity: 1;
+    transform: none;
+    filter: brightness(1.2);
+  }
+}
+
+.ver-row-label.is-disabled {
+  cursor: default;
+  opacity: 0.92;
+}
+
+.pick-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.45rem;
+  width: 100%;
   cursor: pointer;
   text-align: left;
-  padding: 0.15rem 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  padding: 0.38rem 0.45rem;
+  font: inherit;
 }
-.pick-row:hover {
-  color: var(--accent);
+
+.ver-check {
+  appearance: none;
+  -webkit-appearance: none;
+  flex: 0 0 auto;
+  box-sizing: border-box;
+  width: var(--ver-check-size, 1rem);
+  height: var(--ver-check-size, 1rem);
+  margin: 0;
+  border: 1.5px solid color-mix(in srgb, var(--line) 90%, var(--accent));
+  border-radius: 0.28rem;
+  background: color-mix(in srgb, var(--panel-strong) 88%, transparent);
+  cursor: pointer;
+  position: relative;
+  transition:
+    border-color 0.15s ease,
+    background 0.15s ease,
+    box-shadow 0.15s ease;
 }
-.job-side {
-  min-height: 0;
+
+.ver-check:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--accent) 65%, var(--line));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
+.ver-check:checked {
+  border-color: color-mix(in srgb, var(--accent-2) 70%, transparent);
+  background: linear-gradient(
+    135deg,
+    var(--accent-2),
+    color-mix(in srgb, var(--accent) 45%, var(--accent-2))
+  );
+  box-shadow: 0 0 10px color-mix(in srgb, var(--accent-2) 28%, transparent);
+}
+
+.ver-check:checked::after {
+  content: '';
+  position: absolute;
+  left: 0.28rem;
+  top: 0.08rem;
+  width: 0.28rem;
+  height: 0.5rem;
+  border: solid var(--accent-ink, #041018);
+  border-width: 0 1.5px 1.5px 0;
+  transform: rotate(45deg);
+}
+
+.ver-check:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+  border-color: color-mix(in srgb, var(--line) 80%, transparent);
+  background: color-mix(in srgb, var(--muted) 12%, var(--panel));
+  box-shadow: none;
+}
+
+.ver-check:disabled:checked {
+  opacity: 0.45;
+}
+
+.ver-check:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+.ver-num {
+  font-family: var(--font-mono);
+  font-weight: 650;
+  min-width: 4.8rem;
+}
+
+.tag {
+  font-size: 0.68rem;
+  padding: 0.08rem 0.35rem;
+  border-radius: 0.28rem;
+  border: 1px solid color-mix(in srgb, var(--line) 80%, transparent);
+  color: var(--muted);
+}
+
+.empty-hint {
+  padding: 0.85rem !important;
+  color: var(--muted);
+  font-size: 0.85rem;
+  border: none !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+.ver-field {
   display: flex;
   flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.8rem;
+  color: var(--muted);
+  flex: 1;
+  min-width: 8rem;
 }
+.ver-input {
+  padding: 0.4rem 0.55rem;
+  border: 1px solid var(--line);
+  border-radius: 0.4rem;
+  background: var(--panel-strong);
+  color: var(--ink);
+  font-family: var(--font-mono);
+}
+
 @media (max-width: 900px) {
-  .node-layout {
+  .node-split {
     grid-template-columns: 1fr;
+    grid-template-rows: auto auto minmax(10rem, 1fr) minmax(12rem, 1.1fr);
+    grid-template-areas:
+      'head'
+      'prog'
+      'list'
+      'panes';
+  }
+
+  .node-split {
+    --node-list-w: 100%;
   }
 }
 </style>

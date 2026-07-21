@@ -29,6 +29,7 @@ import {
 import { isBrowserMock, post, subscribe } from '@kernel/bridge/bus'
 import AppToast from '../AppToast'
 import AppConfirm from '../AppConfirm'
+import SilentTasksPanel from '../SilentTasksPanel'
 import ShellTopTitle from '../ShellTopTitle/ShellTopTitle.vue'
 import './AppShell.css'
 
@@ -332,6 +333,7 @@ watch(
 
       <footer class="shell-bottom shell-frost">
         <p class="shell-meta">{{ footerLine }}</p>
+        <SilentTasksPanel />
       </footer>
     </div>
   </div>

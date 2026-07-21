@@ -16,8 +16,8 @@ export type CatalogItem = {
   /** generic | panel */
   uiMode: string
   /**
-   * panel 路由段：跳转 `/dev/{uiEntry}`；与 seeds `ui.entry` 一致。
-   * generic 列表项可空。
+   * panel 工作区键：与 seeds `ui.entry` 一致；一级页嵌入 `dev/{uiEntry}`。
+   * 深链用 `/dev?tool={目录 id}`。generic 可空。
    */
   uiEntry?: string | null
   tags: string[]
@@ -51,7 +51,7 @@ export type HostMessage = {
   type: string
   /** 任务 id（job-*） */
   jobId?: string
-  /** job-event 子类型：progress | console | log */
+  /** job-event 子类型：progress | task | batch | console | log */
   kind?: string
   /** 日志/进度/错误文案 */
   message?: string
@@ -87,6 +87,19 @@ export type HostMessage = {
   status?: unknown
   secrets?: unknown
   plugins?: unknown
+  /** boot.progress */
+  stage?: string
+  percent?: number
+  phase?: string
+  /** boot.done */
+  fastPath?: boolean
+  degraded?: boolean
+  /** silent.queue / silent.task */
+  activeCount?: number
+  totalQueued?: number
+  tasks?: unknown[]
+  task?: unknown
+  id?: string
 }
 
 /** @deprecated 使用 HostMessage */

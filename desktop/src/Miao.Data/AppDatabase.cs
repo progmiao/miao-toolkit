@@ -22,7 +22,7 @@ public sealed class AppDatabase : IDisposable
         Migrate();
     }
 
-    /// <summary>建表与轻量迁移（schema 3：软件/i18n/网站）。</summary>
+    /// <summary>建表与轻量迁移（schema 4：+package_versions 缓存）。</summary>
     private void Migrate()
     {
         using var cmd = _conn.CreateCommand();
@@ -73,6 +73,15 @@ public sealed class AppDatabase : IDisposable
               detail TEXT,
               checked_at TEXT NOT NULL
             );
+
+            CREATE TABLE IF NOT EXISTS package_versions (
+              tool_id TEXT NOT NULL,
+              version TEXT NOT NULL,
+              lts TEXT,
+              release_date TEXT,
+              updated_at TEXT NOT NULL,
+              PRIMARY KEY (tool_id, version)
+            );
             """;
         cmd.ExecuteNonQuery();
 
@@ -85,13 +94,13 @@ public sealed class AppDatabase : IDisposable
 
         SetSettingIfMissing("locale", "zh");
         var prevSchema = GetSetting("schema_version", "0");
-        if (prevSchema != "3")
+        if (prevSchema is not "3" and not "4")
         {
             // 旧库升级到 seeds 模型时强制重灌
             SetSetting("seed_version", "0");
         }
 
-        SetSetting("schema_version", "3");
+        SetSetting("schema_version", "4");
     }
 
     /// <summary>读取设置；不存在返回 <paramref name="fallback"/>。</summary>
@@ -461,6 +470,70 @@ public sealed class AppDatabase : IDisposable
         return true;
     }
 
+    /// <summary>读取某工具缓存的远程版本（按版本号降序近似：字符串解析后排序在服务层做）。</summary>
+    public IReadOnlyList<PackageVersionRow> ListPackageVersions(string toolId)
+    {
+        using var cmd = _conn.CreateCommand();
+        cmd.CommandText =
+            """
+            SELECT tool_id, version, lts, release_date, updated_at
+            FROM package_versions WHERE tool_id = $t
+            """;
+        cmd.Parameters.AddWithValue("$t", toolId);
+        var list = new List<PackageVersionRow>();
+        using var reader = cmd.ExecuteReader();
+        while (reader.Read())
+        {
+            list.Add(new PackageVersionRow(
+                reader.GetString(0),
+                reader.GetString(1),
+                reader.IsDBNull(2) ? null : reader.GetString(2),
+                reader.IsDBNull(3) ? null : reader.GetString(3),
+                reader.GetString(4)));
+        }
+
+        return list;
+    }
+
+    /// <summary>是否已缓存某版本。</summary>
+    public bool HasPackageVersion(string toolId, string version)
+    {
+        using var cmd = _conn.CreateCommand();
+        cmd.CommandText =
+            "SELECT 1 FROM package_versions WHERE tool_id = $t AND version = $v LIMIT 1";
+        cmd.Parameters.AddWithValue("$t", toolId);
+        cmd.Parameters.AddWithValue("$v", version);
+        return cmd.ExecuteScalar() is not null;
+    }
+
+    /// <summary>批量写入远程版本缓存（upsert）。</summary>
+    public void UpsertPackageVersions(IEnumerable<PackageVersionRow> rows)
+    {
+        using var tx = _conn.BeginTransaction();
+        foreach (var row in rows)
+        {
+            using var cmd = _conn.CreateCommand();
+            cmd.Transaction = tx;
+            cmd.CommandText =
+                """
+                INSERT INTO package_versions(tool_id, version, lts, release_date, updated_at)
+                VALUES($t, $v, $lts, $d, $u)
+                ON CONFLICT(tool_id, version) DO UPDATE SET
+                  lts = excluded.lts,
+                  release_date = excluded.release_date,
+                  updated_at = excluded.updated_at
+                """;
+            cmd.Parameters.AddWithValue("$t", row.ToolId);
+            cmd.Parameters.AddWithValue("$v", row.Version);
+            cmd.Parameters.AddWithValue("$lts", (object?)row.Lts ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("$d", (object?)row.ReleaseDate ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("$u", row.UpdatedAt);
+            cmd.ExecuteNonQuery();
+        }
+
+        tx.Commit();
+    }
+
     /// <summary>更新工具安装状态。</summary>
     public void UpsertToolState(string toolId, string status, string? version, string? detail = null)
     {
@@ -518,6 +591,14 @@ public sealed record ToolStateRow(
     string? Version,
     string? Detail,
     string CheckedAt);
+
+/// <summary>package_versions 缓存一行。</summary>
+public sealed record PackageVersionRow(
+    string ToolId,
+    string Version,
+    string? Lts,
+    string? ReleaseDate,
+    string UpdatedAt);
 
 /// <summary>网站分类一行。</summary>
 public sealed record SiteCategoryRow(

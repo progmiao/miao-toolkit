@@ -72,12 +72,30 @@ public sealed class SoftwareCatalog
     }
 
     /// <summary>重新加载分组种子并对库中每条软件做探测。</summary>
-    public void Refresh()
+    /// <param name="probeUpdates">是否探测更新（winget/网络）；启动期建议 false，进主壳后再后台补探。</param>
+    /// <param name="onTool">每探测完一个工具回调 (toolId, index1Based, total)。</param>
+    public void Refresh(bool probeUpdates = true, Action<string, int, int>? onTool = null)
     {
         ReloadGroupsFromSeeds();
+        var rows = _db.ListSoftware();
+        var total = Math.Max(1, rows.Count);
+        var i = 0;
+        foreach (var row in rows)
+        {
+            i++;
+            ProbeTool(row.Id, probeUpdates);
+            onTool?.Invoke(row.Id, i, total);
+        }
+    }
+
+    /// <summary>仅补探测更新标记（不重复安装态探测）。后台静默调用。</summary>
+    public void ProbeUpdatesOnly()
+    {
         foreach (var row in _db.ListSoftware())
         {
-            ProbeTool(row.Id);
+            var manifest = JsonSerializer.Deserialize<SoftwareDefinition>(row.ManifestJson);
+            if (IsUpdateSuppressed(manifest, row.Id)) continue;
+            UpdateProbe.ProbeAndStore(_db, row.Id, manifest);
         }
     }
 
@@ -172,14 +190,15 @@ public sealed class SoftwareCatalog
 
     /// <summary>探测安装状态，并同步 Volta 管理工具的展示版本。</summary>
     /// <param name="toolId">软件 id。</param>
-    public void ProbeTool(string toolId)
+    /// <param name="probeUpdates">是否同时探测更新。</param>
+    public void ProbeTool(string toolId, bool probeUpdates = true)
     {
         var row = _db.GetSoftware(toolId);
         if (row is null) return;
         var manifest = JsonSerializer.Deserialize<SoftwareDefinition>(row.ManifestJson);
         InstallDetector.ProbeAndStore(_db, toolId, manifest?.Install?.Detect);
 
-        if (!IsUpdateSuppressed(manifest, toolId))
+        if (probeUpdates && !IsUpdateSuppressed(manifest, toolId))
             UpdateProbe.ProbeAndStore(_db, toolId, manifest);
 
         var state = _db.GetToolState(toolId);

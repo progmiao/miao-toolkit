@@ -1,10 +1,20 @@
 <script setup lang="ts">
 /**
- * 开发工具：左侧精简列表 + 右侧宽操作区；分类过滤（不含 Volta）；单选动画。
- * 前置条件只在右侧操作区展示；单纯安装类用等高大按钮；顶栏下有科幻分隔线。
+ * 开发工具一级页：左侧列表 + 右侧「工具概览 + 工具工作区 + JobConsole」。
+ * panel 工具不再跳二级路由，内容嵌在 tool-workspace。
  */
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import {
+  computed,
+  defineAsyncComponent,
+  nextTick,
+  onMounted,
+  onUnmounted,
+  provide,
+  ref,
+  watch,
+  type Component,
+} from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import JobConsole from '@kernel/components/JobConsole.vue'
 import ToolLogo from '@kernel/catalog/ToolLogo.vue'
 import { catalogStatusClass, catalogStatusLabel } from '@kernel/catalog/statusMeta'
@@ -18,9 +28,17 @@ import {
   showUninstallAction,
   showUpdateAction,
 } from '@kernel/catalog/toolMeta'
+import {
+  DEV_JOB_KEY,
+  DEV_OVERVIEW_EXTRA_KEY,
+  DEV_SELECT_TOOL_KEY,
+  DEV_WORKSPACE_OWNS_CONSOLE_KEY,
+  type DevOverviewExtra,
+} from './devPanelContext'
 
 useShellTitle('开发工具')
 
+const route = useRoute()
 const router = useRouter()
 
 const items = ref<CatalogItem[]>([])
@@ -28,18 +46,32 @@ const tagFilter = ref('all')
 const activeId = ref<string | null>(null)
 /** 工具列表是否正在向宿主拉取目录（首屏与刷新）。 */
 const listLoading = ref(true)
-/** 骨架行数量（与常见列表密度接近，仅视觉占位）。 */
-const skeletonRows = 6
+/** 工具列表 DOM，用于按可视高度计算骨架行数。 */
+const listEl = ref<HTMLElement | null>(null)
+/** 骨架行数：与列表可视区可容纳的真实行数一致。 */
+const skeletonRows = ref(6)
 
-const {
-  logs,
-  consoleLines,
-  progress,
-  busy,
-  consumeJobMessage,
-  resetWhenIdle,
-  cancel,
-} = useJobConsole({
+let listResizeObs: ResizeObserver | undefined
+
+/** 按列表高度 / 实测行高，算出可完整放下的骨架条数。 */
+function recalcSkeletonRows() {
+  const el = listEl.value
+  if (!el) return
+  const styles = getComputedStyle(el)
+  const padY =
+    (Number.parseFloat(styles.paddingTop) || 0) + (Number.parseFloat(styles.paddingBottom) || 0)
+  const available = Math.max(0, el.clientHeight - padY)
+  const sample = el.querySelector('.skel-row, li:not(.empty-row)') as HTMLElement | null
+  let rowH = Number.parseFloat(styles.getPropertyValue('--tool-row-h')) || 56
+  if (sample) {
+    const ms = getComputedStyle(sample)
+    rowH = sample.offsetHeight + (Number.parseFloat(ms.marginBottom) || 0)
+  }
+  if (rowH <= 0) return
+  skeletonRows.value = Math.max(1, Math.floor(available / rowH))
+}
+
+const jobApi = useJobConsole({
   onFinished: () => requestCatalog(),
   onError: () => {
     if (listLoading.value) listLoading.value = false
@@ -48,6 +80,45 @@ const {
   formatFinished: (msg) =>
     msg.ok ? `完成（exit ${msg.exitCode}）` : `失败：${msg.detail ?? ''}`,
 })
+
+const {
+  logs,
+  consoleLines,
+  progress,
+  statusText,
+  batchCurrent,
+  batchTotal,
+  busy,
+  consumeJobMessage,
+  resetWhenIdle,
+  cancel,
+} = jobApi
+
+provide(DEV_JOB_KEY, jobApi)
+
+const overviewExtra = ref<DevOverviewExtra | null>(null)
+const workspaceOwnsConsole = ref(false)
+provide(DEV_OVERVIEW_EXTRA_KEY, overviewExtra)
+provide(DEV_WORKSPACE_OWNS_CONSOLE_KEY, workspaceOwnsConsole)
+
+watch(activeId, () => {
+  overviewExtra.value = null
+  workspaceOwnsConsole.value = false
+  resetWhenIdle()
+})
+
+/** seeds `ui.entry` → 嵌入工作区组件（仅正文，无二级页壳）。 */
+const panelLoaders: Record<string, () => Promise<Component>> = {
+  volta: () => import('./volta/index.vue'),
+  node: () => import('./node/index.vue'),
+  pnpm: () => import('./pnpm/index.vue'),
+  yarn: () => import('./yarn/index.vue'),
+  claude: () => import('./claude/index.vue'),
+}
+
+const panelComponents: Record<string, Component> = Object.fromEntries(
+  Object.entries(panelLoaders).map(([k, loader]) => [k, defineAsyncComponent(loader)]),
+)
 
 const filters = computed(() => buildTagFilters(items.value))
 
@@ -63,15 +134,18 @@ const activeItem = computed(
 )
 
 /**
- * 单纯安装/更新/卸载时用等高大按钮。
- * 已有独立页的工具点列表即进入，不用大按钮。
+ * 当前选中工具的工作区入口（seeds ui.entry）；无则仅显示 JobConsole。
  */
-const useTallActions = computed(() => {
+const workspaceEntry = computed(() => {
   const it = activeItem.value
-  if (!it) return false
-  if (panelRoute(it)) return false
-  return true
+  if (!it || it.uiMode !== 'panel') return null
+  const entry = (it.uiEntry ?? '').trim()
+  return entry && panelComponents[entry] ? entry : null
 })
+
+const workspaceComponent = computed(() =>
+  workspaceEntry.value ? panelComponents[workspaceEntry.value!] : null,
+)
 
 /**
  * 右侧唯一功能提示。
@@ -85,33 +159,27 @@ const featureTip = computed(() => {
 })
 
 /**
- * 解析专用面板路由：优先 seeds `ui.entry` → `/dev/{entry}`。
- * @param it - 目录项
- * @returns 路由 path；无独立页时 null
+ * 按工具 id 选中列表项（供工作区内「相关工具」调用）。
+ * @param toolId - 目录 id
  */
-function panelRoute(it: CatalogItem): string | null {
-  if (it.uiMode !== 'panel') return null
-  const entry = (it.uiEntry ?? '').trim()
-  if (!entry) return null
-  return `/dev/${entry}`
+function selectToolById(toolId: string) {
+  if (!items.value.some((i) => i.id === toolId)) return
+  activeId.value = toolId
+  void router.replace({ path: '/dev', query: { tool: toolId } })
 }
 
+provide(DEV_SELECT_TOOL_KEY, selectToolById)
+
 /**
- * 选中列表项：有独立管理页的工具直接进入该页（不再经「打开控制台」）。
+ * 选中列表项：只切换右侧概览/工作区，不跳二级页。
  * @param it - 目录项
  */
 function selectRow(it: CatalogItem) {
-  const route = panelRoute(it)
-  if (route) {
-    void router.push(route)
-    return
-  }
-  activeId.value = it.id
+  selectToolById(it.id)
 }
 
 /**
  * 向宿主请求开发工具目录；进入加载态直至收到 `catalog`。
- * 任务结束后刷新也会走此路径。
  */
 function requestCatalog() {
   listLoading.value = true
@@ -126,8 +194,12 @@ onMounted(() => {
       if (msg.group && msg.group !== 'dev') return
       items.value = msg.items as CatalogItem[]
       listLoading.value = false
-      if (!activeId.value && items.value[0]) activeId.value = items.value[0].id
-      else if (activeId.value && !items.value.some((i) => i.id === activeId.value)) {
+      const q = typeof route.query.tool === 'string' ? route.query.tool : ''
+      if (q && items.value.some((i) => i.id === q)) {
+        activeId.value = q
+      } else if (!activeId.value && items.value[0]) {
+        activeId.value = items.value[0].id
+      } else if (activeId.value && !items.value.some((i) => i.id === activeId.value)) {
         activeId.value = items.value[0]?.id ?? null
       }
       return
@@ -135,16 +207,30 @@ onMounted(() => {
     consumeJobMessage(msg)
   })
   requestCatalog()
+  void nextTick(() => {
+    if (!listEl.value) return
+    recalcSkeletonRows()
+    listResizeObs = new ResizeObserver(() => recalcSkeletonRows())
+    listResizeObs.observe(listEl.value)
+  })
 })
 
-onUnmounted(() => unsub?.())
+onUnmounted(() => {
+  unsub?.()
+  listResizeObs?.disconnect()
+  listResizeObs = undefined
+})
+
+watch(listLoading, (loading) => {
+  if (loading && !items.value.length) {
+    void nextTick(() => recalcSkeletonRows())
+  }
+})
 
 watch(filtered, (list) => {
   if (!list.length) return
   if (!list.some((i) => i.id === activeId.value)) activeId.value = list[0].id
 })
-
-watch(activeId, () => resetWhenIdle())
 
 async function runAction(action: string, id: string) {
   if (action === 'uninstall') {
@@ -192,6 +278,7 @@ function openDoc(which: 'gitee' | 'github') {
 
     <div class="dev-layout">
       <ul
+        ref="listEl"
         class="dev-list dev-frost"
         :class="{ 'dev-list--loading': listLoading }"
         :aria-busy="listLoading"
@@ -210,10 +297,6 @@ function openDoc(which: 'gitee' | 'github') {
               <span class="skel-line skel-line--meta" />
             </span>
           </li>
-          <li class="list-loading-hint" role="status">
-            <span class="list-spinner" aria-hidden="true" />
-            <span>加载工具列表…</span>
-          </li>
         </template>
         <template v-else>
           <li
@@ -229,81 +312,86 @@ function openDoc(which: 'gitee' | 'github') {
               :update-available="Boolean(it.updateAvailable)"
             />
             <div class="tool-body">
-              <span class="tool-name">{{ it.name }}</span>
+              <span class="tool-name" :title="it.name">{{ it.name }}</span>
               <div class="tool-meta">
                 <span class="meta meta-status" :class="catalogStatusClass(it)">{{ catalogStatusLabel(it) }}</span>
               </div>
             </div>
           </li>
-          <li v-if="listLoading" class="list-loading-bar" role="status" aria-live="polite">
-            <span class="list-spinner list-spinner--sm" aria-hidden="true" />
-            <span>刷新中…</span>
-          </li>
-          <li v-else-if="!filtered.length" class="empty-row">该分类下暂无工具</li>
+          <li v-if="!listLoading && !filtered.length" class="empty-row">该分类下暂无工具</li>
         </template>
       </ul>
 
-      <aside class="job-panel dev-frost">
+      <aside class="job-panel dev-frost" :class="{ 'job-panel--fill': workspaceOwnsConsole }">
         <div v-if="activeItem" class="panel-box">
-          <div class="detail-row">
-            <div class="detail-head">
+          <!-- 工具概览：Logo + 名称 + 说明 + 安装/更新/卸载 -->
+          <div class="tool-overview" aria-label="工具概览">
+            <div class="tool-overview-main">
               <ToolLogo
                 :tool-id="activeItem.id"
                 :name="activeItem.name"
                 size="md"
                 :update-available="Boolean(activeItem.updateAvailable)"
               />
-              <div class="detail-text">
+              <div class="tool-overview-text">
                 <h2 class="panel-title">{{ activeItem.name }}</h2>
                 <p v-if="activeItem.description" class="panel-desc">{{ activeItem.description }}</p>
                 <p v-if="featureTip" class="panel-tip tip-feature">{{ featureTip }}</p>
               </div>
             </div>
 
-            <div class="actions" :class="{ 'actions--tall': useTallActions }">
-              <template v-if="!panelRoute(activeItem)">
-                <button
-                  v-if="showInstallAction(activeItem)"
-                  type="button"
-                  class="btn action-btn"
-                  :disabled="busy"
-                  @click="runAction('install', activeItem.id)"
-                >
-                  安装
-                </button>
-                <button
-                  v-if="showUpdateAction(activeItem)"
-                  type="button"
-                  class="btn action-btn"
-                  :disabled="busy"
-                  @click="runAction('install', activeItem.id)"
-                >
-                  更新
-                </button>
-                <button
-                  v-if="showUninstallAction(activeItem)"
-                  type="button"
-                  class="btn secondary action-btn"
-                  :disabled="busy"
-                  @click="runAction('uninstall', activeItem.id)"
-                >
-                  卸载
-                </button>
-                <button
-                  v-if="busy"
-                  type="button"
-                  class="btn danger action-btn"
-                  @click="cancel"
-                >
-                  取消
-                </button>
-                <template v-if="activeItem.id === 'terminal-buddy'">
-                  <button type="button" class="btn ghost" @click="openDoc('gitee')">Gitee 文档</button>
-                  <button type="button" class="btn ghost" @click="openDoc('github')">GitHub 文档</button>
-                </template>
+            <div class="tool-overview-actions actions--tall">
+              <button
+                v-if="showInstallAction(activeItem)"
+                type="button"
+                class="btn action-btn"
+                :disabled="busy"
+                @click="runAction('install', activeItem.id)"
+              >
+                安装
+              </button>
+              <button
+                v-if="showUpdateAction(activeItem)"
+                type="button"
+                class="btn action-btn"
+                :disabled="busy"
+                @click="runAction('install', activeItem.id)"
+              >
+                更新
+              </button>
+              <button
+                v-if="showUninstallAction(activeItem)"
+                type="button"
+                class="btn secondary action-btn"
+                :disabled="busy"
+                @click="runAction('uninstall', activeItem.id)"
+              >
+                卸载
+              </button>
+              <button
+                v-if="overviewExtra?.refresh"
+                type="button"
+                class="btn secondary action-btn"
+                :disabled="busy || overviewExtra.refreshing"
+                @click="overviewExtra.refresh?.()"
+              >
+                {{ overviewExtra.refreshLabel || '刷新清单' }}
+              </button>
+              <button
+                v-if="busy"
+                type="button"
+                class="btn danger action-btn"
+                @click="cancel"
+              >
+                取消任务
+              </button>
+              <template v-if="activeItem.id === 'terminal-buddy'">
+                <button type="button" class="btn ghost" @click="openDoc('gitee')">Gitee 文档</button>
+                <button type="button" class="btn ghost" @click="openDoc('github')">GitHub 文档</button>
               </template>
             </div>
           </div>
+
           <div class="panel-sep" aria-hidden="true">
             <span class="panel-sep-line" />
             <span class="panel-sep-core" />
@@ -311,8 +399,21 @@ function openDoc(which: 'gitee' | 'github') {
           </div>
         </div>
 
+        <!-- 工具工作区：原二级页正文（版本管理 / Claude 等） -->
+        <div
+          v-if="workspaceComponent"
+          class="tool-workspace"
+          aria-label="工具工作区"
+        >
+          <component :is="workspaceComponent" embedded />
+        </div>
+
         <JobConsole
+          v-if="!workspaceOwnsConsole"
           :progress="progress"
+          :status-text="statusText"
+          :batch-current="batchCurrent"
+          :batch-total="batchTotal"
           :logs="logs"
           :console-lines="consoleLines"
           :busy="busy"
@@ -380,9 +481,10 @@ function openDoc(which: 'gitee' | 'github') {
   flex: 1;
   min-height: 0;
   display: grid;
-  /* 去掉前置标签后进一步收窄列表 */
-  grid-template-columns: minmax(10.5rem, 11.75rem) minmax(0, 1fr);
-  gap: 1rem;
+  /* 名称过长省略；列宽够显示常见短名即可 */
+  grid-template-columns: minmax(9.25rem, 10.25rem) minmax(0, 1fr);
+  /* 列表与右侧间距 = 列表内图标左侧留白 */
+  gap: 0.5rem;
   align-items: stretch;
 }
 
@@ -400,9 +502,11 @@ function openDoc(which: 'gitee' | 'github') {
 }
 
 .dev-list {
+  /* 仅供骨架条数估算；真实行高由内容自然撑开 */
+  --tool-row-h: 3.55rem;
   list-style: none;
   margin: 0;
-  padding: 0.45rem 0.35rem 0.45rem 0.4rem;
+  padding: 0.45rem 0.4rem;
   min-height: 0;
   height: 100%;
   min-width: 0;
@@ -416,13 +520,13 @@ function openDoc(which: 'gitee' | 'github') {
   grid-template-columns: auto minmax(0, 1fr);
   align-items: stretch;
   column-gap: 0.5rem;
-  padding: 0.55rem 0.45rem;
+  box-sizing: border-box;
+  padding: 0.55rem 0.4rem;
   margin-bottom: 0.25rem;
   border-radius: 0.55rem;
   cursor: pointer;
   min-width: 0;
   max-width: 100%;
-  box-sizing: border-box;
   transition:
     background 0.2s ease,
     box-shadow 0.22s ease;
@@ -436,7 +540,7 @@ function openDoc(which: 'gitee' | 'github') {
   align-items: center;
   min-height: 2.75rem;
 }
-.dev-list li:not(.empty-row):not(.skel-row):not(.list-loading-hint):not(.list-loading-bar):hover {
+.dev-list li:not(.empty-row):not(.skel-row):hover {
   background: color-mix(in srgb, var(--accent) 10%, transparent);
 }
 .dev-list li.active {
@@ -446,7 +550,7 @@ function openDoc(which: 'gitee' | 'github') {
     0 0 18px color-mix(in srgb, var(--glow) 55%, transparent);
 }
 
-/* —— 列表加载：骨架 + 旋转环 —— */
+/* —— 列表加载：骨架与真实行同结构/同内边距 —— */
 .dev-list--loading {
   position: relative;
 }
@@ -455,11 +559,13 @@ function openDoc(which: 'gitee' | 'github') {
   pointer-events: none;
   cursor: default !important;
   opacity: 0.85;
+  align-items: center;
 }
 
 .skel-logo {
   width: 2.35rem;
   aspect-ratio: 1;
+  flex: 0 0 auto;
   border-radius: 0.5rem;
   background: linear-gradient(
     110deg,
@@ -503,50 +609,6 @@ function openDoc(which: 'gitee' | 'github') {
   animation-delay: 0.12s;
 }
 
-.list-loading-hint,
-.list-loading-bar {
-  display: flex !important;
-  align-items: center;
-  justify-content: center;
-  gap: 0.55rem;
-  cursor: default !important;
-  pointer-events: none;
-  color: var(--muted);
-  font-size: 0.78rem;
-  letter-spacing: 0.06em;
-  font-family: var(--font-mono);
-  min-height: 2.4rem;
-  margin-top: 0.15rem;
-}
-
-.list-loading-bar {
-  position: sticky;
-  bottom: 0;
-  margin-bottom: 0;
-  padding: 0.45rem 0.5rem;
-  border-radius: 0.45rem;
-  background: color-mix(in srgb, var(--panel) 72%, transparent);
-  border: 1px solid color-mix(in srgb, var(--accent) 22%, transparent);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-}
-
-.list-spinner {
-  width: 1.05rem;
-  height: 1.05rem;
-  border-radius: 50%;
-  border: 2px solid color-mix(in srgb, var(--accent) 25%, transparent);
-  border-top-color: var(--accent);
-  box-shadow: 0 0 10px color-mix(in srgb, var(--glow) 50%, transparent);
-  animation: list-spin 0.75s linear infinite;
-}
-
-.list-spinner--sm {
-  width: 0.85rem;
-  height: 0.85rem;
-  border-width: 1.5px;
-}
-
 @keyframes list-shimmer {
   0% {
     background-position: 120% 0;
@@ -556,16 +618,9 @@ function openDoc(which: 'gitee' | 'github') {
   }
 }
 
-@keyframes list-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
   .skel-logo,
-  .skel-line,
-  .list-spinner {
+  .skel-line {
     animation: none;
   }
 }
@@ -599,6 +654,7 @@ function openDoc(which: 'gitee' | 'github') {
 }
 .tool-name {
   display: block;
+  max-width: 100%;
   font-weight: 700;
   font-size: 0.88rem;
   line-height: 1.2;
@@ -663,6 +719,25 @@ function openDoc(which: 'gitee' | 'github') {
   overflow-x: hidden;
   overflow-y: auto;
 }
+/** 工作区自带控制台时：整栏跟窗高，不由右侧整体出滚动条 */
+.job-panel--fill {
+  overflow: hidden;
+}
+.tool-workspace {
+  flex: 0 1 auto;
+  min-height: 0;
+  min-width: 0;
+}
+.job-panel--fill .tool-workspace {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.job-panel--fill .tool-workspace > * {
+  flex: 1 1 auto;
+  min-height: 0;
+}
 .panel-box {
   flex: 0 0 auto;
   background: transparent;
@@ -673,42 +748,42 @@ function openDoc(which: 'gitee' | 'github') {
   box-shadow: none;
 }
 /**
- * 右侧工具信息 + 操作一行（非固定吸顶；随面板内容排列）。
- * 标题+描述间距收紧，与 Logo 同高对齐；略增高以容纳描述。
+ * 工具概览（tool-overview）：Logo + 名称 + 说明 + 安装/更新/卸载。
+ * 下方「工具工作区」以 panel-sep 分隔。
  */
-.detail-row {
-  --detail-logo: 3.25rem;
+.tool-overview {
+  --overview-logo: 3.25rem;
   display: flex;
   align-items: stretch;
   justify-content: space-between;
   gap: 0.9rem 1.15rem;
   padding: 0.15rem 0 0.1rem;
 }
-.detail-head {
+.tool-overview-main {
   display: flex;
   gap: 0.7rem;
   align-items: center;
   flex: 1 1 auto;
   min-width: 0;
 }
-.detail-head :deep(.tool-logo-wrap.md) {
-  width: var(--detail-logo);
-  height: var(--detail-logo);
+.tool-overview-main :deep(.tool-logo-wrap.md) {
+  width: var(--overview-logo);
+  height: var(--overview-logo);
 }
-.detail-head :deep(.tool-logo-wrap.md .tool-logo) {
-  width: var(--detail-logo);
-  height: var(--detail-logo);
+.tool-overview-main :deep(.tool-logo-wrap.md .tool-logo) {
+  width: var(--overview-logo);
+  height: var(--overview-logo);
   font-size: 1.05rem;
   border-radius: 0.6rem;
 }
-.detail-text {
+.tool-overview-text {
   flex: 1;
   min-width: 0;
   display: flex;
   flex-direction: column;
   justify-content: center;
   gap: 0.12rem;
-  min-height: var(--detail-logo);
+  min-height: var(--overview-logo);
 }
 .panel-title {
   margin: 0;
@@ -724,7 +799,7 @@ function openDoc(which: 'gitee' | 'github') {
   font-size: 0.82rem;
   line-height: 1.3;
 }
-.actions {
+.tool-overview-actions {
   display: flex;
   flex-wrap: wrap;
   justify-content: flex-end;
@@ -845,11 +920,11 @@ function openDoc(which: 'gitee' | 'github') {
     height: auto;
     max-height: 360px;
   }
-  .detail-row {
+  .tool-overview {
     flex-direction: column;
     align-items: stretch;
   }
-  .actions {
+  .tool-overview-actions {
     justify-content: flex-start;
   }
   .actions--tall .action-btn {

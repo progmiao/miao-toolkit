@@ -59,19 +59,26 @@ public sealed class VoltaInstallHandler : IToolActionHandler
 
         var sb = new StringBuilder();
         VoltaScript.AppendEnsureVolta(sb);
-        sb.AppendLine("Write-Host '##progress 18'");
+        sb.AppendLine($"Write-Host '##batch 0 {targets.Count}'");
+        sb.AppendLine("Write-Host '##progress 0'");
+        sb.AppendLine($"Write-Host '##task 准备安装 {pkg}（{targets.Count} 个版本）'");
         sb.AppendLine($"Write-Host '准备安装 {pkg}（{targets.Count} 个版本）…'");
 
         for (var i = 0; i < targets.Count; i++)
         {
             var ver = VoltaScript.Escape(targets[i]);
-            var pct = 20 + (int)(70.0 * (i + 1) / targets.Count);
-            sb.AppendLine($"Write-Host '##progress {pct}'");
+            var n = i + 1;
+            sb.AppendLine($"Write-Host '##batch {n} {targets.Count}'");
+            sb.AppendLine($"Write-Host '##task 安装 {pkg}@{ver}'");
+            sb.AppendLine("Write-Host '##progress 12'");
             sb.AppendLine($"Write-Host 'volta install {pkg}@{ver}'");
             sb.AppendLine($"volta install {pkg}@{ver}");
             sb.AppendLine($"if ($LASTEXITCODE -ne 0) {{ throw \"volta install {pkg}@{ver} 失败\" }}");
+            sb.AppendLine("Write-Host '##progress 100'");
         }
 
+        sb.AppendLine($"Write-Host '##batch {targets.Count} {targets.Count}'");
+        sb.AppendLine("Write-Host '##task 安装完成'");
         sb.AppendLine("Write-Host '##progress 100'");
         sb.AppendLine("Refresh-Path");
         sb.AppendLine($"if (Get-Command {pkg} -ErrorAction SilentlyContinue) {{ Write-Host \"当前 {pkg}: \" + (& {pkg} {(pkg == "node" ? "-v" : "--version")} | Select-Object -First 1) }}");
@@ -110,19 +117,26 @@ public sealed class VoltaUninstallHandler : IToolActionHandler
 
         var sb = new StringBuilder();
         VoltaScript.AppendEnsureVolta(sb);
-        sb.AppendLine("Write-Host '##progress 15'");
+        sb.AppendLine($"Write-Host '##batch 0 {targets.Count}'");
+        sb.AppendLine("Write-Host '##progress 0'");
+        sb.AppendLine($"Write-Host '##task 准备卸载 {pkg}（{targets.Count} 个版本）'");
 
         for (var i = 0; i < targets.Count; i++)
         {
             var ver = VoltaScript.Escape(targets[i]);
-            var pct = 20 + (int)(70.0 * (i + 1) / targets.Count);
-            sb.AppendLine($"Write-Host '##progress {pct}'");
+            var n = i + 1;
+            sb.AppendLine($"Write-Host '##batch {n} {targets.Count}'");
+            sb.AppendLine($"Write-Host '##task 卸载 {pkg}@{ver}'");
+            sb.AppendLine("Write-Host '##progress 12'");
             sb.AppendLine($"Write-Host '卸载 {pkg}@{ver}…'");
             sb.AppendLine($"volta uninstall {pkg}@{ver}");
             sb.AppendLine($"$img = Join-Path $env:LOCALAPPDATA 'Volta\\tools\\image\\{pkg}\\{ver}'");
             sb.AppendLine("if (Test-Path $img) { Remove-Item -LiteralPath $img -Recurse -Force -ErrorAction SilentlyContinue }");
+            sb.AppendLine("Write-Host '##progress 100'");
         }
 
+        sb.AppendLine($"Write-Host '##batch {targets.Count} {targets.Count}'");
+        sb.AppendLine("Write-Host '##task 卸载完成'");
         sb.AppendLine("Write-Host '##progress 100'");
         sb.AppendLine("Write-Host '卸载完成'");
 
@@ -153,11 +167,14 @@ public sealed class VoltaSetDefaultHandler : IToolActionHandler
         var escaped = VoltaScript.Escape(ver);
         var sb = new StringBuilder();
         VoltaScript.AppendEnsureVolta(sb);
+        sb.AppendLine("Write-Host '##batch 1 1'");
+        sb.AppendLine($"Write-Host '##task 设置默认 {pkg}@{escaped}'");
         sb.AppendLine("Write-Host '##progress 40'");
         sb.AppendLine($"Write-Host '设置默认 {pkg}@{escaped}'");
         sb.AppendLine($"volta install {pkg}@{escaped}");
         sb.AppendLine("if ($LASTEXITCODE -ne 0) { throw '设置默认失败' }");
         sb.AppendLine("Write-Host '##progress 100'");
+        sb.AppendLine("Write-Host '##task 完成'");
 
         var result = await context.Jobs
             .RunPowerShellAsync(context.JobId, sb.ToString(), cancellationToken: cancellationToken)

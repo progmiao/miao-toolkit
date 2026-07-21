@@ -99,12 +99,36 @@ public sealed class JobRunner
 
     private void TryParseProgress(string jobId, string line)
     {
-        const string prefix = "##progress ";
+        TryParseTagged(jobId, line, "##progress ", (payload) =>
+        {
+            if (int.TryParse(payload.Split(' ', '\t')[0], out var pct))
+                Emit(jobId, "progress", pct.ToString());
+        });
+
+        TryParseTagged(jobId, line, "##task ", (payload) =>
+        {
+            if (!string.IsNullOrWhiteSpace(payload))
+                Emit(jobId, "task", payload.Trim());
+        });
+
+        TryParseTagged(jobId, line, "##batch ", (payload) =>
+        {
+            // ##batch current total  （current 从 1 起）
+            var parts = payload.Split([' ', '\t', '/'], StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length >= 2 &&
+                int.TryParse(parts[0], out var cur) &&
+                int.TryParse(parts[1], out var total))
+            {
+                Emit(jobId, "batch", $"{Math.Max(0, cur)} {Math.Max(0, total)}");
+            }
+        });
+    }
+
+    private static void TryParseTagged(string jobId, string line, string prefix, Action<string> onMatch)
+    {
         var idx = line.IndexOf(prefix, StringComparison.OrdinalIgnoreCase);
         if (idx < 0) return;
-        var part = line[(idx + prefix.Length)..].Trim();
-        if (int.TryParse(part.Split(' ', '\t')[0], out var pct))
-            Emit(jobId, "progress", pct.ToString());
+        onMatch(line[(idx + prefix.Length)..].Trim());
     }
 
     /// <summary>向 UI 推送一条状态日志（供非 PowerShell Handler 使用）。</summary>

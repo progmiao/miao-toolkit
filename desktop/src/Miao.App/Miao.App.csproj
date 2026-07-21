@@ -26,11 +26,13 @@
     <ProjectReference Include="..\Miao.Utilities\Miao.Utilities.csproj" />
   </ItemGroup>
 
-  <ItemGroup>
-    <!-- 窗口左上角 Icon（pack URI） -->
-    <Resource Include="Assets\app.ico" />
-    <None Include="Assets\miao-icon-source.png" />
-  </ItemGroup>
+    <ItemGroup>
+      <!-- 窗口左上角 Icon（pack URI） -->
+      <Resource Include="Assets\app.ico" />
+      <!-- 与 Vue boot S0 共用的 ASCII logo -->
+      <Resource Include="Assets\ascii-logo.txt" />
+      <None Include="Assets\miao-icon-source.png" />
+    </ItemGroup>
 
   <ItemGroup>
     <Content Include="wwwroot\**\*" CopyToOutputDirectory="PreserveNewest" Condition="Exists('wwwroot')" />

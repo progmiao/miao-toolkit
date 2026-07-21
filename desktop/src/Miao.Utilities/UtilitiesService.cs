@@ -62,8 +62,6 @@ public sealed class UtilitiesService
         if (root is null) return [];
 
         var path = Path.Combine(root, "utilities", "registry.json");
-        if (!File.Exists(path))
-            path = Path.Combine(root, "tools", "utilities", "registry.json");
         if (!File.Exists(path)) return [];
 
         try

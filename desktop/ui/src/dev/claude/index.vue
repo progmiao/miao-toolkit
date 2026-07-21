@@ -2,15 +2,19 @@
 /**
  * Claude Code 控制台：安装生命周期、初始化、API / 代理、精选插件。
  */
-import { onMounted, onUnmounted, ref } from 'vue'
-import { RouterLink } from 'vue-router'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import JobConsole from '@kernel/components/JobConsole.vue'
 import { post, subscribe } from '@kernel/bridge/bus'
 import { showToast } from '@kernel/bridge/toast'
-import { useJobConsole } from '@kernel/composables/useJobConsole'
 import { useShellTitle } from '@kernel/composables/useShellTitle'
+import { useDevPanelJob } from '../useDevPanelJob'
 
-useShellTitle('Claude Code')
+const props = defineProps<{
+  /** 嵌在一级页 tool-workspace 时为 true。 */
+  embedded?: boolean
+}>()
+
+useShellTitle(computed(() => (props.embedded ? '开发工具' : 'Claude Code')))
 
 type Status = {
   installed: boolean
@@ -52,11 +56,15 @@ const {
   logs,
   consoleLines,
   progress,
+  statusText,
+  batchCurrent,
+  batchTotal,
   busy,
   appendStatus,
   consumeJobMessage,
   cancel,
-} = useJobConsole({
+  isShared,
+} = useDevPanelJob({
   onFinished: () => refresh(),
   formatStarted: (msg) => `开始：${msg.action ?? '任务'}`,
   formatFinished: (msg) => (msg.ok ? '完成' : `失败 ${msg.detail ?? ''}`),
@@ -86,7 +94,8 @@ onMounted(() => {
       showToast(`已保存（${msg.kind}）`, { kind: 'ok' })
       return
     }
-    consumeJobMessage(msg)
+    if (msg.type === 'job-finished') refresh()
+    if (!isShared) consumeJobMessage(msg)
   })
   refresh()
 })
@@ -143,11 +152,11 @@ function uninstallPlugins() {
 </script>
 
 <template>
-  <section class="page page--scroll">
-    <header class="page-head row">
+  <section class="claude-page" :class="{ 'page page--scroll': !props.embedded, embedded: props.embedded }">
+    <header v-if="!props.embedded" class="page-head row">
       <div>
         <p class="crumb">
-          <RouterLink to="/dev">开发工具</RouterLink>
+          <a href="#/dev">开发工具</a>
           <span>/</span>
           <span>Claude Code</span>
         </p>
@@ -158,6 +167,11 @@ function uninstallPlugins() {
         <button type="button" class="btn danger" :disabled="!busy" @click="cancel">取消任务</button>
       </div>
     </header>
+
+    <div v-else class="workspace-toolbar">
+      <button type="button" class="btn secondary" @click="refresh">刷新状态</button>
+      <button type="button" class="btn danger" :disabled="!busy" @click="cancel">取消任务</button>
+    </div>
 
     <div class="status-bar hud-panel">
       <span class="tag" :class="status?.installed ? 'status-installed' : 'status-missing'">
@@ -176,28 +190,30 @@ function uninstallPlugins() {
       <button type="button" :class="{ active: tab === 'plugins' }" @click="tab = 'plugins'">插件</button>
     </nav>
 
-    <div class="claude-layout">
+    <div class="claude-layout" :class="{ 'claude-layout--embedded': props.embedded }">
       <div class="hud-panel main">
         <template v-if="tab === 'lifecycle'">
           <h2 class="sec">推荐流程</h2>
           <ol class="steps">
-            <li>安装 / 更新 CLI（WinGet Anthropic.ClaudeCode）</li>
+            <li>安装 / 更新 CLI（WinGet Anthropic.ClaudeCode）— 使用上方工具概览按钮</li>
             <li>初始化（DISABLE_LOGIN_COMMAND + 预设 marketplace）</li>
             <li>配置 API 与可选代理</li>
             <li>安装精选插件</li>
           </ol>
           <div class="actions">
-            <button type="button" class="btn" :disabled="busy" @click="runJob('install')">安装 / 更新</button>
+            <template v-if="!props.embedded">
+              <button type="button" class="btn" :disabled="busy" @click="runJob('install')">安装 / 更新</button>
+              <button
+                type="button"
+                class="btn secondary"
+                :disabled="busy || !status?.wingetManaged"
+                @click="runJob('uninstall')"
+              >
+                卸载（仅 WinGet）
+              </button>
+            </template>
             <button type="button" class="btn secondary" :disabled="busy || !status?.installed" @click="runJob('init')">
               初始化
-            </button>
-            <button
-              type="button"
-              class="btn secondary"
-              :disabled="busy || !status?.wingetManaged"
-              @click="runJob('uninstall')"
-            >
-              卸载（仅 WinGet）
             </button>
           </div>
         </template>
@@ -278,9 +294,12 @@ function uninstallPlugins() {
         </template>
       </div>
 
-      <aside class="job-panel">
+      <aside v-if="!props.embedded" class="job-panel">
         <JobConsole
           :progress="progress"
+          :status-text="statusText"
+          :batch-current="batchCurrent"
+          :batch-total="batchTotal"
           :logs="logs"
           :console-lines="consoleLines"
           :busy="busy"
@@ -337,6 +356,21 @@ function uninstallPlugins() {
   grid-template-columns: 1.1fr 0.9fr;
   gap: 1rem;
   min-height: 400px;
+}
+.claude-layout--embedded {
+  grid-template-columns: 1fr;
+  min-height: 260px;
+}
+.workspace-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.65rem;
+}
+.claude-page.embedded {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
 }
 .sec {
   margin: 0 0 0.5rem;

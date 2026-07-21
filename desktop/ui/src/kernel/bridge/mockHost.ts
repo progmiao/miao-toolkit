@@ -9,6 +9,100 @@ type Emit = (msg: HostMessage) => void
 
 let emit: Emit | null = null
 
+type MockSilentTask = {
+  id: string
+  title: string
+  status: 'pending' | 'running' | 'succeeded' | 'failed' | 'cancelled'
+  progress: number
+  detail?: string
+  updatedAt: string
+}
+
+const mockSilentTasks: Record<string, MockSilentTask> = {}
+let mockSilentStarted = false
+
+function replySilentQueue() {
+  const tasks = Object.values(mockSilentTasks).sort((a, b) =>
+    a.updatedAt < b.updatedAt ? 1 : -1,
+  )
+  const activeCount = tasks.filter(
+    (t) => t.status === 'pending' || t.status === 'running',
+  ).length
+  queueMicrotask(() =>
+    emit?.({
+      type: 'silent.queue',
+      activeCount,
+      totalQueued: activeCount,
+      tasks,
+    }),
+  )
+}
+
+function emitSilentTask(task: MockSilentTask) {
+  queueMicrotask(() => emit?.({ type: 'silent.task', task }))
+}
+
+/** 模拟进主壳后的 Node 版本目录同步。 */
+function ensureMockSilentSync() {
+  if (mockSilentStarted) return
+  mockSilentStarted = true
+  const id = 'cache.versions.node'
+  const task: MockSilentTask = {
+    id,
+    title: '同步 Node.js 版本目录',
+    status: 'pending',
+    progress: 0,
+    detail: '排队中',
+    updatedAt: new Date().toISOString(),
+  }
+  mockSilentTasks[id] = task
+  replySilentQueue()
+  emitSilentTask(task)
+
+  setTimeout(() => {
+    const cur = mockSilentTasks[id]
+    if (!cur || cur.status === 'cancelled') return
+    const running: MockSilentTask = {
+      ...cur,
+      status: 'running',
+      progress: 12,
+      detail: '执行中',
+      updatedAt: new Date().toISOString(),
+    }
+    mockSilentTasks[id] = running
+    emitSilentTask(running)
+    replySilentQueue()
+  }, 200)
+
+  setTimeout(() => {
+    const cur = mockSilentTasks[id]
+    if (!cur || cur.status === 'cancelled') return
+    const mid: MockSilentTask = {
+      ...cur,
+      progress: 68,
+      detail: '增量写入…',
+      updatedAt: new Date().toISOString(),
+    }
+    mockSilentTasks[id] = mid
+    emitSilentTask(mid)
+  }, 700)
+
+  setTimeout(() => {
+    const cur = mockSilentTasks[id]
+    if (!cur || cur.status === 'cancelled') return
+    const done: MockSilentTask = {
+      ...cur,
+      status: 'succeeded',
+      progress: 100,
+      detail: '完成',
+      updatedAt: new Date().toISOString(),
+    }
+    mockSilentTasks[id] = done
+    emitSilentTask(done)
+    replySilentQueue()
+  }, 1400)
+}
+
 /**
  * 注册消息回传（由 bus 在无宿主时调用）。
  * @param fn - 将模拟宿主回传推给订阅者
@@ -28,9 +122,53 @@ export function handleMockRequest(message: Record<string, unknown>) {
   }
 
   switch (type) {
+    case 'boot.ui-ready':
+      // 宿主占位关闭；Mock 无层 A，忽略
+      break
+
+    case 'boot.subscribe':
+      reply({
+        type: 'boot.progress',
+        stage: 'mock',
+        message: 'Mock 启动…',
+        percent: 40,
+        phase: 'progress',
+      })
+      reply({ type: 'boot.log', message: '浏览器 Mock：跳过本地库初始化' })
+      reply({
+        type: 'boot.progress',
+        stage: 'ready',
+        message: '就绪',
+        percent: 100,
+        phase: 'progress',
+      })
+      reply({ type: 'boot.done', ok: true, fastPath: true })
+      break
+
     case 'ping':
       reply({ type: 'pong', at: new Date().toISOString() })
       break
+
+    case 'silent.list':
+      replySilentQueue()
+      ensureMockSilentSync()
+      break
+
+    case 'silent.cancel': {
+      const id = String(message.id ?? '')
+      if (id && mockSilentTasks[id]) {
+        mockSilentTasks[id] = {
+          ...mockSilentTasks[id],
+          status: 'cancelled',
+          detail: '已取消',
+          progress: 0,
+          updatedAt: new Date().toISOString(),
+        }
+      }
+      reply({ type: 'silent.cancel.ok', id, ok: true })
+      replySilentQueue()
+      break
+    }
 
     case 'get-app-info':
       reply({ type: 'app-info', name: 'Miao', version: '0.1.0-mock' })

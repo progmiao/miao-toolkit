@@ -495,12 +495,11 @@
 }
 
 /**
- * 浏览器 Mock 调试角标：固定右下，不占内容区布局。
- * 与真实宿主布局一致，仅叠加一层提示。
+ * 浏览器 Mock 调试角标：固定左下，避免与底栏右侧后台任务抢位。
  */
 .mock-banner {
   position: fixed;
-  right: 0.75rem;
+  left: calc(var(--shell-left-width, 168px) + 0.75rem);
   bottom: 0.55rem;
   z-index: 9990;
   margin: 0;
@@ -510,7 +509,7 @@
   font-size: 0.7rem;
   letter-spacing: 0.04em;
   line-height: 1.35;
-  text-align: right;
+  text-align: left;
   font-family: var(--font-display, Orbitron, sans-serif);
   color: color-mix(in srgb, var(--warn, #d97706) 92%, var(--ink));
   background: color-mix(in srgb, var(--panel-strong) 88%, transparent);
@@ -527,17 +526,19 @@
   box-sizing: border-box;
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: space-between;
+  gap: 0.75rem;
   min-height: var(--shell-footer-h);
   height: var(--shell-footer-h);
-  padding: 0 1rem;
+  padding: 0 0.85rem 0 1rem;
   border-top: 1px solid color-mix(in srgb, var(--line) 75%, transparent);
   transition: background var(--shell-ease), border-color var(--shell-ease), box-shadow var(--shell-ease);
 }
 
 .shell-meta {
   margin: 0;
-  width: 100%;
+  flex: 1 1 auto;
+  min-width: 0;
   font-size: 0.72rem;
   line-height: 1.35;
   color: var(--shell-muted);

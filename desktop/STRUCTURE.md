@@ -30,6 +30,7 @@ desktop/
 │
 ├── ui/src/
 │   ├── shell/
+│   │   ├── boot/index.vue    ← 启动三态（S0 Loading / S1 进度日志）
 │   │   ├── home/index.vue
 │   │   ├── settings/index.vue
 │   │   └── components/       ← AppShell / Toast / Confirm / ShellTopTitle
@@ -41,8 +42,8 @@ desktop/
 │   ├── sites/index.vue
 │   ├── daily/index.vue
 │   ├── dev/
-│   │   ├── index.vue         ← 开发工具列表（generic + 跳转 panel）
-│   │   ├── volta/index.vue   ← Volta 本体安装页
+│   │   ├── index.vue         ← 开发工具：列表 + tool-overview + tool-workspace
+│   │   ├── volta/index.vue   ← 工作区（embedded）
 │   │   ├── node/index.vue
 │   │   ├── pnpm/index.vue
 │   │   ├── yarn/index.vue

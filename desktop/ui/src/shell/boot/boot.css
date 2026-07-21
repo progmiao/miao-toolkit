@@ -1,0 +1,315 @@
+/* 启动全屏：logo 锚点固定；进度槽位预留高度，日志区定高不顶开上方 */
+
+.boot-page {
+  --boot-bg: #060a12;
+  --boot-ink: #e8f4ff;
+  --boot-muted: #8fa3bc;
+  --boot-accent: #5ec9d6;
+  --boot-accent-2: #7c9cff;
+  --boot-line: rgba(110, 201, 214, 0.22);
+  /* 进度槽（状态+条+百分比+日志）固定高度，S0/S1 舞台同高 */
+  --boot-body-h: 11.5rem;
+  --boot-log-h: 7.5rem;
+  --boot-logo-gap: 0.55rem;
+
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background: var(--boot-bg);
+  color: var(--boot-ink);
+  font-family: "Rajdhani", "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  transition: opacity 0.4s ease, transform 0.4s ease;
+}
+
+.boot-page.is-finishing {
+  opacity: 0;
+  transform: scale(1.02);
+  pointer-events: none;
+}
+
+/* —— 动态背景 —— */
+.boot-atmosphere {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.boot-orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(48px);
+  opacity: 0.55;
+  animation: boot-orb-drift 14s ease-in-out infinite alternate;
+}
+
+.boot-orb--a {
+  width: min(52vw, 420px);
+  height: min(52vw, 420px);
+  left: 8%;
+  top: 12%;
+  background: radial-gradient(circle, rgba(94, 201, 214, 0.55), transparent 68%);
+}
+
+.boot-orb--b {
+  width: min(48vw, 380px);
+  height: min(48vw, 380px);
+  right: 4%;
+  bottom: 8%;
+  background: radial-gradient(circle, rgba(124, 156, 255, 0.45), transparent 68%);
+  animation-delay: -4s;
+  animation-duration: 18s;
+}
+
+.boot-orb--c {
+  width: min(36vw, 280px);
+  height: min(36vw, 280px);
+  left: 42%;
+  top: 58%;
+  background: radial-gradient(circle, rgba(56, 189, 168, 0.35), transparent 70%);
+  animation-delay: -8s;
+  animation-duration: 16s;
+}
+
+@keyframes boot-orb-drift {
+  from {
+    transform: translate(0, 0) scale(1);
+  }
+  to {
+    transform: translate(4%, -6%) scale(1.12);
+  }
+}
+
+.boot-grid {
+  position: absolute;
+  inset: 0;
+  opacity: 0.22;
+  background-image:
+    linear-gradient(rgba(94, 201, 214, 0.12) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(94, 201, 214, 0.12) 1px, transparent 1px);
+  background-size: 48px 48px;
+  mask-image: radial-gradient(ellipse 70% 60% at 50% 45%, #000 20%, transparent 75%);
+  animation: boot-grid-shift 20s linear infinite;
+}
+
+@keyframes boot-grid-shift {
+  from {
+    background-position: 0 0;
+  }
+  to {
+    background-position: 48px 48px;
+  }
+}
+
+.boot-scan {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    transparent 0%,
+    rgba(94, 201, 214, 0.06) 48%,
+    rgba(124, 156, 255, 0.08) 50%,
+    transparent 52%,
+    transparent 100%
+  );
+  background-size: 100% 220%;
+  animation: boot-scan-move 5.5s ease-in-out infinite;
+  opacity: 0.7;
+}
+
+@keyframes boot-scan-move {
+  0%,
+  100% {
+    background-position: 0 -40%;
+  }
+  50% {
+    background-position: 0 140%;
+  }
+}
+
+/* —— 舞台：总高固定，logo 不因 S1 出现而位移 —— */
+.boot-stage {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: min(96vw, 820px);
+  padding: 1rem;
+  /* 无 transform 位移 */
+}
+
+.boot-ascii {
+  margin: 0;
+  padding: 0;
+  flex: 0 0 auto;
+  max-width: 100%;
+  overflow: visible;
+  font-family: Consolas, "Cascadia Mono", "Courier New", monospace;
+  font-size: clamp(0.95rem, 2.8vw, 1.55rem);
+  line-height: 1.15;
+  letter-spacing: 0;
+  font-kerning: none;
+  font-variant-ligatures: none;
+  font-feature-settings: "liga" 0, "calt" 0;
+  text-align: left;
+  white-space: pre;
+  color: var(--boot-accent);
+  text-shadow:
+    0 0 22px rgba(94, 201, 214, 0.45),
+    0 0 48px rgba(124, 156, 255, 0.2);
+  user-select: none;
+  animation: boot-ascii-glow 1.8s ease-in-out infinite;
+}
+
+@keyframes boot-ascii-glow {
+  0%,
+  100% {
+    opacity: 0.72;
+    filter: brightness(0.9);
+  }
+  45% {
+    opacity: 1;
+    filter: brightness(1.2);
+  }
+}
+
+/* 进度槽：始终占位，与 logo 间距固定 */
+.boot-body-slot {
+  width: min(100%, 480px);
+  height: var(--boot-body-h);
+  margin-top: var(--boot-logo-gap);
+  flex: 0 0 var(--boot-body-h);
+  position: relative;
+}
+
+.boot-body {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0.28rem;
+  margin: 0;
+}
+
+.boot-status {
+  margin: 0;
+  flex: 0 0 auto;
+  font-size: 0.88rem;
+  color: var(--boot-muted);
+  letter-spacing: 0.04em;
+  text-align: center;
+  line-height: 1.3;
+  min-height: 1.3em;
+}
+
+.boot-bar {
+  position: relative;
+  flex: 0 0 auto;
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  overflow: hidden;
+  border: 1px solid var(--boot-line);
+}
+
+.boot-bar__fill {
+  height: 100%;
+  width: 0;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--boot-accent), var(--boot-accent-2));
+  box-shadow: 0 0 12px rgba(94, 201, 214, 0.45);
+  transition: width 0.28s ease;
+}
+
+.boot-bar__shine {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    105deg,
+    transparent 40%,
+    rgba(255, 255, 255, 0.18) 50%,
+    transparent 60%
+  );
+  background-size: 200% 100%;
+  animation: boot-shine 2.2s linear infinite;
+  pointer-events: none;
+}
+
+@keyframes boot-shine {
+  from {
+    background-position: 120% 0;
+  }
+  to {
+    background-position: -80% 0;
+  }
+}
+
+.boot-percent {
+  margin: 0;
+  flex: 0 0 auto;
+  font-size: 0.75rem;
+  color: var(--boot-muted);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+
+/* 日志：固定高度，内部滚动，不顶开上方 */
+.boot-log {
+  flex: 0 0 var(--boot-log-h);
+  height: var(--boot-log-h);
+  max-height: var(--boot-log-h);
+  margin-top: 0.15rem;
+  overflow: auto;
+  padding: 0.1rem 0;
+  font-family: Consolas, "Cascadia Mono", monospace;
+  font-size: 0.72rem;
+  line-height: 1.45;
+  text-align: left;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+}
+
+.boot-log__line {
+  display: flex;
+  gap: 0.55rem;
+  color: var(--boot-ink);
+  opacity: 0.88;
+}
+
+.boot-log__at {
+  flex: 0 0 auto;
+  color: var(--boot-muted);
+  opacity: 0.85;
+}
+
+.boot-log__empty {
+  color: var(--boot-muted);
+  text-align: center;
+}
+
+.boot-error {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  margin: 0;
+  text-align: center;
+  color: #fb7185;
+  font-size: 0.85rem;
+}
+
+.boot-body-enter-active,
+.boot-body-leave-active {
+  transition: opacity 0.35s ease;
+}
+
+.boot-body-enter-from,
+.boot-body-leave-to {
+  opacity: 0;
+}

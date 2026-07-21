@@ -149,6 +149,8 @@ if (-not (Test-Path $pkgJson)) {
 }
 
 $nodeVersion = Get-PinnedNodeVersion -PackageJsonPath $pkgJson
+
+Write-Host '[1/4] Volta / Node ...'
 Ensure-VoltaNode -Version $nodeVersion
 
 Push-Location $ui
@@ -158,9 +160,12 @@ try {
     Write-Host ("Node (volta): " + (& node -v))
 
     if (-not (Test-Path 'node_modules')) {
-        Write-Host 'npm install...'
+        Write-Host '[2/4] npm install ...'
         npm.cmd install
         if ($LASTEXITCODE -ne 0) { throw 'npm install failed' }
+    }
+    else {
+        Write-Host '[2/4] npm install - skip (node_modules present)'
     }
 }
 finally {
@@ -170,12 +175,27 @@ finally {
 $startedVite = $false
 
 try {
-    if (-not (Test-ViteUp)) {
+    Write-Host '[3/4] Vite + host build ...'
+    $viteReady = Test-ViteUp
+    if (-not $viteReady) {
         Write-Host 'Starting Vite on :5173 ...'
         Start-Process -FilePath 'npm.cmd' -ArgumentList 'run', 'dev' `
             -WorkingDirectory $ui -WindowStyle Minimized | Out-Null
         $startedVite = $true
+    }
+    else {
+        Write-Host 'Vite already running; reusing it.'
+    }
 
+    # Start Vite first (if needed), then build host while Vite warms up
+    Write-Host 'dotnet build ...'
+    & dotnet build $proj --nologo -v q
+    if ($LASTEXITCODE -ne 0) {
+        throw "dotnet build failed (exit $LASTEXITCODE)"
+    }
+    Write-Host 'Host build ready.'
+
+    if (-not $viteReady) {
         $deadline = (Get-Date).AddSeconds(60)
         while (-not (Test-ViteUp)) {
             if ((Get-Date) -gt $deadline) {
@@ -185,14 +205,12 @@ try {
         }
         Write-Host 'Vite ready.'
     }
-    else {
-        Write-Host 'Vite already running; reusing it.'
-    }
 
     $env:MIAO_UI_DEV = '1'
-    Write-Host 'Starting Miao host (edit desktop/ui for HMR)...'
+    Write-Host '[4/4] Starting Miao host (edit desktop/ui for HMR)...'
     Write-Host 'Close the app window or press Ctrl+C here to stop.'
-    dotnet run --project $proj --no-launch-profile
+    # Pre-built: --no-build starts the process faster
+    dotnet run --project $proj --no-launch-profile --no-build
 }
 finally {
     if ($startedVite) {
