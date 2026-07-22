@@ -1,11 +1,13 @@
 using System.Diagnostics;
 using System.Text;
 using Miao.Common.Jobs;
+using Miao.Software.Jobs.ConPty;
 
 namespace Miao.Software.Jobs;
 
 /// <summary>
-/// 以无窗口方式启动 powershell.exe，流式转发 stdout/stderr，并解析约定进度行。
+/// 以 ConPTY 启动 powershell.exe，流式转发伪终端输出（ANSI），并解析约定进度行。
+/// ConPTY 不可用时回退到无窗口 stdout/stderr 重定向。
 /// 状态类消息用 kind=log；原始命令输出用 kind=console。
 /// 脚本一律落盘为 UTF-8（带 BOM）再 -File 执行，避免中文 Write-Host 乱码。
 /// </summary>
@@ -38,7 +40,6 @@ public sealed class JobRunner
         }
         else
         {
-            // 内联脚本 → UTF-8 BOM 临时文件，保证中文与控制台输出编码一致
             tempScript = Path.Combine(Path.GetTempPath(), $"miao-job-{jobId}-{Guid.NewGuid():N}.ps1");
             var body = BuildUtf8Script(scriptPathOrCommand);
             await File.WriteAllTextAsync(tempScript, body, new UTF8Encoding(encoderShouldEmitUTF8Identifier: true), cancellationToken)
@@ -49,70 +50,29 @@ public sealed class JobRunner
 
         try
         {
-            var psi = new ProcessStartInfo
+            var argList = new List<string>
             {
-                FileName = "powershell.exe",
-                UseShellExecute = false,
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                CreateNoWindow = true,
-                StandardOutputEncoding = new UTF8Encoding(false),
-                StandardErrorEncoding = new UTF8Encoding(false),
+                "-NoProfile",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-File",
+                scriptPath,
             };
-
-            psi.ArgumentList.Add("-NoProfile");
-            psi.ArgumentList.Add("-ExecutionPolicy");
-            psi.ArgumentList.Add("Bypass");
-            psi.ArgumentList.Add("-File");
-            psi.ArgumentList.Add(scriptPath);
-
             if (arguments is not null)
-            {
-                foreach (var arg in arguments)
-                    psi.ArgumentList.Add(arg);
-            }
+                argList.AddRange(arguments);
 
             Emit(jobId, "log", "已启动 PowerShell 任务");
-            Emit(jobId, "console", $"> powershell -NoProfile -File \"{Path.GetFileName(scriptPath)}\"");
-
-            using var process = new Process { StartInfo = psi, EnableRaisingEvents = true };
-            var stderr = new StringBuilder();
-
-            process.OutputDataReceived += (_, e) =>
-            {
-                if (e.Data is null) return;
-                Emit(jobId, "console", e.Data);
-                TryParseProgress(jobId, e.Data);
-            };
-            process.ErrorDataReceived += (_, e) =>
-            {
-                if (e.Data is null) return;
-                stderr.AppendLine(e.Data);
-                Emit(jobId, "console", e.Data);
-            };
-
-            if (!process.Start())
-                return new JobResult(jobId, false, -1, "无法启动 PowerShell");
-
-            process.BeginOutputReadLine();
-            process.BeginErrorReadLine();
+            Emit(jobId, "console", $"> powershell -NoProfile -File \"{Path.GetFileName(scriptPath)}\"\r\n");
 
             try
             {
-                await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+                return await RunViaConPtyAsync(jobId, argList, cancellationToken).ConfigureAwait(false);
             }
-            catch (OperationCanceledException)
+            catch (Exception ex) when (ex is not OperationCanceledException)
             {
-                try { process.Kill(entireProcessTree: true); } catch { /* ignore */ }
-                Emit(jobId, "log", "任务已取消");
-                Emit(jobId, "console", "^C 任务已取消");
-                return new JobResult(jobId, false, -1, "cancelled");
+                Emit(jobId, "log", $"ConPTY 不可用，回退管道模式（{ex.Message}）");
+                return await RunViaRedirectAsync(jobId, argList, cancellationToken).ConfigureAwait(false);
             }
-
-            var ok = process.ExitCode == 0;
-            Emit(jobId, "log", ok ? "PowerShell 执行完成" : $"PowerShell 退出码 {process.ExitCode}");
-            Emit(jobId, ok ? "done" : "error", ok ? "完成" : $"退出码 {process.ExitCode}");
-            return new JobResult(jobId, ok, process.ExitCode, stderr.ToString());
         }
         finally
         {
@@ -123,8 +83,140 @@ public sealed class JobRunner
         }
     }
 
+    private async Task<JobResult> RunViaConPtyAsync(
+        string jobId,
+        IReadOnlyList<string> argList,
+        CancellationToken cancellationToken)
+    {
+        var commandLine = BuildPowerShellCommandLine(argList);
+        // 与常见终端宽度接近，减轻进度条折行；UI xterm 用 convertEol+\r 原地刷新
+        using var session = ConPtySession.Start(commandLine, cols: 100, rows: 30);
+        var filter = new ConsoleProtocolFilter();
+
+        void HandleChunk(string chunk)
+        {
+            filter.Push(
+                chunk,
+                line => TryParseProgress(jobId, line),
+                text => Emit(jobId, "console", text));
+        }
+
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var pumpTask = session.PumpOutputAsync(HandleChunk, linked.Token);
+
+        int exitCode;
+        try
+        {
+            exitCode = await session.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            session.Kill();
+            session.ClosePty();
+            linked.Cancel();
+            try { await pumpTask.ConfigureAwait(false); } catch { /* ignore */ }
+            filter.Flush(line => TryParseProgress(jobId, line), text => Emit(jobId, "console", text));
+            Emit(jobId, "log", "任务已取消");
+            Emit(jobId, "console", "\r\n^C 任务已取消\r\n");
+            return new JobResult(jobId, false, -1, "cancelled");
+        }
+
+        session.ClosePty();
+        try { await pumpTask.ConfigureAwait(false); } catch { /* ignore */ }
+        filter.Flush(line => TryParseProgress(jobId, line), text => Emit(jobId, "console", text));
+
+        var ok = exitCode == 0;
+        Emit(jobId, "log", ok ? "PowerShell 执行完成" : $"PowerShell 退出码 {exitCode}");
+        Emit(jobId, ok ? "done" : "error", ok ? "完成" : $"退出码 {exitCode}");
+        return new JobResult(jobId, ok, exitCode, ok ? "" : $"exit {exitCode}");
+    }
+
+    private async Task<JobResult> RunViaRedirectAsync(
+        string jobId,
+        IReadOnlyList<string> argList,
+        CancellationToken cancellationToken)
+    {
+        var psi = new ProcessStartInfo
+        {
+            FileName = "powershell.exe",
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            CreateNoWindow = true,
+            StandardOutputEncoding = new UTF8Encoding(false),
+            StandardErrorEncoding = new UTF8Encoding(false),
+        };
+        foreach (var a in argList)
+            psi.ArgumentList.Add(a);
+
+        using var process = new Process { StartInfo = psi, EnableRaisingEvents = true };
+        var stderr = new StringBuilder();
+        var filter = new ConsoleProtocolFilter();
+
+        void OnLine(string? data)
+        {
+            if (data is null) return;
+            filter.Push(
+                data + "\n",
+                line => TryParseProgress(jobId, line),
+                text => Emit(jobId, "console", text));
+        }
+
+        process.OutputDataReceived += (_, e) => OnLine(e.Data);
+        process.ErrorDataReceived += (_, e) =>
+        {
+            if (e.Data is null) return;
+            stderr.AppendLine(e.Data);
+            OnLine(e.Data);
+        };
+
+        if (!process.Start())
+            return new JobResult(jobId, false, -1, "无法启动 PowerShell");
+
+        process.BeginOutputReadLine();
+        process.BeginErrorReadLine();
+
+        try
+        {
+            await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            try { process.Kill(entireProcessTree: true); } catch { /* ignore */ }
+            filter.Flush(line => TryParseProgress(jobId, line), text => Emit(jobId, "console", text));
+            Emit(jobId, "log", "任务已取消");
+            Emit(jobId, "console", "\r\n^C 任务已取消\r\n");
+            return new JobResult(jobId, false, -1, "cancelled");
+        }
+
+        filter.Flush(line => TryParseProgress(jobId, line), text => Emit(jobId, "console", text));
+        var ok = process.ExitCode == 0;
+        Emit(jobId, "log", ok ? "PowerShell 执行完成" : $"PowerShell 退出码 {process.ExitCode}");
+        Emit(jobId, ok ? "done" : "error", ok ? "完成" : $"退出码 {process.ExitCode}");
+        return new JobResult(jobId, ok, process.ExitCode, stderr.ToString());
+    }
+
+    private static string BuildPowerShellCommandLine(IReadOnlyList<string> argList)
+    {
+        var sb = new StringBuilder();
+        sb.Append("powershell.exe");
+        foreach (var a in argList)
+        {
+            sb.Append(' ');
+            sb.Append(QuoteArg(a));
+        }
+        return sb.ToString();
+    }
+
+    private static string QuoteArg(string value)
+    {
+        if (value.Length == 0) return "\"\"";
+        if (value.IndexOfAny([' ', '\t', '"']) < 0) return value;
+        return "\"" + value.Replace("\"", "\\\"") + "\"";
+    }
+
     /// <summary>
-    /// 在脚本前强制 UTF-8 控制台输出，避免 Write-Host 中文在管道中乱码。
+    /// 在脚本前强制 UTF-8 控制台输出，避免 Write-Host 中文乱码。
     /// </summary>
     private static string BuildUtf8Script(string userScript)
     {
@@ -153,7 +245,6 @@ public sealed class JobRunner
 
         TryParseTagged(jobId, line, "##batch ", (payload) =>
         {
-            // ##batch current total  （current 从 1 起）；前端可不展示 xx/xx，仅作兼容
             var parts = payload.Split([' ', '\t', '/'], StringSplitOptions.RemoveEmptyEntries);
             if (parts.Length >= 2 &&
                 int.TryParse(parts[0], out var cur) &&

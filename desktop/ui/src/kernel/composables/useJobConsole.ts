@@ -1,92 +1,41 @@
 /**
- * Job 控制台状态机：订阅宿主 `job-*` 消息，维护状态日志 / 命令窗 / 进度条。
- *
- * 各工具页**独立**，只复用本 composable + `JobConsole` 子组件，不要抽「通用工具页」。
- * 页面在自己的 `subscribe` 里先处理业务消息，再调用 `consumeJobMessage`。
+ * Job 控制台：命令窗累积原文，每次生成清洗后的展示文本（单行 Fetching 进度）。
  */
 import { ref, type Ref } from 'vue'
 import { post, type HostMessage } from '@kernel/bridge/bus'
+import { renderConsoleWithFetchProgress } from '@kernel/console/coalesceFetchProgress'
 
-/** 状态日志最大行数（左侧状态通道）。 */
 const MAX_STATUS_LINES = 80
-/** 命令窗最大行数（右侧 PowerShell 通道）。 */
-const MAX_CONSOLE_LINES = 800
+const MAX_CONSOLE_RAW = 500_000
 
-/** `useJobConsole` 可选回调与文案。 */
 export type UseJobConsoleOptions = {
-  /**
-   * 任务结束（`job-finished`）后回调；用于刷新目录 / 版本列表等。
-   * @param msg - 宿主结束消息
-   */
   onFinished?: (msg: HostMessage) => void
-  /**
-   * 收到宿主 `error` 且本 composable 已清 busy 后回调。
-   * @param message - 错误文案
-   */
   onError?: (message: string) => void
-  /**
-   * 自定义「开始」状态行；缺省为 `开始：{action}`。
-   * @param msg - `job-started` 消息
-   */
   formatStarted?: (msg: HostMessage) => string
-  /**
-   * 自定义「结束」状态行；缺省含 exitCode / detail。
-   * @param msg - `job-finished` 消息
-   */
   formatFinished?: (msg: HostMessage) => string
 }
 
-/** `useJobConsole` 返回值：缓冲与消费入口。 */
 export type JobConsoleApi = {
-  /** 状态日志行（短摘要）。 */
   logs: Ref<string[]>
-  /** 命令窗行（PowerShell 原始输出）。 */
+  /** 清洗后的命令窗全文（0～1 段）。 */
   consoleLines: Ref<string[]>
-  /** 0–100 单项任务进度。 */
   progress: Ref<number>
-  /** 当前进行中的任务文案（进度条上方）。 */
   statusText: Ref<string>
-  /** 集合进度：当前第几项（0 表示未开始）。 */
   batchCurrent: Ref<number>
-  /** 集合进度：总项数（0 表示无集合信息）。 */
   batchTotal: Ref<number>
-  /** 是否有任务在跑。 */
   busy: Ref<boolean>
-  /** 当前 jobId；无任务时为 null。 */
   currentJob: Ref<string | null>
-  /**
-   * 追加状态日志一行。
-   * @param line - 文案
-   */
   appendStatus: (line: string) => void
-  /**
-   * 追加命令窗一行（自动过滤 `##progress` / `##task` / `##batch` / `##log`）。
-   * @param line - 输出
-   */
-  appendConsole: (line: string) => void
-  /**
-   * 空闲时清空双通道与进度（切换工具时用）。
-   * 任务进行中不操作，避免冲掉进行中输出。
-   */
+  appendConsole: (chunk: string) => void
   resetWhenIdle: () => void
-  /**
-   * 消费与 Job 相关的宿主消息。
-   * @param msg - 总线消息
-   * @returns 是否已处理（调用方可跳过后续分支）
-   */
   consumeJobMessage: (msg: HostMessage) => boolean
-  /** 向宿主发送 `cancel-job`（无 currentJob 时为 no-op）。 */
   cancel: () => void
 }
 
-/**
- * 创建绑定到某一页面的 Job 控制台状态。
- * @param options - 结束/错误回调与文案
- * @returns 可直接绑到 `JobConsole` 的 refs 与方法
- */
 export function useJobConsole(options: UseJobConsoleOptions = {}): JobConsoleApi {
   const logs = ref<string[]>([])
   const consoleLines = ref<string[]>([])
+  let consoleRaw = ''
   const progress = ref(0)
   const statusText = ref('')
   const batchCurrent = ref(0)
@@ -99,14 +48,26 @@ export function useJobConsole(options: UseJobConsoleOptions = {}): JobConsoleApi
     if (logs.value.length > MAX_STATUS_LINES) logs.value.shift()
   }
 
-  function appendConsole(line: string) {
-    if (/##(?:progress|task|batch|log)\b/i.test(line)) return
-    consoleLines.value.push(line)
-    if (consoleLines.value.length > MAX_CONSOLE_LINES) consoleLines.value.shift()
+  function rebuildConsoleView() {
+    const view = renderConsoleWithFetchProgress(consoleRaw)
+    consoleLines.value = view ? [view] : []
+  }
+
+  function appendConsole(chunk: string) {
+    if (!chunk) return
+    const plain = chunk.replace(/\u001b\[[0-9;?]*[ -/]*[@-~]/g, '').trim()
+    if (/^##(?:progress|task|batch|log)\b/i.test(plain)) return
+
+    consoleRaw += chunk
+    if (consoleRaw.length > MAX_CONSOLE_RAW) {
+      consoleRaw = consoleRaw.slice(-MAX_CONSOLE_RAW)
+    }
+    rebuildConsoleView()
   }
 
   function clearBuffers() {
     logs.value = []
+    consoleRaw = ''
     consoleLines.value = []
     progress.value = 0
     statusText.value = ''
@@ -146,10 +107,7 @@ export function useJobConsole(options: UseJobConsoleOptions = {}): JobConsoleApi
         progress.value = Number(msg.message) || progress.value
       } else if (msg.kind === 'task' && msg.message) {
         statusText.value = msg.message
-        // 任务切换也记入实时日志，保证每步可追溯
-        appendStatus(msg.message)
       } else if (msg.kind === 'batch' && msg.message) {
-        // 保留解析（兼容旧 Handler）；UI 不再展示 xx/xx
         const parts = msg.message.trim().split(/\s+/)
         const cur = Number(parts[0])
         const total = Number(parts[1])
@@ -160,7 +118,6 @@ export function useJobConsole(options: UseJobConsoleOptions = {}): JobConsoleApi
       } else if (msg.kind === 'log' && msg.message) {
         appendStatus(msg.message)
       } else if (msg.message) {
-        // 兼容未区分 console/log 的旧 Handler：默认进命令窗
         appendConsole(msg.message)
       }
       return true
@@ -168,10 +125,19 @@ export function useJobConsole(options: UseJobConsoleOptions = {}): JobConsoleApi
 
     if (msg.type === 'job-finished') {
       busy.value = false
-      progress.value = msg.ok ? 100 : progress.value
-      if (batchTotal.value > 0) batchCurrent.value = batchTotal.value
-      statusText.value = msg.ok ? '完成' : '失败'
-      appendStatus((options.formatFinished ?? defaultFinished)(msg))
+      const cancelled =
+        !msg.ok &&
+        (String(msg.detail ?? '').toLowerCase().includes('cancelled') ||
+          String(msg.detail ?? '').includes('已取消') ||
+          msg.exitCode === -1)
+      progress.value = msg.ok ? 100 : cancelled ? 0 : progress.value
+      if (batchTotal.value > 0 && !cancelled) batchCurrent.value = batchTotal.value
+      statusText.value = msg.ok ? '完成' : cancelled ? '已取消' : '失败'
+      appendStatus(
+        cancelled
+          ? '任务已取消'
+          : (options.formatFinished ?? defaultFinished)(msg),
+      )
       currentJob.value = null
       options.onFinished?.(msg)
       return true

@@ -27,11 +27,16 @@ import {
   subscribeShellTitle,
 } from '@kernel/bridge/shellTitle'
 import { isBrowserMock, post, subscribe } from '@kernel/bridge/bus'
+import { useForegroundJobBusy } from '@kernel/bridge/foregroundJob'
+import RegionLock from '@kernel/components/RegionLock.vue'
 import AppToast from '../AppToast'
 import AppConfirm from '../AppConfirm'
 import SilentTasksPanel from '../SilentTasksPanel'
 import ShellTopTitle from '../ShellTopTitle/ShellTopTitle.vue'
 import './AppShell.css'
+
+/** 前台任务进行中：锁定左侧业务菜单（当前由开发工具写入）。 */
+const foregroundJobBusy = useForegroundJobBusy()
 
 /** 当前版本（优先宿主 app-info）。 */
 const version = ref<string>(c.fallbackVersion)
@@ -265,12 +270,14 @@ watch(
         <p class="shell-welcome">{{ c.welcomeLine }}</p>
       </div>
 
-      <nav class="shell-nav" aria-label="业务菜单">
-        <RouterLink to="/sites">常用网站</RouterLink>
-        <RouterLink to="/daily">日常工具</RouterLink>
-        <RouterLink to="/dev">开发工具</RouterLink>
-        <RouterLink to="/utilities">工具集</RouterLink>
-      </nav>
+      <RegionLock class="shell-nav-lock" :active="foregroundJobBusy" title="任务进行中，请先终止">
+        <nav class="shell-nav" aria-label="业务菜单">
+          <RouterLink to="/sites" :tabindex="foregroundJobBusy ? -1 : undefined">常用网站</RouterLink>
+          <RouterLink to="/daily" :tabindex="foregroundJobBusy ? -1 : undefined">日常工具</RouterLink>
+          <RouterLink to="/dev" :tabindex="foregroundJobBusy ? -1 : undefined">开发工具</RouterLink>
+          <RouterLink to="/utilities" :tabindex="foregroundJobBusy ? -1 : undefined">工具集</RouterLink>
+        </nav>
+      </RegionLock>
 
       <div class="shell-dock" aria-label="账号与系统">
         <div class="shell-user" title="游客" aria-label="游客（占位）">

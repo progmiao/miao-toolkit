@@ -126,13 +126,14 @@ Node 页默认 `volta.list` 的 `forceRemote: false`（读库）；概览「刷�
 
 ### 4.1 `JobConsole`（`kernel/components/JobConsole.vue`）
 
-- **用途**：双通道——左侧状态摘要 + 右侧命令输出；有进度条。  
-- **用法**：父页传 `:busy` `:progress` `:logs` `:console-lines`，建议带 `placeholder`。  
-- **约定**：Handler 用 `Write-Host '##progress N'` 驱动进度；该行不进命令窗。
+- **用途**：双通道——左侧状态摘要 + 右侧命令输出（xterm / ConPTY）；有进度条。  
+- **用法**：父页传 `:busy` `:progress` `:logs` `:console-lines`，建议带 `placeholder` / `logs-placeholder`。  
+- **约定**：Handler 用 `Write-Host '##progress N'`（及 `##task` / `##batch` / `##log`）驱动进度；协议行由宿主剥离，不进命令窗。  
+- **执行**：宿主优先 ConPTY 跑 PowerShell，失败回退 stdout 管道；UI 用 xterm.js 实时渲染 ANSI。
 
 ### 4.2 `useJobConsole`（`kernel/composables/useJobConsole.ts`）
 
-- 维护 `logs` / `consoleLines` / `progress` / `busy` / `currentJob`。  
+- 维护 `logs` / `consoleLines`（流式块）/ `progress` / `statusText` / `busy` / `currentJob`。  
 - 页面 `subscribe` 里先处理业务消息，再 `consumeJobMessage(msg)`。  
 - `onFinished` 里刷新目录或版本列表。
 
@@ -188,7 +189,7 @@ Miao.Software/
 ```
 
 - Handler 通过 `actions[].handler` 字符串注册，勿在 UI 写死 Handler 类名。  
-- PowerShell 进度约定：`##progress 0..100`。
+- PowerShell 进度约定：`##progress 0..100`（另有 `##task` / `##batch` / `##log`）；JobRunner 优先 ConPTY。
 
 ---
 

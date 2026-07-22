@@ -28,6 +28,10 @@ internal static class VoltaScript
     {
         sb.AppendLine("function Refresh-Path { $env:Path = [Environment]::GetEnvironmentVariable('Path','Machine') + ';' + [Environment]::GetEnvironmentVariable('Path','User') }");
         sb.AppendLine("Refresh-Path");
+        // 尽量贴近真实终端宽度，让 volta 进度条用 \\r 原地刷新
+        sb.AppendLine("$env:COLUMNS = '100'");
+        sb.AppendLine("$env:TERM = 'xterm-256color'");
+        sb.AppendLine("try { if ($Host.UI.RawUI) { $Host.UI.RawUI.BufferSize = New-Object Management.Automation.Host.Size(100, [Math]::Max(40, $Host.UI.RawUI.BufferSize.Height)); $Host.UI.RawUI.WindowSize = New-Object Management.Automation.Host.Size(100, [Math]::Min(30, $Host.UI.RawUI.WindowSize.Height)) } } catch {}");
         sb.AppendLine("if (-not (Get-Command volta -ErrorAction SilentlyContinue)) {");
         sb.AppendLine("  throw '未安装 Volta。请先在开发工具中安装「Volta」，再管理 Node / pnpm / Yarn。'");
         sb.AppendLine("}");
@@ -77,7 +81,6 @@ public sealed class VoltaInstallHandler : IToolActionHandler
         sb.AppendLine($"Write-Host '##log 准备安装 {pkg}，共 {total} 个版本'");
         sb.AppendLine($"Write-Host '##task 准备安装 {pkg}（{total} 个版本）'");
         sb.AppendLine("Write-Host '##progress 0'");
-        sb.AppendLine($"Write-Host '准备安装 {pkg}（{total} 个版本）…'");
 
         for (var i = 0; i < total; i++)
         {
@@ -87,8 +90,8 @@ public sealed class VoltaInstallHandler : IToolActionHandler
             var midPct = VoltaScript.SliceProgress(i, total, 0.15);
             var endPct = VoltaScript.SliceProgress(i, total, 1);
 
-            sb.AppendLine($"Write-Host '##log [{n}/{total}] 开始安装 {pkg}@{ver}'");
-            sb.AppendLine($"Write-Host '##task 安装 {pkg}@{ver}'");
+            sb.AppendLine($"Write-Host '##log [{n}/{total}] 安装 {pkg}@{ver}'");
+            sb.AppendLine($"Write-Host '##task [{n}/{total}] 安装 {pkg}@{ver}'");
             sb.AppendLine($"Write-Host '##progress {startPct}'");
             sb.AppendLine($"Write-Host '[{n}/{total}] volta install {pkg}@{ver}'");
             sb.AppendLine($"Write-Host '##progress {midPct}'");
@@ -153,8 +156,8 @@ public sealed class VoltaUninstallHandler : IToolActionHandler
             var midPct = VoltaScript.SliceProgress(i, total, 0.2);
             var endPct = VoltaScript.SliceProgress(i, total, 1);
 
-            sb.AppendLine($"Write-Host '##log [{n}/{total}] 开始卸载 {pkg}@{ver}'");
-            sb.AppendLine($"Write-Host '##task 卸载 {pkg}@{ver}'");
+            sb.AppendLine($"Write-Host '##log [{n}/{total}] 卸载 {pkg}@{ver}'");
+            sb.AppendLine($"Write-Host '##task [{n}/{total}] 卸载 {pkg}@{ver}'");
             sb.AppendLine($"Write-Host '##progress {startPct}'");
             sb.AppendLine($"Write-Host '[{n}/{total}] volta uninstall {pkg}@{ver}'");
             sb.AppendLine($"Write-Host '##progress {midPct}'");

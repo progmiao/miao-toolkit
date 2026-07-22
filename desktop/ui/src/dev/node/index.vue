@@ -1,16 +1,16 @@
 <script setup lang="ts">
 /**
  * Node.js 工作区：梯形 Tab + 左版本列表 + 右进度/日志/PowerShell。
- * 刷新清单 / 取消任务挂到父级 tool-overview。
+ * 取消任务挂到父级 tool-overview「终止」。
  */
 import { computed, inject, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import JobConsole from '@kernel/components/JobConsole.vue'
+import RegionLock from '@kernel/components/RegionLock.vue'
 import { post, subscribe, type VoltaVersion } from '@kernel/bridge/bus'
 import { normalizeSilentTask } from '@kernel/bridge/silentTasks'
 import { showToast } from '@kernel/bridge/toast'
 import { useShellTitle } from '@kernel/composables/useShellTitle'
 import {
-  DEV_OVERVIEW_EXTRA_KEY,
   DEV_SELECT_TOOL_KEY,
   DEV_WORKSPACE_OWNS_CONSOLE_KEY,
 } from '../devPanelContext'
@@ -24,7 +24,6 @@ const props = defineProps<{
 useShellTitle(computed(() => (props.embedded ? '开发工具' : 'Node.js')))
 
 const selectTool = inject(DEV_SELECT_TOOL_KEY, null)
-const overviewExtra = inject(DEV_OVERVIEW_EXTRA_KEY, null)
 const workspaceOwnsConsole = inject(DEV_WORKSPACE_OWNS_CONSOLE_KEY, null)
 
 /** 功能 Tab。 */
@@ -146,28 +145,11 @@ const selectedList = computed(() =>
 function requestList(forceRemote = true) {
   loading.value = true
   error.value = ''
-  if (overviewExtra) {
-    overviewExtra.value = {
-      refresh: () => requestList(true),
-      refreshLabel: '刷新清单',
-      refreshing: true,
-    }
-  }
   post({ type: 'volta.list', tool: 'node', ltsOnly: false, forceRemote })
-}
-
-function syncOverviewExtra() {
-  if (!overviewExtra) return
-  overviewExtra.value = {
-    refresh: () => requestList(true),
-    refreshLabel: '刷新清单',
-    refreshing: loading.value,
-  }
 }
 
 onMounted(() => {
   if (workspaceOwnsConsole) workspaceOwnsConsole.value = true
-  syncOverviewExtra()
 
   unsub = subscribe((msg) => {
     if (msg.type === 'volta.versions' && Array.isArray(msg.items)) {
@@ -188,7 +170,6 @@ onMounted(() => {
           versions.value.find((x) => x.isDefault) ?? versions.value.find((x) => x.installed)
         defaultPick.value = d?.version ?? null
       }
-      syncOverviewExtra()
       return
     }
     if (msg.type === 'silent.task') {
@@ -225,7 +206,6 @@ onUnmounted(() => {
   unsub?.()
   verListResizeObs?.disconnect()
   verListResizeObs = undefined
-  if (overviewExtra) overviewExtra.value = null
   if (workspaceOwnsConsole) workspaceOwnsConsole.value = false
 })
 
@@ -234,10 +214,10 @@ watch(tab, () => {
   filter.value = ''
 })
 
-watch(busy, () => {
-  // 取消任务按钮在概览区，由父级 busy 控制；此处仅保持刷新态
-  syncOverviewExtra()
-})
+function selectNodeTab(id: NodeTab) {
+  if (busy.value) return
+  tab.value = id
+}
 
 function toggleAll(on: boolean) {
   for (const v of listForTab.value) {
@@ -250,6 +230,7 @@ function toggleAll(on: boolean) {
 }
 
 function runJob(action: string, versionsArg?: string[]) {
+  if (busy.value) return
   const list = versionsArg ?? selectedList.value
   if (!list.length) {
     showToast('请先选择或填写版本', { kind: 'warn' })
@@ -319,24 +300,33 @@ void cancel
     <p v-if="error" class="banner-err">{{ error }}</p>
 
     <template v-if="voltaAvailable">
-      <div class="folder-tabs" role="tablist" aria-label="Node 功能">
-        <button
-          v-for="(t, i) in tabs"
-          :key="t.id"
-          type="button"
-          role="tab"
-          class="folder-tab"
-          :class="{ active: tab === t.id }"
-          :style="{ zIndex: tab === t.id ? tabs.length + 1 : tabs.length - i }"
-          :aria-selected="tab === t.id"
-          @click="tab = t.id"
-        >
-          <span class="folder-tab-label">{{ t.label }}</span>
-        </button>
-      </div>
+      <RegionLock :active="busy" title="任务进行中，请先终止">
+        <div class="folder-tabs" role="tablist" aria-label="Node 功能">
+          <button
+            v-for="(t, i) in tabs"
+            :key="t.id"
+            type="button"
+            role="tab"
+            class="folder-tab"
+            :class="{ active: tab === t.id }"
+            :style="{ zIndex: tab === t.id ? tabs.length + 1 : tabs.length - i }"
+            :aria-selected="tab === t.id"
+            :tabindex="busy ? -1 : undefined"
+            @click="selectNodeTab(t.id)"
+          >
+            <span class="folder-tab-label">{{ t.label }}</span>
+          </button>
+        </div>
+      </RegionLock>
 
       <div class="folder-body">
-        <div class="node-split">
+        <div class="node-split" :class="{ 'is-job-locked': busy }">
+          <div
+            v-if="busy"
+            class="node-ops-lock"
+            title="任务进行中，请先终止"
+            aria-hidden="true"
+          />
           <!-- 批量安装 -->
           <template v-if="tab === 'batch-install'">
             <div class="ver-head">
@@ -513,13 +503,14 @@ void cancel
 
           <JobConsole
             class="node-job"
-            pane-layout="stack"
             always-show
+            coalesce-fetching-progress
             :progress="progress"
             :status-text="statusText"
             :logs="logs"
             :console-lines="consoleLines"
             :busy="busy"
+            logs-placeholder="执行操作后在此显示 日志 输出…"
             placeholder="执行操作后在此显示 PowerShell 输出…"
           />
         </div>
@@ -563,12 +554,12 @@ void cancel
   flex: 0 0 auto;
 }
 
-/* —— 文件夹式梯形 Tab —— */
+/* —— 文件夹式梯形 Tab：左齐内容、互相重叠、选中置顶 —— */
 .folder-tabs {
   display: flex;
   align-items: flex-end;
   gap: 0;
-  padding: 0 0.35rem;
+  padding: 0;
   margin: 0;
   flex: 0 0 auto;
   border-bottom: 1px solid color-mix(in srgb, var(--line) 85%, transparent);
@@ -585,12 +576,16 @@ void cancel
   font-size: 0.82rem;
   letter-spacing: 0.03em;
 }
+.folder-tab + .folder-tab {
+  margin-left: -0.7rem;
+}
 .folder-tab-label {
   display: block;
   padding: 0.48rem 1.05rem 0.42rem 0.85rem;
   background: color-mix(in srgb, var(--panel) 55%, transparent);
   border: 1px solid color-mix(in srgb, var(--line) 90%, transparent);
   border-bottom: none;
+  /* 左边垂直、右侧斜切 → 梯形 */
   clip-path: polygon(0 0, calc(100% - 0.85rem) 0, 100% 100%, 0 100%);
   border-radius: 0.45rem 0.15rem 0 0;
   transition:
@@ -647,6 +642,20 @@ void cancel
   gap: 0.65rem 0.75rem;
   align-items: stretch;
   overflow: hidden;
+  position: relative;
+}
+
+/** 任务中：只锁左侧操作区，右侧进度/命令/日志可点 */
+.node-ops-lock {
+  position: absolute;
+  z-index: 25;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: var(--node-list-w);
+  cursor: not-allowed;
+  border-radius: 0.4rem;
+  background: color-mix(in srgb, var(--panel) 22%, transparent);
 }
 
 .ver-head {

@@ -20,6 +20,8 @@ import ToolLogo from '@kernel/catalog/ToolLogo.vue'
 import { catalogStatusClass, catalogStatusLabel } from '@kernel/catalog/statusMeta'
 import { type CatalogItem, post, subscribe } from '@kernel/bridge/bus'
 import { confirmDialog } from '@kernel/bridge/confirm'
+import { setForegroundJobBusy } from '@kernel/bridge/foregroundJob'
+import RegionLock from '@kernel/components/RegionLock.vue'
 import { useJobConsole } from '@kernel/composables/useJobConsole'
 import { useShellTitle } from '@kernel/composables/useShellTitle'
 import {
@@ -99,6 +101,12 @@ const workspaceOwnsConsole = ref(false)
 provide(DEV_OVERVIEW_EXTRA_KEY, overviewExtra)
 provide(DEV_WORKSPACE_OWNS_CONSOLE_KEY, workspaceOwnsConsole)
 
+watch(
+  busy,
+  (on) => setForegroundJobBusy(on),
+  { immediate: true },
+)
+
 watch(activeId, () => {
   overviewExtra.value = null
   workspaceOwnsConsole.value = false
@@ -161,6 +169,7 @@ const featureTip = computed(() => {
  * @param toolId - 目录 id
  */
 function selectToolById(toolId: string) {
+  if (busy.value) return
   if (!items.value.some((i) => i.id === toolId)) return
   activeId.value = toolId
   void router.replace({ path: '/dev', query: { tool: toolId } })
@@ -217,6 +226,7 @@ onUnmounted(() => {
   unsub?.()
   listResizeObs?.disconnect()
   listResizeObs = undefined
+  setForegroundJobBusy(false)
 })
 
 watch(listLoading, (loading) => {
@@ -231,6 +241,7 @@ watch(filtered, (list) => {
 })
 
 async function runAction(action: string, id: string) {
+  if (busy.value) return
   if (action === 'uninstall') {
     const name = items.value.find((i) => i.id === id)?.name ?? id
     const message =
@@ -261,64 +272,69 @@ function openDoc(which: 'gitee' | 'github') {
 
 <template>
   <section class="page dev-page">
-    <nav class="filter-bar" aria-label="分类过滤">
-      <button
-        v-for="f in filters"
-        :key="f.id"
-        type="button"
-        class="filter-chip"
-        :class="{ active: tagFilter === f.id }"
-        @click="tagFilter = f.id"
-      >
-        {{ f.label }}
-      </button>
-    </nav>
+    <RegionLock :active="busy" title="任务进行中，请先终止">
+      <nav class="filter-bar" aria-label="分类过滤">
+        <button
+          v-for="f in filters"
+          :key="f.id"
+          type="button"
+          class="filter-chip"
+          :class="{ active: tagFilter === f.id }"
+          :tabindex="busy ? -1 : undefined"
+          @click="tagFilter = f.id"
+        >
+          {{ f.label }}
+        </button>
+      </nav>
+    </RegionLock>
 
     <div class="dev-layout">
-      <ul
-        ref="listEl"
-        class="dev-list dev-frost"
-        :class="{ 'dev-list--loading': listLoading }"
-        :aria-busy="listLoading"
-        aria-label="工具列表"
-      >
-        <template v-if="listLoading && !items.length">
-          <li
-            v-for="n in skeletonRows"
-            :key="'sk-' + n"
-            class="skel-row"
-            aria-hidden="true"
-          >
-            <span class="skel-logo" />
-            <span class="skel-body">
-              <span class="skel-line skel-line--name" />
-              <span class="skel-line skel-line--meta" />
-            </span>
-          </li>
-        </template>
-        <template v-else>
-          <li
-            v-for="it in filtered"
-            :key="it.id"
-            :class="{ active: activeId === it.id }"
-            @click="selectRow(it)"
-          >
-            <ToolLogo
-              :tool-id="it.id"
-              :name="it.name"
-              size="md"
-              :update-available="Boolean(it.updateAvailable)"
-            />
-            <div class="tool-body">
-              <span class="tool-name" :title="it.name">{{ it.name }}</span>
-              <div class="tool-meta">
-                <span class="meta meta-status" :class="catalogStatusClass(it)">{{ catalogStatusLabel(it) }}</span>
+      <RegionLock class="dev-list-lock" :active="busy" title="任务进行中，请先终止">
+        <ul
+          ref="listEl"
+          class="dev-list dev-frost"
+          :class="{ 'dev-list--loading': listLoading }"
+          :aria-busy="listLoading"
+          aria-label="工具列表"
+        >
+          <template v-if="listLoading && !items.length">
+            <li
+              v-for="n in skeletonRows"
+              :key="'sk-' + n"
+              class="skel-row"
+              aria-hidden="true"
+            >
+              <span class="skel-logo" />
+              <span class="skel-body">
+                <span class="skel-line skel-line--name" />
+                <span class="skel-line skel-line--meta" />
+              </span>
+            </li>
+          </template>
+          <template v-else>
+            <li
+              v-for="it in filtered"
+              :key="it.id"
+              :class="{ active: activeId === it.id }"
+              @click="selectRow(it)"
+            >
+              <ToolLogo
+                :tool-id="it.id"
+                :name="it.name"
+                size="md"
+                :update-available="Boolean(it.updateAvailable)"
+              />
+              <div class="tool-body">
+                <span class="tool-name" :title="it.name">{{ it.name }}</span>
+                <div class="tool-meta">
+                  <span class="meta meta-status" :class="catalogStatusClass(it)">{{ catalogStatusLabel(it) }}</span>
+                </div>
               </div>
-            </div>
-          </li>
-          <li v-if="!listLoading && !filtered.length" class="empty-row">该分类下暂无工具</li>
-        </template>
-      </ul>
+            </li>
+            <li v-if="!listLoading && !filtered.length" class="empty-row">该分类下暂无工具</li>
+          </template>
+        </ul>
+      </RegionLock>
 
       <aside class="job-panel dev-frost" :class="{ 'job-panel--fill': workspaceOwnsConsole }">
         <div v-if="activeItem" class="panel-box">
@@ -339,54 +355,63 @@ function openDoc(which: 'gitee' | 'github') {
             </div>
 
             <div class="tool-overview-actions actions--tall">
-              <button
-                v-if="showInstallAction(activeItem)"
-                type="button"
-                class="btn action-btn"
-                :disabled="busy"
-                @click="runAction('install', activeItem.id)"
+              <RegionLock
+                class="overview-actions-lock"
+                :active="busy"
+                title="任务进行中，请先终止"
               >
-                安装
-              </button>
+                <div class="overview-actions-group">
+                  <button
+                    v-if="showInstallAction(activeItem)"
+                    type="button"
+                    class="btn action-btn"
+                    :disabled="busy"
+                    @click="runAction('install', activeItem.id)"
+                  >
+                    安装
+                  </button>
+                  <button
+                    v-if="showUpdateAction(activeItem)"
+                    type="button"
+                    class="btn action-btn"
+                    :disabled="busy"
+                    @click="runAction('install', activeItem.id)"
+                  >
+                    更新
+                  </button>
+                  <button
+                    v-if="showUninstallAction(activeItem)"
+                    type="button"
+                    class="btn secondary action-btn"
+                    :disabled="busy"
+                    @click="runAction('uninstall', activeItem.id)"
+                  >
+                    卸载
+                  </button>
+                  <button
+                    v-if="overviewExtra?.refresh"
+                    type="button"
+                    class="btn secondary action-btn"
+                    :disabled="busy || overviewExtra.refreshing"
+                    @click="overviewExtra.refresh?.()"
+                  >
+                    {{ overviewExtra.refreshLabel || '刷新清单' }}
+                  </button>
+                  <template v-if="activeItem.id === 'terminal-buddy'">
+                    <button type="button" class="btn ghost" @click="openDoc('gitee')">Gitee 文档</button>
+                    <button type="button" class="btn ghost" @click="openDoc('github')">GitHub 文档</button>
+                  </template>
+                </div>
+              </RegionLock>
               <button
-                v-if="showUpdateAction(activeItem)"
-                type="button"
-                class="btn action-btn"
-                :disabled="busy"
-                @click="runAction('install', activeItem.id)"
-              >
-                更新
-              </button>
-              <button
-                v-if="showUninstallAction(activeItem)"
-                type="button"
-                class="btn secondary action-btn"
-                :disabled="busy"
-                @click="runAction('uninstall', activeItem.id)"
-              >
-                卸载
-              </button>
-              <button
-                v-if="overviewExtra?.refresh"
-                type="button"
-                class="btn secondary action-btn"
-                :disabled="busy || overviewExtra.refreshing"
-                @click="overviewExtra.refresh?.()"
-              >
-                {{ overviewExtra.refreshLabel || '刷新清单' }}
-              </button>
-              <button
-                v-if="busy"
                 type="button"
                 class="btn danger action-btn"
+                :disabled="!busy"
+                title="终止当前任务"
                 @click="cancel"
               >
-                取消任务
+                终止
               </button>
-              <template v-if="activeItem.id === 'terminal-buddy'">
-                <button type="button" class="btn ghost" @click="openDoc('gitee')">Gitee 文档</button>
-                <button type="button" class="btn ghost" @click="openDoc('github')">GitHub 文档</button>
-              </template>
             </div>
           </div>
 
@@ -397,14 +422,16 @@ function openDoc(which: 'gitee' | 'github') {
           </div>
         </div>
 
-        <!-- 工具工作区：原二级页正文（版本管理 / Claude 等） -->
-        <div
+        <!-- 工具工作区：自带命令窗的 panel（如 Node）自行片区锁定；其余整块锁定 -->
+        <RegionLock
           v-if="workspaceComponent"
           class="tool-workspace"
+          :active="busy && !workspaceOwnsConsole"
+          title="任务进行中，请先终止"
           aria-label="工具工作区"
         >
           <component :is="workspaceComponent" embedded />
-        </div>
+        </RegionLock>
 
         <JobConsole
           v-if="!workspaceOwnsConsole"
@@ -482,6 +509,13 @@ function openDoc(which: 'gitee' | 'github') {
   /* 列表与右侧间距 = 列表内图标左侧留白 */
   gap: 0.5rem;
   align-items: stretch;
+}
+
+.dev-list-lock {
+  min-height: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
 }
 
 /* 列表 / 操作区：半透明磨砂面板 */
@@ -803,6 +837,23 @@ function openDoc(which: 'gitee' | 'github') {
   gap: 0.5rem;
   flex: 0 0 auto;
   max-width: 100%;
+}
+
+.overview-actions-lock {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: stretch;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.overview-actions-group {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: stretch;
+  gap: 0.5rem;
 }
 /** 安装 / 更新 / 卸载：大按钮，高度贴齐左侧信息块 */
 .actions--tall {

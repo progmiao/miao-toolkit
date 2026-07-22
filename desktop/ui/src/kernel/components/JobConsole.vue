@@ -1,92 +1,62 @@
 <script setup lang="ts">
 /**
- * 任务控制台：顶部进度条 + 下方实时输出区。
- * - 进度条：整体任务进度（批量安装时由后端按任务数平分）。
- * - 上方文案：当前正在进行的任务。
- * - 同时有状态日志与 PowerShell 命令输出：左日志、右命令窗（或 stack 上下）。
+ * 任务控制台：顶部进度条 + 下方「命令 / 日志」Tab（占满区域，默认命令）。
  */
 import { computed, nextTick, ref, watch } from 'vue'
+import XtermPane from './XtermPane.vue'
+
+type PaneTab = 'cmd' | 'log'
 
 const props = withDefaults(
   defineProps<{
     /** 0–100 整体进度 */
     progress: number
-    /** 状态日志行（左栏 / 仅日志时整块） */
+    /** 状态日志行 */
     logs: string[]
     /**
-     * 命令窗口行（PowerShell 等）。
-     * 未传则不启用命令通道：有日志时整块显示日志。
-     * 传入后若同时有日志与命令内容，则左右分栏。
+     * 命令窗口文本块。
+     * 传入后启用「命令 / 日志」双 Tab；未传则仅显示日志。
      */
     consoleLines?: string[]
     /** 是否忙碌 */
     busy?: boolean
     /** 命令窗空占位 */
     placeholder?: string
+    /** 实时日志空占位 */
+    logsPlaceholder?: string
     /**
-     * 分栏布局：
-     * - horizontal（默认）：日志 | 命令窗 左右
-     * - stack：进度下日志在上、命令窗在下（整列右侧用）
+     * @deprecated 已改为 Tab 布局，保留属性以免调用方报错。
      */
     paneLayout?: 'horizontal' | 'stack'
-    /** 空闲时是否仍显示（嵌入右侧栏时常开） */
+    /** 空闲时是否仍显示 */
     alwaysShow?: boolean
     /** 当前任务文案（进度条上方） */
     statusText?: string
+    /**
+     * 合并 Volta Fetching 进度为单行（Node 批量安装命令窗）。
+     */
+    coalesceFetchingProgress?: boolean
   }>(),
   {
     busy: false,
     alwaysShow: false,
     statusText: '',
+    logsPlaceholder: '',
+    coalesceFetchingProgress: false,
   },
 )
 
 const logEl = ref<HTMLElement | null>(null)
-const cmdEl = ref<HTMLElement | null>(null)
+const paneTab = ref<PaneTab>('cmd')
 
-const layoutStack = computed(() => props.paneLayout === 'stack')
-
-/** 是否启用命令通道（父级传了 consoleLines）。 */
 const commandEnabled = computed(() => props.consoleLines !== undefined)
 
-/** 是否有状态日志内容。 */
 const hasLogs = computed(() => props.logs.length > 0)
 
-/** 是否有命令输出内容。 */
-const hasConsole = computed(() => (props.consoleLines?.length ?? 0) > 0)
-
-/**
- * 双栏：同时存在日志与命令输出（PowerShell 实时窗）。
- * stack 布局始终上下两块（可空）。
- */
-const dualPane = computed(
-  () => layoutStack.value || (hasLogs.value && hasConsole.value),
-)
-
-/** 展示左侧/整块日志面板。 */
-const showLogPane = computed(
-  () =>
-    layoutStack.value ||
-    dualPane.value ||
-    (hasLogs.value && !hasConsole.value),
-)
-
-/** 展示右侧/整块命令面板。 */
-const showCmdPane = computed(
-  () =>
-    layoutStack.value ||
-    dualPane.value ||
-    (!hasLogs.value && (hasConsole.value || commandEnabled.value)),
-)
-
-const consoleText = computed(() => {
-  if (!commandEnabled.value) return ''
-  const lines = props.consoleLines ?? []
-  if (lines.length) return lines.join('\n')
-  return props.placeholder || ''
+const logText = computed(() => {
+  if (props.logs.length) return props.logs.join('\n')
+  return props.logsPlaceholder || ''
 })
-
-const logText = computed(() => props.logs.join('\n'))
 
 const visible = computed(
   () =>
@@ -105,18 +75,29 @@ const labelText = computed(() => {
 
 const fillWidth = computed(() => Math.min(100, Math.max(0, props.progress)))
 
-async function scrollPanes() {
+const paneTabs = computed(() => {
+  if (!commandEnabled.value) return [] as { id: PaneTab; label: string }[]
+  return [
+    { id: 'cmd' as const, label: '命令' },
+    { id: 'log' as const, label: '日志' },
+  ]
+})
+
+async function scrollLog() {
   await nextTick()
   if (logEl.value) logEl.value.scrollTop = logEl.value.scrollHeight
-  if (cmdEl.value) cmdEl.value.scrollTop = cmdEl.value.scrollHeight
 }
 
 watch(
-  () => [props.consoleLines?.length, props.logs.length, props.busy],
+  () => [props.logs.length, props.busy, paneTab.value],
   () => {
-    void scrollPanes()
+    if (paneTab.value === 'log' || !commandEnabled.value) void scrollLog()
   },
 )
+
+watch(commandEnabled, (on) => {
+  if (on) paneTab.value = 'cmd'
+})
 </script>
 
 <template>
@@ -143,21 +124,54 @@ watch(
       </div>
     </div>
 
-    <div
-      class="job-panes"
-      :class="{
-        'job-panes--dual': dualPane && !layoutStack,
-        'job-panes--stack': layoutStack,
-      }"
-    >
-      <div v-if="showLogPane" class="out-panel status-panel">
-        <div class="out-title">实时日志</div>
-        <pre ref="logEl" class="out-log status-log">{{ logText }}</pre>
+    <!-- 命令通道开启：命令 / 日志 Tab，整块占满 -->
+    <div v-if="commandEnabled" class="job-panes job-panes--tabs">
+      <div class="pane-tabs" role="tablist" aria-label="输出面板">
+        <button
+          v-for="(t, i) in paneTabs"
+          :key="t.id"
+          type="button"
+          role="tab"
+          class="pane-tab"
+          :class="{ active: paneTab === t.id }"
+          :style="{ zIndex: paneTab === t.id ? paneTabs.length + 1 : paneTabs.length - i }"
+          :aria-selected="paneTab === t.id"
+          @click="paneTab = t.id"
+        >
+          <span class="pane-tab-label">{{ t.label }}</span>
+        </button>
       </div>
 
-      <div v-if="showCmdPane" class="out-panel cmd-panel">
-        <div class="out-title">命令窗口</div>
-        <pre ref="cmdEl" class="out-log cmd-log">{{ consoleText }}</pre>
+      <div class="pane-body">
+        <div
+          v-show="paneTab === 'cmd'"
+          class="out-panel cmd-panel"
+          role="tabpanel"
+        >
+          <XtermPane
+            class="cmd-xterm"
+            :chunks="consoleLines ?? []"
+            :placeholder="placeholder || ''"
+            :busy="busy"
+            :coalesce-fetching-progress="coalesceFetchingProgress"
+          />
+        </div>
+
+        <div
+          v-show="paneTab === 'log'"
+          class="out-panel status-panel"
+          role="tabpanel"
+        >
+          <pre ref="logEl" class="out-log status-log">{{ logText }}</pre>
+        </div>
+      </div>
+    </div>
+
+    <!-- 仅日志 -->
+    <div v-else-if="hasLogs || alwaysShow" class="job-panes">
+      <div class="out-panel status-panel">
+        <div class="out-title">实时日志</div>
+        <pre ref="logEl" class="out-log status-log">{{ logText }}</pre>
       </div>
     </div>
   </div>
@@ -301,34 +315,91 @@ watch(
 .job-panes {
   flex: 1;
   min-height: 0;
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 0.65rem;
+  display: flex;
+  flex-direction: column;
 }
 
-.job-panes--dual {
-  grid-template-columns: 1fr 1fr;
+.job-panes--tabs {
+  gap: 0;
 }
 
-.job-panes--stack {
-  grid-template-columns: 1fr;
-  grid-template-rows: minmax(0, 1fr) minmax(0, 1fr);
+.pane-tabs {
+  display: flex;
+  align-items: flex-end;
+  gap: 0;
+  padding: 0;
+  margin: 0;
+  flex: 0 0 auto;
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 85%, transparent);
+}
+
+.pane-tab {
+  position: relative;
+  margin: 0 0 -1px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  color: var(--muted);
+  font-weight: 650;
+  font-size: 0.72rem;
+  letter-spacing: 0.03em;
+}
+
+.pane-tab + .pane-tab {
+  margin-left: -0.5rem;
+}
+
+.pane-tab-label {
+  display: block;
+  padding: 0.28rem 0.78rem 0.24rem 0.62rem;
+  background: color-mix(in srgb, var(--panel) 55%, transparent);
+  border: 1px solid color-mix(in srgb, var(--line) 90%, transparent);
+  border-bottom: none;
+  /* 与主 Tab 同形：左边垂直、右侧斜切，高度更小 */
+  clip-path: polygon(0 0, calc(100% - 0.55rem) 0, 100% 100%, 0 100%);
+  border-radius: 0.35rem 0.12rem 0 0;
+  transition:
+    color 0.15s ease,
+    background 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.pane-tab:hover .pane-tab-label {
+  color: var(--ink);
+  background: color-mix(in srgb, var(--panel) 72%, transparent);
+}
+
+.pane-tab.active {
+  color: var(--ink);
+}
+
+.pane-tab.active .pane-tab-label {
+  background: color-mix(in srgb, var(--panel) 88%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--line));
+  box-shadow: inset 0 2px 0 var(--accent);
+  color: var(--ink);
+}
+
+.pane-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+.pane-body > .out-panel {
+  flex: 1;
+  min-height: 0;
   height: 100%;
-}
-
-.job-panes--stack .out-panel {
-  min-height: 0;
-}
-
-.job-panes--stack .out-log {
-  min-height: 0;
 }
 
 .out-panel {
   min-height: 0;
   display: flex;
   flex-direction: column;
-  border-radius: 0.65rem;
+  border-radius: 0 0.65rem 0.65rem 0.65rem;
   overflow: hidden;
 }
 
@@ -338,9 +409,8 @@ watch(
 }
 
 .cmd-panel {
-  border: 1px solid color-mix(in srgb, var(--accent) 28%, transparent);
-  background: #05080f;
-  box-shadow: inset 0 0 28px rgba(0, 40, 60, 0.35);
+  border: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
+  background: #0c0c0c;
 }
 
 .out-title {
@@ -351,17 +421,8 @@ watch(
   text-transform: uppercase;
   font-family: var(--font-mono);
   border-bottom: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
-}
-
-.status-panel .out-title {
   color: var(--muted);
   background: color-mix(in srgb, var(--panel) 50%, transparent);
-}
-
-.cmd-panel .out-title {
-  color: color-mix(in srgb, #9fe8f0 70%, #fff);
-  border-bottom-color: color-mix(in srgb, var(--accent) 22%, transparent);
-  background: color-mix(in srgb, #0a1520 80%, transparent);
 }
 
 .out-log {
@@ -381,7 +442,8 @@ watch(
   color: var(--ink);
 }
 
-.cmd-log {
-  color: #9fe8f0;
+.cmd-xterm {
+  flex: 1;
+  min-height: 9rem;
 }
 </style>

@@ -79,9 +79,10 @@ export function showUpdateAction(it: CatalogItem): boolean {
 }
 
 /**
- * 是否显示「卸载」：仅已安装（含有更新态）。
+ * 是否显示「卸载」：已安装；node 由 Volta 面板自管版本，概览不提供卸载。
  * @param it - 目录项
  */
 export function showUninstallAction(it: CatalogItem): boolean {
+  if (it.id === 'node') return false
   return it.actions.includes('uninstall') && it.status === 'installed'
 }
