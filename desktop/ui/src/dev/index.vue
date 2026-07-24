@@ -84,8 +84,8 @@ const jobApi = useJobConsole({
 })
 
 const {
-  logs,
-  consoleLines,
+  logEntries,
+  commandEntries,
   progress,
   statusText,
   busy,
@@ -437,8 +437,8 @@ function openDoc(which: 'gitee' | 'github') {
           v-if="!workspaceOwnsConsole"
           :progress="progress"
           :status-text="statusText"
-          :logs="logs"
-          :console-lines="consoleLines"
+          :log-entries="logEntries"
+          :command-entries="commandEntries"
           :busy="busy"
         />
       </aside>

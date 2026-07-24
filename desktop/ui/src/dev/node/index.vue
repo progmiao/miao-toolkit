@@ -15,6 +15,13 @@ import {
   DEV_WORKSPACE_OWNS_CONSOLE_KEY,
 } from '../devPanelContext'
 import { useDevPanelJob } from '../useDevPanelJob'
+import {
+  applyVoltaConsoleChunk,
+  applyVoltaHostProgress,
+  applyVoltaTaskLabel,
+  createVoltaConsoleSession,
+  VOLTA_FETCH_LINE_ID,
+} from './voltaJobView'
 
 const props = defineProps<{
   /** 嵌在一级页 tool-workspace 时为 true。 */
@@ -40,22 +47,59 @@ const error = ref('')
 const conflicts = ref<string[]>([])
 const voltaAvailable = ref(true)
 
+/** Volta 命令窗/进度会话（与显示组件分离）。 */
+let voltaSession = createVoltaConsoleSession()
+
 const {
-  logs,
-  consoleLines,
+  logEntries,
+  commandEntries,
   progress,
   statusText,
   busy,
   consumeJobMessage,
   cancel,
   isShared,
+  setViewAdapters,
+  commandLog,
 } = useDevPanelJob({
-  onFinished: () => requestList(false),
+  onFinished: () => {
+    commandLog.remove(VOLTA_FETCH_LINE_ID)
+    requestList(false)
+  },
   onError: (message) => {
     error.value = message
     loading.value = false
   },
   formatStarted: (msg) => `开始：${msg.action ?? '任务'}`,
+  onConsoleChunk: (chunk, api) => {
+    const result = applyVoltaConsoleChunk(voltaSession, chunk, api)
+    if (result.progress != null) api.setProgress(result.progress)
+  },
+  onHostProgress: (pct) => applyVoltaHostProgress(voltaSession, pct),
+  onTaskLabel: (label, api) => {
+    api.setStatusText(label)
+    const next = applyVoltaTaskLabel(voltaSession, label)
+    if (next != null) api.setProgress(next)
+  },
+})
+
+function bindVoltaViewAdapters() {
+  setViewAdapters({
+    onConsoleChunk: (chunk, api) => {
+      const result = applyVoltaConsoleChunk(voltaSession, chunk, api)
+      if (result.progress != null) api.setProgress(result.progress)
+    },
+    onHostProgress: (pct) => applyVoltaHostProgress(voltaSession, pct),
+    onTaskLabel: (label, api) => {
+      api.setStatusText(label)
+      const next = applyVoltaTaskLabel(voltaSession, label)
+      if (next != null) api.setProgress(next)
+    },
+  })
+}
+
+watch(busy, (on, was) => {
+  if (on && !was) voltaSession = createVoltaConsoleSession()
 })
 
 const tabs: { id: NodeTab; label: string }[] = [
@@ -120,6 +164,7 @@ const listForTab = computed(() => {
   const q = filter.value
   return versions.value.filter((v) => {
     if (!matchesVersionFilter(v.version, v.lts, q)) return false
+    if (tab.value === 'batch-install') return !v.installed
     if (tab.value === 'batch-uninstall' || tab.value === 'set-default') {
       return v.installed
     }
@@ -127,15 +172,9 @@ const listForTab = computed(() => {
   })
 })
 
-/** 当前可操作的已勾选版本（批量安装排除已装）。 */
+/** 当前可操作的已勾选版本。 */
 const selectedList = computed(() =>
-  listForTab.value
-    .filter((v) => {
-      if (!selected.value[v.version]) return false
-      if (tab.value === 'batch-install' && v.installed) return false
-      return true
-    })
-    .map((v) => v.version),
+  listForTab.value.filter((v) => selected.value[v.version]).map((v) => v.version),
 )
 
 /**
@@ -148,8 +187,32 @@ function requestList(forceRemote = true) {
   post({ type: 'volta.list', tool: 'node', ltsOnly: false, forceRemote })
 }
 
+function markNodeInstalled(version: string) {
+  const ver = version.trim().replace(/^v/i, '')
+  if (!ver) return
+  const idx = versions.value.findIndex(
+    (x) => x.version.replace(/^v/i, '').toLowerCase() === ver.toLowerCase(),
+  )
+  if (idx < 0) return
+  const cur = versions.value[idx]!
+  if (cur.installed) return
+  versions.value.splice(idx, 1, { ...cur, installed: true })
+  selected.value[cur.version] = false
+}
+
+function tryMarkInstalledFromMessage(message: string) {
+  const logOk = /安装成功\s+node@(\S+)/i.exec(message)
+  if (logOk?.[1]) {
+    markNodeInstalled(logOk[1])
+    return
+  }
+  const consoleOk = /success:\s*installed.*?node@([vV]?\d[\w.-]*)/i.exec(message)
+  if (consoleOk?.[1]) markNodeInstalled(consoleOk[1])
+}
+
 onMounted(() => {
   if (workspaceOwnsConsole) workspaceOwnsConsole.value = true
+  bindVoltaViewAdapters()
 
   unsub = subscribe((msg) => {
     if (msg.type === 'volta.versions' && Array.isArray(msg.items)) {
@@ -178,7 +241,13 @@ onMounted(() => {
         requestList(false)
       }
     }
-    if (msg.type === 'job-finished') requestList(false)
+    if (msg.type === 'job-event' && msg.message) {
+      tryMarkInstalledFromMessage(msg.message)
+    }
+    if (msg.type === 'job-finished') {
+      commandLog.remove(VOLTA_FETCH_LINE_ID)
+      requestList(false)
+    }
     if (!isShared) consumeJobMessage(msg)
   })
   // 默认读本地缓存；远端增量由进主壳后的静默任务负责
@@ -204,6 +273,7 @@ watch(loading, (on) => {
 
 onUnmounted(() => {
   unsub?.()
+  setViewAdapters(null)
   verListResizeObs?.disconnect()
   verListResizeObs = undefined
   if (workspaceOwnsConsole) workspaceOwnsConsole.value = false
@@ -217,16 +287,6 @@ watch(tab, () => {
 function selectNodeTab(id: NodeTab) {
   if (busy.value) return
   tab.value = id
-}
-
-function toggleAll(on: boolean) {
-  for (const v of listForTab.value) {
-    if (tab.value === 'batch-install' && v.installed) {
-      selected.value[v.version] = false
-      continue
-    }
-    selected.value[v.version] = on
-  }
 }
 
 function runJob(action: string, versionsArg?: string[]) {
@@ -375,24 +435,15 @@ void cancel
                   v-for="v in listForTab"
                   :key="v.version"
                   class="ver-row"
-                  :class="{ 'is-installed': v.installed, 'is-checked': selected[v.version] && !v.installed }"
+                  :class="{ 'is-checked': selected[v.version] }"
                 >
-                  <label class="ver-row-label" :class="{ 'is-disabled': v.installed }">
-                    <span class="ver-lead" :class="{ 'is-default': v.isDefault }">
-                      <span
-                        v-if="v.isDefault"
-                        class="mark-default-slot"
-                        title="默认版本"
-                        aria-label="默认版本"
-                      >
-                        <span class="mark-default-glyph" aria-hidden="true">★</span>
-                      </span>
+                  <label class="ver-row-label">
+                    <span class="ver-lead">
                       <input
-                        v-else
                         v-model="selected[v.version]"
                         class="ver-check"
                         type="checkbox"
-                        :disabled="v.installed"
+                        :disabled="busy"
                       />
                     </span>
                     <span class="ver-num">{{ v.version }}</span>
@@ -474,24 +525,46 @@ void cancel
           </template>
 
           <!-- 批量卸载 -->
-          <template v-else>
+          <template v-else-if="tab === 'batch-uninstall'">
             <div class="ver-head">
-              <input v-model="filter" class="search" type="search" placeholder="过滤…" />
-              <button type="button" class="btn ghost" @click="toggleAll(true)">全选</button>
-              <button type="button" class="btn ghost" @click="toggleAll(false)">清空</button>
+              <input
+                v-model="filter"
+                class="search"
+                type="search"
+                placeholder="过滤版本…"
+                :aria-label="`过滤版本，共 ${listForTab.length} 项`"
+              />
               <button
                 type="button"
-                class="btn secondary"
-                :disabled="busy || !selectedList.length"
+                class="btn btn-install"
+                :disabled="busy || loading || !selectedList.length"
+                :title="!selectedList.length ? '请先勾选要卸载的版本' : '卸载所选版本'"
                 @click="runBatchUninstall"
               >
-                卸载{{ selectedList.length ? `（${selectedList.length}）` : '' }}
+                卸载
               </button>
             </div>
-            <ul class="ver-list">
-              <li v-for="v in listForTab" :key="v.version" class="ver-row">
+            <ul
+              class="ver-list ver-list--install"
+              :class="{ 'ver-list--loading': loading && !versions.length }"
+              :aria-busy="loading"
+              aria-label="已安装 Node 版本"
+            >
+              <li
+                v-for="v in listForTab"
+                :key="v.version"
+                class="ver-row"
+                :class="{ 'is-checked': selected[v.version] }"
+              >
                 <label class="ver-row-label">
-                  <input v-model="selected[v.version]" class="ver-check" type="checkbox" />
+                  <span class="ver-lead">
+                    <input
+                      v-model="selected[v.version]"
+                      class="ver-check"
+                      type="checkbox"
+                      :disabled="busy"
+                    />
+                  </span>
                   <span class="ver-num">{{ v.version }}</span>
                   <span v-if="v.lts" class="tag">LTS · {{ v.lts }}</span>
                   <span v-if="v.isDefault" class="tag">默认</span>
@@ -504,11 +577,10 @@ void cancel
           <JobConsole
             class="node-job"
             always-show
-            coalesce-fetching-progress
             :progress="progress"
             :status-text="statusText"
-            :logs="logs"
-            :console-lines="consoleLines"
+            :log-entries="logEntries"
+            :command-entries="commandEntries"
             :busy="busy"
             logs-placeholder="执行操作后在此显示 日志 输出…"
             placeholder="执行操作后在此显示 PowerShell 输出…"
@@ -628,8 +700,8 @@ void cancel
 .node-split {
   /* 固定左列：checkbox + 版本号 + LTS·Krypton 一行刚好 */
   --node-list-w: 16.25rem;
-  /* 与右侧进度区（任务文案 + 条 + xx/xx）对齐 */
-  --node-head-h: 2.55rem;
+  /* 与右侧进度区（任务文案 + 条）对齐；搜索与操作按钮同高 */
+  --node-head-h: 1.85rem;
   --ver-check-size: 1rem;
   flex: 1;
   min-height: 0;
@@ -686,6 +758,7 @@ void cancel
   line-height: 1;
   display: inline-flex;
   align-items: center;
+  align-self: stretch;
 }
 
 .ver-head .search {
@@ -708,10 +781,8 @@ void cancel
   font-size: 0.82rem;
 }
 
-/* 批量安装：缩小主按钮，避免 hover 位移/光晕撑破对齐行 */
+/* 批量安装 / 卸载：主按钮与搜索同高，避免 hover 撑破对齐行 */
 .ver-head > .btn.btn-install {
-  align-self: center;
-  height: 1.85rem;
   padding: 0 0.7rem;
   font-size: 0.74rem;
   font-weight: 650;

@@ -1,10 +1,11 @@
 <script setup lang="ts">
 /**
  * 命令窗 xterm：全文重绘；超长行不换行，容器底部横向滚动。
+ * 空状态用 HTML 占位（不写进终端缓冲，避免中文折行/重复）。
  */
 import { FitAddon } from '@xterm/addon-fit'
 import { Terminal } from '@xterm/xterm'
-import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import '@xterm/xterm/css/xterm.css'
 
 /** 过宽行保护：避免极端粘连文本拖垮渲染。 */
@@ -29,7 +30,6 @@ const hostEl = ref<HTMLElement | null>(null)
 let term: Terminal | null = null
 let fit: FitAddon | null = null
 let ro: ResizeObserver | null = null
-/** 区分正文与占位，避免空串互相短路导致占位永不写入。 */
 let lastKey: string | null = null
 let hadSize = false
 
@@ -37,9 +37,7 @@ function contentText() {
   return (props.chunks ?? []).join('')
 }
 
-function paintKey(text: string) {
-  return text ? `t:${text}` : `p:${props.placeholder}`
-}
+const showPlaceholder = computed(() => !contentText() && Boolean(props.placeholder))
 
 function stripAnsi(s: string): string {
   return s.replace(/\u001b\[[0-9;?]*[ -/]*[@-~]/g, '')
@@ -65,7 +63,6 @@ function maxLineCols(text: string): number {
 
 /**
  * 行数贴合可视高度；列数取「可视宽度」与「最长行」的较大值，避免换行。
- * @param forText - 即将写入的文本（先加宽再写入，避免中文占位被折成两行）
  */
 function fitAndWiden(forText?: string) {
   if (!term || !hostEl.value) return
@@ -76,7 +73,8 @@ function fitAndWiden(forText?: string) {
   }
   const viewCols = term.cols
   const viewRows = term.rows
-  const text = forText ?? (contentText() || props.placeholder || '')
+  const text = forText ?? contentText()
+  if (!text) return
   const need = Math.min(MAX_COLS, Math.max(viewCols, maxLineCols(text) || 1, 2))
   if (need !== viewCols) {
     try {
@@ -89,13 +87,15 @@ function fitAndWiden(forText?: string) {
 
 function paint(text: string, force = false) {
   if (!term) return
-  const key = paintKey(text)
+  const key = text ? `t:${text}` : 'empty'
   if (!force && key === lastKey) return
   term.reset()
-  const upcoming = text || props.placeholder || ''
-  fitAndWiden(upcoming)
-  if (text) term.write(text)
-  else if (props.placeholder) term.write(`\x1b[90m${props.placeholder}\x1b[0m`)
+  if (text) {
+    fitAndWiden(text)
+    term.write(text)
+  } else {
+    fitAndWiden()
+  }
   lastKey = key
 }
 
@@ -133,7 +133,9 @@ onMounted(async () => {
     const w = el?.clientWidth ?? 0
     const h = el?.clientHeight ?? 0
     const ready = w > 8 && h > 8
-    fitAndWiden()
+    const text = contentText()
+    if (text) fitAndWiden(text)
+    else fitAndWiden()
     if (ready && !hadSize) {
       hadSize = true
       sync(true)
@@ -159,32 +161,56 @@ watch(
   () => sync(),
   { deep: true },
 )
-
-watch(
-  () => props.placeholder,
-  () => {
-    if (!contentText()) sync(true)
-  },
-)
 </script>
 
 <template>
-  <div ref="hostEl" class="xterm-host" />
+  <div class="xterm-wrap">
+    <div ref="hostEl" class="xterm-host" :class="{ 'is-empty': showPlaceholder }" />
+    <div v-if="showPlaceholder" class="xterm-placeholder" aria-hidden="true">
+      {{ placeholder }}
+    </div>
+  </div>
 </template>
 
 <style scoped>
-.xterm-host {
+.xterm-wrap {
+  position: relative;
   flex: 1;
   min-height: 0;
+  width: 100%;
+  height: 100%;
+  background: #0c0c0c;
+}
+
+.xterm-host {
   width: 100%;
   height: 100%;
   padding: 0.35rem 0.5rem;
   overflow-x: auto;
   overflow-y: hidden;
   background: #0c0c0c;
-  /* 与命令窗黑底协调；滑块沿用全局霓虹强调色 */
   scrollbar-width: thin;
   scrollbar-color: color-mix(in srgb, var(--accent, #3dd6c6) 70%, #666) #1a1a1a;
+}
+
+.xterm-host.is-empty :deep(.xterm) {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.xterm-placeholder {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  padding: 0.35rem 0.5rem;
+  color: #808080;
+  font-size: 12px;
+  font-family: Cascadia Mono, Consolas, monospace;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+  pointer-events: none;
+  user-select: none;
 }
 
 .xterm-host :deep(.xterm) {
@@ -198,7 +224,6 @@ watch(
   scrollbar-color: color-mix(in srgb, var(--accent, #3dd6c6) 70%, #666) #1a1a1a;
 }
 
-/* 命令窗内纵/横滚动条：深色轨道 + 与全局一致的霓虹滑块 */
 .xterm-host::-webkit-scrollbar,
 .xterm-host :deep(.xterm-viewport)::-webkit-scrollbar {
   width: var(--scroll-size, 7px);
