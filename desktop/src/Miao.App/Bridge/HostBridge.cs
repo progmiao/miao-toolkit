@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.IO;
 using System.Text.Json;
 using System.Windows;
 using System.Windows.Threading;
@@ -239,7 +240,9 @@ public sealed class HostBridge
                     if (dlg.ShowDialog() == true)
                         path = dlg.FolderName;
                 });
-                postToUi(new { type = "dialog.folder", path });
+                var hasPackageJson = !string.IsNullOrWhiteSpace(path) &&
+                    File.Exists(Path.Combine(path, "package.json"));
+                postToUi(new { type = "dialog.folder", path, hasPackageJson });
                 break;
             }
 

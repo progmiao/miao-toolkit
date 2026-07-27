@@ -343,7 +343,11 @@ export function handleMockRequest(message: Record<string, unknown>) {
       break
 
     case 'dialog.pick-folder':
-      reply({ type: 'dialog.folder', path: '' })
+      reply({
+        type: 'dialog.folder',
+        path: 'G:\\demo\\project',
+        hasPackageJson: true,
+      })
       break
 
     default:

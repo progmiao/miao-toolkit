@@ -11,16 +11,23 @@ $viteUrl = 'http://localhost:5173/'
 $pkgJson = Join-Path $ui 'package.json'
 
 function Test-ViteUp {
-    try {
-        $req = [System.Net.WebRequest]::Create($viteUrl)
-        $req.Timeout = 400
-        $resp = $req.GetResponse()
-        $resp.Close()
-        return $true
+    foreach ($url in @('http://127.0.0.1:5173/', 'http://localhost:5173/')) {
+        try {
+            # 避免系统代理把 localhost 拐走
+            $req = [System.Net.HttpWebRequest]::Create($url)
+            $req.Timeout = 800
+            $req.Proxy = $null
+            $req.Method = 'GET'
+            $resp = $req.GetResponse()
+            $code = [int]$resp.StatusCode
+            $resp.Close()
+            if ($code -ge 200 -and $code -lt 500) { return $true }
+        }
+        catch {
+            # try next
+        }
     }
-    catch {
-        return $false
-    }
+    return $false
 }
 
 function Stop-PortListeners([int]$Port) {
@@ -120,7 +127,45 @@ function Install-VoltaWithWinget {
     Update-SessionPathForVolta
 }
 
-# Ensure Volta + package.json-pinned Node are available
+# Ensure Volta + package.json-pinned Node are available (and npm usable)
+function Test-VoltaNpmHealthy {
+    try {
+        $out = & npm.cmd --version 2>&1 | Out-String
+        if ($LASTEXITCODE -ne 0) { return $false }
+        return [regex]::IsMatch($out, '\d+\.\d+')
+    }
+    catch {
+        return $false
+    }
+}
+
+function Repair-VoltaNodeImage {
+    param([string]$Version)
+    $v = $Version.Trim().TrimStart('v', 'V')
+    $roots = @()
+    if ($env:LOCALAPPDATA) { $roots += (Join-Path $env:LOCALAPPDATA 'Volta') }
+    if ($env:USERPROFILE) { $roots += (Join-Path $env:USERPROFILE '.volta') }
+    if ($env:VOLTA_HOME) { $roots += $env:VOLTA_HOME.Trim() }
+    $roots = $roots | Where-Object { $_ } | Select-Object -Unique
+
+    foreach ($root in $roots) {
+        $img = Join-Path $root "tools\image\node\$v"
+        if (Test-Path -LiteralPath $img) {
+            Write-Host "Removing broken node@$v image: $img"
+            Remove-Item -LiteralPath $img -Recurse -Force -ErrorAction SilentlyContinue
+        }
+        $inv = Join-Path $root 'tools\inventory\node'
+        if (Test-Path -LiteralPath $inv) {
+            Get-ChildItem -LiteralPath $inv -Force -ErrorAction SilentlyContinue |
+                Where-Object { $_.Name.StartsWith("node-v$v", [StringComparison]::OrdinalIgnoreCase) } |
+                ForEach-Object {
+                    Write-Host ("Removing inventory: " + $_.Name)
+                    Remove-Item -LiteralPath $_.FullName -Recurse -Force -ErrorAction SilentlyContinue
+                }
+        }
+    }
+}
+
 function Ensure-VoltaNode {
     param([string]$Version)
 
@@ -141,6 +186,20 @@ function Ensure-VoltaNode {
     & volta install "node@$Version"
     if ($LASTEXITCODE -ne 0) {
         throw "volta install node@$Version failed"
+    }
+
+    # Incomplete uninstall can leave a broken image; volta install may skip while npm is dead.
+    if (-not (Test-VoltaNpmHealthy)) {
+        Write-Host "npm broken for node@$Version (often after incomplete uninstall). Repairing..."
+        Repair-VoltaNodeImage -Version $Version
+        & volta install "node@$Version"
+        if ($LASTEXITCODE -ne 0) {
+            throw "volta reinstall node@$Version failed"
+        }
+        if (-not (Test-VoltaNpmHealthy)) {
+            throw "npm still broken after reinstalling node@$Version. Try: volta install node@$Version"
+        }
+        Write-Host ("npm repaired: " + (& npm.cmd --version))
     }
 }
 
@@ -173,14 +232,27 @@ finally {
 }
 
 $startedVite = $false
+$viteOutLog = Join-Path $env:TEMP 'miao-vite-dev.out.log'
+$viteErrLog = Join-Path $env:TEMP 'miao-vite-dev.err.log'
 
 try {
     Write-Host '[3/4] Vite + host build ...'
     $viteReady = Test-ViteUp
     if (-not $viteReady) {
         Write-Host 'Starting Vite on :5173 ...'
-        Start-Process -FilePath 'npm.cmd' -ArgumentList 'run', 'dev' `
-            -WorkingDirectory $ui -WindowStyle Minimized | Out-Null
+        foreach ($f in @($viteOutLog, $viteErrLog)) {
+            if (Test-Path -LiteralPath $f) {
+                Remove-Item -LiteralPath $f -Force -ErrorAction SilentlyContinue
+            }
+        }
+        $npmCmd = (Get-Command npm.cmd -ErrorAction Stop).Source
+        Start-Process -FilePath $npmCmd `
+            -ArgumentList @('run', 'dev', '--', '--host', '127.0.0.1', '--port', '5173', '--strictPort') `
+            -WorkingDirectory $ui `
+            -WindowStyle Hidden `
+            -RedirectStandardOutput $viteOutLog `
+            -RedirectStandardError $viteErrLog `
+            -PassThru | Out-Null
         $startedVite = $true
     }
     else {
@@ -197,9 +269,27 @@ try {
 
     if (-not $viteReady) {
         $deadline = (Get-Date).AddSeconds(60)
+        $lastHint = (Get-Date)
         while (-not (Test-ViteUp)) {
             if ((Get-Date) -gt $deadline) {
-                throw 'Vite did not become ready within 60s. Try: cd desktop/ui; npm run dev'
+                $chunks = @()
+                foreach ($f in @($viteOutLog, $viteErrLog)) {
+                    if (Test-Path -LiteralPath $f) {
+                        $part = (Get-Content -LiteralPath $f -Tail 40 -ErrorAction SilentlyContinue) -join "`n"
+                        if ($part) { $chunks += $part }
+                    }
+                }
+                $tail = $chunks -join "`n"
+                $msg = "Vite did not become ready within 60s.`nLogs: $viteOutLog / $viteErrLog`n"
+                if ($tail) {
+                    $msg += "---- vite log (tail) ----`n$tail`n-------------------------`n"
+                }
+                $msg += 'Manual: cd desktop/ui; npm run dev'
+                throw $msg
+            }
+            if (((Get-Date) - $lastHint).TotalSeconds -ge 5) {
+                Write-Host 'Waiting for Vite ...'
+                $lastHint = Get-Date
             }
             Start-Sleep -Milliseconds 300
         }

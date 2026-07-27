@@ -160,6 +160,7 @@ watch(commandEnabled, (on) => {
 }
 
 .pane-tab {
+  --tab-slant: 0.5rem;
   position: relative;
   margin: 0 0 -1px;
   padding: 0;
@@ -173,7 +174,7 @@ watch(commandEnabled, (on) => {
 }
 
 .pane-tab + .pane-tab {
-  margin-left: -0.5rem;
+  margin-left: -1px;
 }
 
 .pane-tab-label {
@@ -182,7 +183,8 @@ watch(commandEnabled, (on) => {
   background: color-mix(in srgb, var(--panel) 55%, transparent);
   border: 1px solid color-mix(in srgb, var(--line) 90%, transparent);
   border-bottom: none;
-  clip-path: polygon(0 0, calc(100% - 0.55rem) 0, 100% 100%, 0 100%);
+  /* 上窄下宽：以下底边贴齐 */
+  clip-path: polygon(0 0, calc(100% - var(--tab-slant)) 0, 100% 100%, 0 100%);
   border-radius: 0.35rem 0.12rem 0 0;
   transition:
     color 0.15s ease,

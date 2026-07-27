@@ -13,4 +13,8 @@
     <ProjectReference Include="..\Miao.Data\Miao.Data.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <EmbeddedResource Include="Dev\Volta\Remove-VoltaToolVersion.ps1" />
+  </ItemGroup>
+
 </Project>

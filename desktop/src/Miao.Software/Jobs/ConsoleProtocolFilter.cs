@@ -34,7 +34,7 @@ internal sealed class ConsoleProtocolFilter
             if (LooksLikeProtocolLine(line))
                 onProtocolLine(StripAnsi(line));
             else
-                onConsole(line + "\n");
+                EmitConsole(onConsole, line + "\n");
         }
 
         if (_pending.Length == 0) return;
@@ -43,7 +43,7 @@ internal sealed class ConsoleProtocolFilter
         if (LooksLikeProtocolPrefix(rest))
             return;
 
-        onConsole(rest);
+        EmitConsole(onConsole, rest);
         _pending.Clear();
     }
 
@@ -56,7 +56,36 @@ internal sealed class ConsoleProtocolFilter
         if (LooksLikeProtocolLine(rest) || LooksLikeProtocolPrefix(rest))
             onProtocolLine(StripAnsi(rest));
         else if (rest.Length > 0)
-            onConsole(rest);
+            EmitConsole(onConsole, rest);
+    }
+
+    private static void EmitConsole(Action<string> onConsole, string text)
+    {
+        var cleaned = StripAnsi(text);
+        // 仅含清屏/擦行等控制残留时可能变空，勿刷空块
+        if (cleaned.Length == 0) return;
+        if (IsConsoleNoiseOnly(cleaned)) return;
+        onConsole(cleaned);
+    }
+
+    /// <summary>剥完 ANSI 后是否只剩空白 / 无意义碎片。</summary>
+    private static bool IsConsoleNoiseOnly(string s)
+    {
+        var t = s.AsSpan().Trim();
+        if (t.Length == 0) return true;
+        // 整段仍是孤儿 CSI 碎片（如连续 [K）
+        for (var i = 0; i < t.Length;)
+        {
+            if (t[i] is '\r' or '\n' or '\t' or ' ')
+            {
+                i++;
+                continue;
+            }
+            if (t[i] == '[' && TrySkipOrphanCsi(t, ref i))
+                continue;
+            return false;
+        }
+        return true;
     }
 
     private static bool LooksLikeProtocolPrefix(string s)
@@ -76,44 +105,109 @@ internal sealed class ConsoleProtocolFilter
 
     private static string StripAnsi(string s)
     {
-        if (s.IndexOf('\u001b') < 0) return s;
+        if (string.IsNullOrEmpty(s)) return s;
+
         var sb = new StringBuilder(s.Length);
         for (var i = 0; i < s.Length; i++)
         {
-            if (s[i] != '\u001b')
-            {
-                sb.Append(s[i]);
-                continue;
-            }
+            var c = s[i];
 
-            if (i + 1 >= s.Length) break;
-            var next = s[i + 1];
-            if (next == '[')
-            {
-                i += 2;
-                while (i < s.Length && !((s[i] >= '@' && s[i] <= '~')))
-                    i++;
+            // BEL / 其它 C0 控制符（保留 \t \n \r）
+            if (c == '\u0007' || (c < 0x20 && c != '\t' && c != '\n' && c != '\r'))
                 continue;
-            }
 
-            if (next == ']')
+            if (c == '\u001b')
             {
-                i += 2;
-                while (i < s.Length && s[i] != '\u0007')
+                if (i + 1 >= s.Length) break;
+                var next = s[i + 1];
+                if (next == '[')
                 {
-                    if (s[i] == '\u001b' && i + 1 < s.Length && s[i + 1] == '\\')
-                    {
+                    i += 2;
+                    while (i < s.Length && !((s[i] >= '@' && s[i] <= '~')))
                         i++;
+                    continue;
+                }
+
+                if (next == ']')
+                {
+                    i += 2;
+                    while (i < s.Length && s[i] != '\u0007' && s[i] != '\n' && s[i] != '\r')
+                    {
+                        if (s[i] == '\u001b' && i + 1 < s.Length && s[i + 1] == '\\')
+                        {
+                            i++;
+                            break;
+                        }
+                        i++;
+                    }
+                    continue;
+                }
+
+                // 其它 ESC 序列：跳过 ESC 与下一字节
+                i++;
+                continue;
+            }
+
+            // ESC 丢失后的 OSC 窗口标题：]0;...
+            if (c == ']' && i + 1 < s.Length && char.IsDigit(s[i + 1]))
+            {
+                var j = i + 1;
+                while (j < s.Length && s[j] != '\u0007' && s[j] != '\n' && s[j] != '\r')
+                {
+                    if (s[j] == '\u001b' && j + 1 < s.Length && s[j + 1] == '\\')
+                    {
+                        j += 2;
                         break;
                     }
-                    i++;
+                    j++;
                 }
+                if (j < s.Length && s[j] == '\u0007') j++;
+                i = j - 1;
                 continue;
             }
 
-            i++;
+            // ESC 丢失后的 CSI： [K  [?25h  [2J  [H  [m  [?9001h …
+            // 不匹配进度条 [====>] 或任务序号 [1/2]
+            if (c == '[')
+            {
+                var j = i;
+                if (TrySkipOrphanCsi(s.AsSpan(), ref j))
+                {
+                    i = j - 1;
+                    continue;
+                }
+            }
+
+            sb.Append(c);
         }
 
         return sb.ToString();
+    }
+
+    /// <summary>
+    /// 尝试跳过一段孤儿 CSI（无 ESC）。成功时 index 停在序列后一字节。
+    /// </summary>
+    private static bool TrySkipOrphanCsi(ReadOnlySpan<char> s, ref int index)
+    {
+        if (index >= s.Length || s[index] != '[') return false;
+        var i = index + 1;
+        if (i < s.Length && s[i] == '?') i++;
+        var sawParam = false;
+        while (i < s.Length && ((s[i] >= '0' && s[i] <= '9') || s[i] == ';'))
+        {
+            sawParam = true;
+            i++;
+        }
+        if (i >= s.Length) return false;
+        var final = s[i];
+        // 仅吃控制类终字，避免误伤 [1/2]、[====>]
+        if (final is >= 'A' and <= 'Z' or >= 'a' and <= 'z')
+        {
+            // 无参的 [K]/[H]/[m]/[J] 与带参的 [?25h]/[2J] 都允许
+            _ = sawParam;
+            index = i + 1;
+            return true;
+        }
+        return false;
     }
 }

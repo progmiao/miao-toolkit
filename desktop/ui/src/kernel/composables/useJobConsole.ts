@@ -4,6 +4,7 @@
  */
 import { ref, type Ref } from 'vue'
 import { post, type HostMessage } from '@kernel/bridge/bus'
+import { confirmDialog } from '@kernel/bridge/confirm'
 import { useLogEntries, type UseLogEntriesApi } from '@kernel/composables/useLogEntries'
 import type { LogEntry, LogEntryInput, LogEntryTone } from '@kernel/console/logEntries'
 
@@ -63,11 +64,13 @@ export type JobConsoleApi = {
 }
 
 function defaultAppendConsoleLines(chunk: string, commandLog: UseLogEntriesApi) {
-  const plain = chunk.replace(/\u001b\[[0-9;?]*[ -/]*[@-~]/g, '')
+  let plain = chunk.replace(/\u001b\[[0-9;?]*[ -/]*[@-~]/g, '')
+  // ESC 丢失后的 CSI 残留（[K [?25h [2J …）；不误伤 [1/2]、[====>]
+  plain = plain.replace(/\[\??[0-9;]*[A-Za-z]/g, '')
   const parts = plain.replace(/\r/g, '\n').split('\n')
   for (const part of parts) {
     const line = part.trimEnd()
-    if (line.length) commandLog.append(line)
+    if (line.trim().length) commandLog.append(line)
   }
 }
 
@@ -246,7 +249,22 @@ export function useJobConsole(options: UseJobConsoleOptions = {}): JobConsoleApi
   }
 
   function cancel() {
-    if (currentJob.value) post({ type: 'cancel-job', jobId: currentJob.value })
+    if (!currentJob.value) return
+    void (async () => {
+      const jobId = currentJob.value
+      if (!jobId) return
+      const ok = await confirmDialog({
+        title: '终止确认',
+        message: '确认终止当前任务？进行中的操作将被中断。',
+        confirmText: '终止',
+        cancelText: '取消',
+        tone: 'danger',
+      })
+      if (!ok) return
+      // 确认期间任务可能已结束
+      if (currentJob.value !== jobId) return
+      post({ type: 'cancel-job', jobId })
+    })()
   }
 
   return {

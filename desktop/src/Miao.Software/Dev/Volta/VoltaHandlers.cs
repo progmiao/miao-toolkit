@@ -98,6 +98,8 @@ public sealed class VoltaInstallHandler : IToolActionHandler
             sb.AppendLine($"volta install {pkg}@{ver}");
             sb.AppendLine($"if ($LASTEXITCODE -ne 0) {{ throw \"volta install {pkg}@{ver} 失败 (exit=$LASTEXITCODE)\" }}");
             sb.AppendLine($"Write-Host '##log [{n}/{total}] 安装成功 {pkg}@{ver}'");
+            // UI 按条更新版本列表：version-done install|uninstall pkg@ver
+            sb.AppendLine($"Write-Host '##log version-done install {pkg}@{ver}'");
             sb.AppendLine($"Write-Host '##progress {endPct}'");
         }
 
@@ -118,7 +120,11 @@ public sealed class VoltaInstallHandler : IToolActionHandler
     private static string Normalize(string v) => (v ?? "").Trim().TrimStart('v');
 }
 
-/// <summary>经 Volta 卸载指定版本并清理镜像残留。</summary>
+/// <summary>
+/// 卸载 Volta 托管版本。
+/// Node/Yarn/pnpm 的 <c>volta uninstall</c> 尚未支持，按 Volta 文档手工清理
+/// <c>tools/image</c> 与 <c>tools/inventory</c>，命令窗只记录步骤。
+/// </summary>
 public sealed class VoltaUninstallHandler : IToolActionHandler
 {
     /// <inheritdoc />
@@ -143,28 +149,36 @@ public sealed class VoltaUninstallHandler : IToolActionHandler
         var total = targets.Count;
         var sb = new StringBuilder();
         VoltaScript.AppendEnsureVolta(sb);
+        AppendVoltaRemoveHelpers(sb);
 
-        sb.AppendLine($"Write-Host '##log 准备卸载 {pkg}，共 {total} 个版本'");
+        sb.AppendLine($"Write-Host '##log 准备卸载 {pkg}，共 {total} 个版本（Volta 不支持 CLI 卸载，按目录清理）'");
         sb.AppendLine($"Write-Host '##task 准备卸载 {pkg}（{total} 个版本）'");
         sb.AppendLine("Write-Host '##progress 0'");
+        sb.AppendLine($"Write-Host '准备卸载 {pkg}，共 {total} 个版本'");
+        sb.AppendLine("Write-Host '说明: volta uninstall 对 node/yarn/pnpm 尚未支持，改为清理 Volta 本地缓存目录'");
+        sb.AppendLine("Write-Host '说明: 若目标为默认版本，会先切换到本批不卸载的已装最新版，再删除'");
+
+        var excludeItems = string.Join(", ", targets.Select(t => $"'{VoltaScript.Escape(t)}'"));
+        sb.AppendLine($"$voltaUninstallBatch = @({excludeItems})");
 
         for (var i = 0; i < total; i++)
         {
             var ver = VoltaScript.Escape(targets[i]);
             var n = i + 1;
             var startPct = VoltaScript.SliceProgress(i, total, 0);
-            var midPct = VoltaScript.SliceProgress(i, total, 0.2);
+            var midPct = VoltaScript.SliceProgress(i, total, 0.45);
             var endPct = VoltaScript.SliceProgress(i, total, 1);
 
             sb.AppendLine($"Write-Host '##log [{n}/{total}] 卸载 {pkg}@{ver}'");
             sb.AppendLine($"Write-Host '##task [{n}/{total}] 卸载 {pkg}@{ver}'");
             sb.AppendLine($"Write-Host '##progress {startPct}'");
-            sb.AppendLine($"Write-Host '[{n}/{total}] volta uninstall {pkg}@{ver}'");
+            sb.AppendLine($"Write-Host '[{n}/{total}] 卸载 {pkg}@{ver}'");
             sb.AppendLine($"Write-Host '##progress {midPct}'");
-            sb.AppendLine($"volta uninstall {pkg}@{ver}");
-            sb.AppendLine($"$img = Join-Path $env:LOCALAPPDATA 'Volta\\tools\\image\\{pkg}\\{ver}'");
-            sb.AppendLine("if (Test-Path $img) { Write-Host \"##log 清理镜像目录 $img\"; Remove-Item -LiteralPath $img -Recurse -Force -ErrorAction SilentlyContinue }");
-            sb.AppendLine($"Write-Host '##log [{n}/{total}] 卸载完成 {pkg}@{ver}'");
+            sb.AppendLine($"Remove-VoltaToolVersion -Tool '{pkg}' -Version '{ver}' -ExcludeVersions $voltaUninstallBatch");
+            sb.AppendLine($"if (-not (Test-VoltaToolVersionRemoved -Tool '{pkg}' -Version '{ver}')) {{ throw \"卸载未干净: {pkg}@{ver} 仍有残留\" }}");
+            sb.AppendLine($"Write-Host '##log [{n}/{total}] 已干净移除 {pkg}@{ver}'");
+            sb.AppendLine($"Write-Host '[{n}/{total}] 已干净移除 {pkg}@{ver}'");
+            sb.AppendLine($"Write-Host '##log version-done uninstall {pkg}@{ver}'");
             sb.AppendLine($"Write-Host '##progress {endPct}'");
         }
 
@@ -178,6 +192,35 @@ public sealed class VoltaUninstallHandler : IToolActionHandler
             .ConfigureAwait(false);
         InstallDetector.ProbeAndStore(context.Db, context.ToolId, context.Manifest.Install?.Detect);
         return result;
+    }
+
+    /// <summary>
+    /// 注入手工卸载辅助函数：清理 image / inventory，并处理 user/platform 默认引用。
+    /// </summary>
+    private static void AppendVoltaRemoveHelpers(StringBuilder sb)
+    {
+        var helpers = VoltaRemoveHelpers.LoadScript();
+        sb.AppendLine(helpers);
+    }
+}
+
+/// <summary>加载 Volta 手工卸载 PowerShell 辅助脚本。</summary>
+file static class VoltaRemoveHelpers
+{
+    private const string ResourceSuffix = "Remove-VoltaToolVersion.ps1";
+
+    public static string LoadScript()
+    {
+        var asm = typeof(VoltaUninstallHandler).Assembly;
+        var name = asm.GetManifestResourceNames()
+            .FirstOrDefault(n => n.EndsWith(ResourceSuffix, StringComparison.OrdinalIgnoreCase));
+        if (name is null)
+            throw new FileNotFoundException($"未找到嵌入资源 {ResourceSuffix}");
+
+        using var stream = asm.GetManifestResourceStream(name)
+            ?? throw new FileNotFoundException($"无法打开嵌入资源 {name}");
+        using var reader = new StreamReader(stream);
+        return reader.ReadToEnd();
     }
 }
 
