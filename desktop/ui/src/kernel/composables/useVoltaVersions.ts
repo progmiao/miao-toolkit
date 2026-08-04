@@ -1,7 +1,7 @@
 /**
- * Volta 管理的包版本清单（node / pnpm / yarn）。
- * 只负责 `volta.list` / `volta.versions` 与勾选状态，不包含页面 Tab/布局。
- * Node 与 pnpm/yarn 各自页面独立，仅复用本数据层。
+ * Volta 管理的包版本清单（node / pnpm / yarn）——轻量数据层。
+ * 当前三工具业务页改用 `dev/voltaShared/useVoltaPackagePage`；
+ * 本 composable 仍可用于只要列表/勾选、不要完整工作区的场景。
  */
 import { computed, ref, type Ref } from 'vue'
 import { post, type HostMessage, type VoltaVersion } from '@kernel/bridge/bus'
@@ -68,7 +68,7 @@ export function useVoltaVersions(options: UseVoltaVersionsOptions) {
     const q = filter.value.trim().toLowerCase()
     return versions.value.filter((v) => {
       if (!q) return true
-      return v.version.includes(q) || (v.lts ?? '').toLowerCase().includes(q)
+      return v.version.toLowerCase().includes(q) || (v.lts ?? '').toLowerCase().includes(q)
     })
   })
 

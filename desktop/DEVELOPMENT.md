@@ -45,7 +45,7 @@
 协议：`boot.subscribe` / `boot.ui-ready`（UI→宿主）；`boot.progress` / `boot.log` / `boot.done` / `boot.error`（宿主→UI）。  
 `dev.ps1` 窗前等待（Volta/npm/Vite/build）另用控制台 `[1/4]…[4/4]`，与窗内三态无关。
 
-启动期目录探测在**锁外**执行，进度用 `BeginInvoke` 投递，避免 UI 死锁；进度按任务数等比分配；**更新探测**与 **远端版本目录同步**（如 Node `package_versions`）进主壳后由静默任务补跑，不塞进启动页。
+启动期只做**开库 / 种子 / 服务构造**（读已有 `tool_state` 上屏）；**安装态校准、更新探测、远端版本目录同步**进主壳后由静默任务补跑，不塞进启动页。
 
 启动容错（系统配置 <c>%LocalAppData%\Miao\system.json</c>，开发为 <c>Miao-dev</c>；缺失时自动生成）：
 
@@ -64,7 +64,8 @@
 | `boot.taskTimeoutSeconds` | 单任务超时（秒） | 30 | 3–600 |
 
 - **核心任务**（开库、初始化服务）：达上限 → 关窗退出  
-- **数据任务**（种子、软件探测）：达上限 → 跳过该项，仍进主壳（降级）  
+- **数据任务**（种子）：达上限 → 跳过该项，仍进主壳（降级）；安装探测已改后台静默  
+- 进度用 `BeginInvoke` 投递，避免 UI 死锁  
 手工改 JSON 后**重启应用**生效。
 
 ### 开发库 vs 安装库
@@ -85,10 +86,19 @@
 | 方向 | 消息 |
 |------|------|
 | UI→宿主 | `silent.list` / `silent.cancel`（需 `id`） |
-| 宿主→UI | `silent.queue`（`activeCount` / `tasks`）/ `silent.task`（单条） |
+| 宿主→UI | `silent.queue` / `silent.task`；校准完成后另推 `catalog` |
 
-约定任务 id 示例：`cache.versions.node`（Node 版本目录增量同步）。  
-Node 页默认 `volta.list` 的 `forceRemote: false`（读库）；概览「刷新清单」仍强制远端。浏览器 Mock 会模拟同一任务流。
+约定任务 id：
+
+| id | 含义 |
+|----|------|
+| `detect.install` | 校准各工具安装态/版本（`checked_at` 24h 内跳过） |
+| `detect.update` | 检查已装工具是否有更新 |
+| `cache.versions.node` / `pnpm` / `yarn` | 版本目录增量同步 |
+
+完成后宿主推送 `catalog`（dev/daily），列表角标与版本自动刷新。Claude 面板 `claude.status` 首屏读库，不现场跑 `claude --version`。
+
+三工具页默认 `volta.list` 的 `forceRemote: false`（读库）；概览「刷新清单」仍强制远端。浏览器 Mock 会模拟同一任务流。
 
 ---
 
@@ -137,10 +147,12 @@ Node 页默认 `volta.list` 的 `forceRemote: false`（读库）；概览「刷�
 - 页面 `subscribe` 里先处理业务消息，再 `consumeJobMessage(msg)`。  
 - `onFinished` 里刷新目录或版本列表。
 
-### 4.3 `useVoltaVersions`（`kernel/composables/useVoltaVersions.ts`）
+### 4.3 Volta 包工具（node / pnpm / yarn）
 
-- 仅数据层：`volta.list` / 勾选 / 过滤。  
-- Node / Pnpm / Yarn **页面模板各自独立**，只复用本 composable。
+- 各自入口：`dev/{node,pnpm,yarn}/index.vue`（独立文案与模板）。  
+- 共用层：`dev/voltaShared/`（`useVoltaPackagePage`、进度解析、版本列表辅助、工作区 CSS）。  
+- 勿抽成单一「Volta 通用页」组件；工具页可单独演进。  
+- 旧 `useVoltaVersions` 仍为轻量数据层，当前三页已改用 `useVoltaPackagePage`。
 
 ### 4.4 其它内核件
 
@@ -155,7 +167,7 @@ Node 页默认 `volta.list` 的 `forceRemote: false`（读库）；概览「刷�
 
 ### 4.5 不要做成公共页的东西
 
-- 「Volta 包管理通用页」——已废弃；Pnpm / Yarn / Node 各写各的。  
+- 「Volta 包管理通用页」——不要做；Pnpm / Yarn / Node 各有入口页，仅共享 `voltaShared` 逻辑/样式。  
 - 「带 Tab 的通用 CLI 配置页」——Claude 保持独立。  
 - 把日常工具卡片与开发工具列表合成一个「CatalogPage」。
 

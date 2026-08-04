@@ -5,7 +5,8 @@
   gap: 0.55rem;
   flex: 0 0 auto;
   max-width: min(20rem, 42vw);
-  z-index: 4;
+  /* 低于 Toast(10000) / Confirm(11000)，高于页面内容与 Mock 角标 */
+  z-index: 9995;
 }
 
 .silent-tasks-summary {
@@ -71,6 +72,7 @@
 
 .silent-tasks-panel {
   position: absolute;
+  z-index: 1;
   right: 0;
   bottom: calc(100% + 0.45rem);
   width: min(22rem, calc(100vw - 2rem));

@@ -1,171 +1,74 @@
 <script setup lang="ts">
 /**
- * 开发工具 · Pnpm 独立页（入口 index.vue）。
- * 经 Volta 管理多版本；与 Yarn / Node 页面互不共用模板，仅复用 JobConsole 与 composable。
- * Host：Miao.Software/Dev/Volta；种子：seeds/dev/pnpm/software.json
+ * pnpm 工作区：梯形 Tab + 左版本列表 + 右进度/日志/PowerShell。
+ * 取消任务挂到父级 tool-overview「终止」。
+ * 逻辑见 voltaShared；本页仅保留工具文案与模板，便于日后单独演进。
  */
-import { computed, inject, onMounted, onUnmounted, ref } from 'vue'
+import { computed } from 'vue'
 import JobConsole from '@kernel/components/JobConsole.vue'
-import { post, subscribe } from '@kernel/bridge/bus'
-import { showToast } from '@kernel/bridge/toast'
-import { useShellTitle } from '@kernel/composables/useShellTitle'
-import { useVoltaVersions } from '@kernel/composables/useVoltaVersions'
-import { DEV_SELECT_TOOL_KEY } from '../devPanelContext'
-import { useDevPanelJob } from '../useDevPanelJob'
+import RegionLock from '@kernel/components/RegionLock.vue'
+import { useVoltaPackagePage } from '../voltaShared/useVoltaPackagePage'
+import '../voltaShared/voltaPackageWorkspace.css'
 
-/** 本页固定工具 id（勿与其它包页混用）。 */
 const TOOL_ID = 'pnpm'
-const PAGE_TITLE = 'Pnpm'
+const DISPLAY_NAME = 'pnpm'
 
 const props = defineProps<{
   /** 嵌在一级页 tool-workspace 时为 true。 */
   embedded?: boolean
 }>()
 
-useShellTitle(computed(() => (props.embedded ? '开发工具' : PAGE_TITLE)))
-
-const selectTool = inject(DEV_SELECT_TOOL_KEY, null)
-
 const {
+  displayName,
+  tabs,
+  tab,
+  versions,
   selected,
+  defaultPick,
+  specifyVersion,
+  projectPath,
+  projectCanPin,
   filter,
   loading,
   error,
   conflicts,
   voltaAvailable,
-  filteredByQuery,
-  requestList,
-  consumeVersionsMessage,
-  toggleAll,
-  setError,
-} = useVoltaVersions({ toolId: TOOL_ID, ltsOnlyDefault: false })
-
-const {
-  logs,
-  consoleLines,
+  listForTab,
+  selectedList,
+  versionSkeletonRows,
+  bindVerListEl,
+  logEntries,
+  commandEntries,
   progress,
   statusText,
   busy,
-  appendStatus,
-  consumeJobMessage,
-  cancel,
-  isShared,
-} = useDevPanelJob({
-  onFinished: () => requestList(),
-  onError: (message) => setError(message),
-  formatStarted: (msg) => `开始：${msg.action ?? 'job'}`,
+  selectTool,
+  projectPinHint,
+  canRunSpecify,
+  selectTab,
+  runBatchInstall,
+  pickProjectDir,
+  runSpecifyPin,
+  runSetDefault,
+  runBatchUninstall,
+  installVoltaTool,
+} = useVoltaPackagePage({
+  toolId: TOOL_ID,
+  displayName: DISPLAY_NAME,
+  embedded: () => !!props.embedded,
+  silentCacheTaskId: 'cache.versions.pnpm',
 })
 
-const projectPath = ref('')
-const pendingPinVersion = ref<string | null>(null)
-
-const selectedList = computed(() =>
-  filteredByQuery.value.filter((v) => selected.value[v.version]).map((v) => v.version),
-)
-
-let unsub: (() => void) | undefined
-
-onMounted(() => {
-  unsub = subscribe((msg) => {
-    if (consumeVersionsMessage(msg)) return
-    if (msg.type === 'dialog.folder' && pendingPinVersion.value) {
-      if (msg.path) {
-        projectPath.value = String(msg.path)
-        run('pin', [pendingPinVersion.value], { projectPath: projectPath.value })
-      } else {
-        appendStatus('已取消选择项目目录')
-      }
-      pendingPinVersion.value = null
-      return
-    }
-    if (msg.type === 'job-finished') requestList()
-    if (!isShared) consumeJobMessage(msg)
-  })
-  requestList()
-})
-
-onUnmounted(() => unsub?.())
-
-/**
- * 发起 Pnpm 相关 Job。
- * @param action - install | uninstall | set-default | pin
- * @param versionsArg - 版本列表；缺省用多选
- * @param extra - 额外字段（如 projectPath）
- */
-function run(action: string, versionsArg?: string[], extra?: Record<string, string>) {
-  const list = versionsArg ?? selectedList.value
-  if (!list.length && action !== 'pin') {
-    showToast('请先勾选版本', { kind: 'warn' })
-    return
-  }
-  const jobId = crypto.randomUUID().replaceAll('-', '')
-  post({
-    type: 'run-job',
-    jobId,
-    toolId: TOOL_ID,
-    action,
-    versions: list,
-    ...extra,
-  })
-}
-
-/**
- * 选择项目目录后 pin 指定版本。
- * @param ver - 版本号
- */
-function pinOne(ver: string) {
-  pendingPinVersion.value = ver
-  post({ type: 'dialog.pick-folder' })
-}
-
-/** 安装 Volta：嵌入模式切到 Volta 项。 */
-function installVoltaTool() {
-  if (selectTool) {
-    selectTool('volta')
-    return
-  }
-  const jobId = crypto.randomUUID().replaceAll('-', '')
-  post({ type: 'run-job', jobId, toolId: 'volta', action: 'install' })
-}
+const listAria = computed(() => `${displayName} 版本列表`)
+const installedListAria = computed(() => `已安装 ${displayName} 版本`)
+const tablistAria = computed(() => `${displayName} 功能`)
 </script>
 
 <template>
-  <section class="pnpm-page" :class="{ 'page page--scroll': !props.embedded, embedded: props.embedded }">
-    <header v-if="!props.embedded" class="page-head row">
-      <div>
-        <p class="crumb">
-          <a href="#/dev">开发工具</a>
-          <span>/</span>
-          <span>{{ PAGE_TITLE }}</span>
-        </p>
-        <p>经 Volta 管理 Pnpm 多版本：浏览远程清单、批量安装 / 卸载、设默认、pin 到项目。</p>
-      </div>
-      <div class="actions">
-        <button type="button" class="btn secondary" :disabled="loading || busy" @click="requestList()">
-          刷新
-        </button>
-        <button type="button" class="btn" :disabled="busy" @click="run('install')">安装所选</button>
-        <button type="button" class="btn secondary" :disabled="busy" @click="run('uninstall')">
-          卸载所选
-        </button>
-        <button type="button" class="btn danger" :disabled="!busy" @click="cancel">取消</button>
-      </div>
-    </header>
-
-    <div v-else class="workspace-toolbar">
-      <button type="button" class="btn secondary" :disabled="loading || busy" @click="requestList()">
-        刷新
-      </button>
-      <button type="button" class="btn" :disabled="busy" @click="run('install')">安装所选</button>
-      <button type="button" class="btn secondary" :disabled="busy" @click="run('uninstall')">
-        卸载所选
-      </button>
-      <button type="button" class="btn danger" :disabled="!busy" @click="cancel">取消</button>
-    </div>
-
+  <section class="volta-page" :class="{ embedded: props.embedded }">
     <p v-if="!voltaAvailable" class="prereq-banner">
-      未安装 Volta。请先安装「Volta」工具后再管理版本。
-      <span class="actions" style="margin-top: 0.65rem; display: flex; gap: 0.5rem">
+      未安装 Volta。请先安装后再管理 {{ displayName }} 版本。
+      <span class="prereq-actions">
         <button type="button" class="btn" :disabled="busy" @click="installVoltaTool">
           {{ selectTool ? '前往 Volta' : '安装 Volta' }}
         </button>
@@ -176,181 +79,318 @@ function installVoltaTool() {
     </p>
     <p v-if="error" class="banner-err">{{ error }}</p>
 
-    <div v-if="voltaAvailable" class="pkg-layout" :class="{ 'pkg-layout--embedded': props.embedded }">
-      <div class="ver-panel hud-panel">
-        <div class="ver-toolbar">
-          <input v-model="filter" class="search" type="search" placeholder="过滤版本…" />
-          <button type="button" class="btn ghost" @click="toggleAll(filteredByQuery, true)">全选</button>
-          <button type="button" class="btn ghost" @click="toggleAll(filteredByQuery, false)">清空</button>
-          <span class="hint">{{ loading ? '同步中…' : `${filteredByQuery.length} 项` }}</span>
+    <template v-if="voltaAvailable">
+      <RegionLock :active="busy" title="任务进行中，请先终止">
+        <div class="folder-tabs" role="tablist" :aria-label="tablistAria">
+          <button
+            v-for="(t, i) in tabs"
+            :key="t.id"
+            type="button"
+            role="tab"
+            class="folder-tab"
+            :class="{ active: tab === t.id }"
+            :style="{ zIndex: tab === t.id ? tabs.length + 1 : tabs.length - i }"
+            :aria-selected="tab === t.id"
+            :tabindex="busy ? -1 : undefined"
+            @click="selectTab(t.id)"
+          >
+            <span class="folder-tab-label">{{ t.label }}</span>
+          </button>
         </div>
-        <ul class="ver-list">
-          <li v-for="v in filteredByQuery" :key="v.version">
-            <label>
-              <input v-model="selected[v.version]" type="checkbox" />
-              <span class="ver-num">{{ v.version }}</span>
-              <span v-if="v.lts" class="tag">{{ v.lts }}</span>
-              <span v-if="v.installed" class="tag status-installed">已装</span>
-              <span v-if="v.isDefault" class="tag">默认</span>
-              <span v-if="v.isCurrent" class="tag">当前</span>
-            </label>
-            <button
-              v-if="v.installed && !v.isDefault"
-              type="button"
-              class="btn ghost mini"
-              :disabled="busy"
-              @click="run('set-default', [v.version])"
-            >
-              设默认
-            </button>
-            <button
-              type="button"
-              class="btn ghost mini"
-              :disabled="busy"
-              @click="pinOne(v.version)"
-            >
-              Pin
-            </button>
-          </li>
-          <li v-if="!filteredByQuery.length && !loading" class="empty-hint">无匹配版本</li>
-        </ul>
-      </div>
+      </RegionLock>
 
-      <aside v-if="!props.embedded" class="job-panel">
-        <JobConsole
-          :progress="progress"
-          :status-text="statusText"
-          :logs="logs"
-          :console-lines="consoleLines"
-          :busy="busy"
-          placeholder="选择版本后执行操作…"
-        />
-      </aside>
-    </div>
+      <div class="folder-body">
+        <div
+          class="volta-split"
+          :class="{ 'is-job-locked': busy, 'volta-split--specify': tab === 'specify' }"
+        >
+          <div
+            v-if="busy"
+            class="volta-ops-lock"
+            title="任务进行中，请先终止"
+            aria-hidden="true"
+          />
+          <!-- 批量安装 -->
+          <template v-if="tab === 'batch-install'">
+            <div class="ver-head">
+              <input
+                v-model="filter"
+                class="search"
+                type="search"
+                placeholder="过滤版本…"
+                :aria-label="`过滤版本，共 ${listForTab.length} 项`"
+              />
+              <button
+                type="button"
+                class="btn btn-install"
+                :disabled="busy || loading || !selectedList.length"
+                :title="!selectedList.length ? '请先勾选要安装的版本' : '安装所选版本'"
+                @click="runBatchInstall"
+              >
+                安装
+              </button>
+            </div>
+            <ul
+              :ref="bindVerListEl"
+              class="ver-list ver-list--install"
+              :class="{ 'ver-list--loading': loading && !versions.length }"
+              :aria-busy="loading"
+              :aria-label="listAria"
+            >
+              <template v-if="loading && !versions.length">
+                <li
+                  v-for="n in versionSkeletonRows"
+                  :key="'vsk-' + n"
+                  class="ver-row is-skel"
+                  aria-hidden="true"
+                >
+                  <div class="ver-row-label">
+                    <span class="ver-lead">
+                      <span class="ver-skel-swatch ver-skel-swatch--check" />
+                    </span>
+                    <span class="ver-skel-swatch ver-skel-swatch--ver" />
+                    <span class="ver-skel-swatch ver-skel-swatch--tag" />
+                  </div>
+                </li>
+              </template>
+              <template v-else>
+                <li
+                  v-for="v in listForTab"
+                  :key="v.version"
+                  class="ver-row"
+                  :class="{ 'is-checked': selected[v.version] }"
+                >
+                  <label class="ver-row-label">
+                    <span class="ver-lead">
+                      <input
+                        v-model="selected[v.version]"
+                        class="ver-check"
+                        type="checkbox"
+                        :disabled="busy"
+                      />
+                    </span>
+                    <span class="ver-num">{{ v.version }}</span>
+                    <span v-if="v.lts" class="tag">LTS · {{ v.lts }}</span>
+                  </label>
+                </li>
+                <li v-if="!listForTab.length && !loading" class="empty-hint">无匹配版本</li>
+              </template>
+            </ul>
+          </template>
+
+          <!-- 指定版本 -->
+          <template v-else-if="tab === 'specify'">
+            <div class="ver-project-row">
+              <div class="ver-project">
+                <div class="ver-project-main">
+                  <span class="ver-project-label">当前目录</span>
+                  <span
+                    class="ver-project-path"
+                    :class="{ empty: !projectPath }"
+                    :title="projectPath || undefined"
+                  >
+                    {{ projectPath || '未选择' }}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  class="btn btn-install"
+                  :disabled="busy"
+                  title="选择含 package.json 的项目目录"
+                  @click="pickProjectDir"
+                >
+                  选择
+                </button>
+              </div>
+              <p
+                class="ver-project-hint"
+                :class="{
+                  ok: projectCanPin,
+                  bad: !!projectPath && !projectCanPin,
+                }"
+              >
+                {{ projectPinHint }}
+              </p>
+            </div>
+            <div class="ver-head">
+              <input
+                v-model="filter"
+                class="search"
+                type="search"
+                placeholder="过滤版本…"
+                :aria-label="`过滤版本，共 ${listForTab.length} 项`"
+              />
+              <button
+                type="button"
+                class="btn btn-install"
+                :disabled="!canRunSpecify"
+                :title="
+                  !projectCanPin
+                    ? '请先选择有效项目目录'
+                    : !specifyVersion
+                      ? '请先选择版本'
+                      : 'Pin 所选版本到项目'
+                "
+                @click="runSpecifyPin"
+              >
+                指定
+              </button>
+            </div>
+            <ul
+              class="ver-list ver-list--install"
+              :class="{ 'ver-list--loading': loading && !versions.length }"
+              :aria-busy="loading"
+              :aria-label="listAria"
+            >
+              <li
+                v-for="v in listForTab"
+                :key="v.version"
+                class="ver-row"
+                :class="{
+                  'is-checked': specifyVersion === v.version,
+                  'is-default': v.isDefault,
+                  'is-installed': v.installed && !v.isDefault,
+                }"
+              >
+                <label class="ver-row-label">
+                  <span class="ver-lead">
+                    <input
+                      v-model="specifyVersion"
+                      class="ver-radio"
+                      type="radio"
+                      :name="TOOL_ID + '-specify'"
+                      :value="v.version"
+                      :disabled="busy || !projectCanPin"
+                    />
+                  </span>
+                  <span class="ver-num">{{ v.version }}</span>
+                  <span v-if="v.lts" class="tag">LTS · {{ v.lts }}</span>
+                </label>
+              </li>
+              <li v-if="!listForTab.length && !loading" class="empty-hint">无匹配版本</li>
+            </ul>
+          </template>
+
+          <!-- 设置默认 -->
+          <template v-else-if="tab === 'set-default'">
+            <div class="ver-head">
+              <input
+                v-model="filter"
+                class="search"
+                type="search"
+                placeholder="过滤版本…"
+                :aria-label="`过滤版本，共 ${listForTab.length} 项`"
+              />
+              <button
+                type="button"
+                class="btn btn-install"
+                :disabled="busy || loading || !defaultPick"
+                :title="!defaultPick ? '请先选择版本' : '设为默认'"
+                @click="runSetDefault"
+              >
+                设置
+              </button>
+            </div>
+            <ul
+              class="ver-list ver-list--install"
+              :class="{ 'ver-list--loading': loading && !versions.length }"
+              :aria-busy="loading"
+              :aria-label="listAria"
+            >
+              <li
+                v-for="v in listForTab"
+                :key="v.version"
+                class="ver-row"
+                :class="{
+                  'is-checked': defaultPick === v.version,
+                  'is-default': v.isDefault,
+                  'is-installed': v.installed && !v.isDefault,
+                }"
+              >
+                <label class="ver-row-label">
+                  <span class="ver-lead">
+                    <input
+                      v-model="defaultPick"
+                      class="ver-radio"
+                      type="radio"
+                      :name="TOOL_ID + '-default'"
+                      :value="v.version"
+                      :disabled="busy"
+                    />
+                  </span>
+                  <span class="ver-num">{{ v.version }}</span>
+                  <span v-if="v.lts" class="tag">LTS · {{ v.lts }}</span>
+                </label>
+              </li>
+              <li v-if="!listForTab.length && !loading" class="empty-hint">无匹配版本</li>
+            </ul>
+          </template>
+
+          <!-- 批量卸载 -->
+          <template v-else-if="tab === 'batch-uninstall'">
+            <div class="ver-head">
+              <input
+                v-model="filter"
+                class="search"
+                type="search"
+                placeholder="过滤版本…"
+                :aria-label="`过滤版本，共 ${listForTab.length} 项`"
+              />
+              <button
+                type="button"
+                class="btn btn-install"
+                :disabled="busy || loading || !selectedList.length"
+                :title="!selectedList.length ? '请先勾选要卸载的版本' : '卸载所选版本'"
+                @click="runBatchUninstall"
+              >
+                卸载
+              </button>
+            </div>
+            <ul
+              class="ver-list ver-list--install"
+              :class="{ 'ver-list--loading': loading && !versions.length }"
+              :aria-busy="loading"
+              :aria-label="installedListAria"
+            >
+              <li
+                v-for="v in listForTab"
+                :key="v.version"
+                class="ver-row"
+                :class="{
+                  'is-checked': selected[v.version],
+                  'is-default': v.isDefault,
+                }"
+              >
+                <label class="ver-row-label">
+                  <span class="ver-lead">
+                    <input
+                      v-model="selected[v.version]"
+                      class="ver-check"
+                      type="checkbox"
+                      :disabled="busy"
+                    />
+                  </span>
+                  <span class="ver-num">{{ v.version }}</span>
+                  <span v-if="v.lts" class="tag">LTS · {{ v.lts }}</span>
+                </label>
+              </li>
+              <li v-if="!listForTab.length && !loading" class="empty-hint">暂无已安装版本</li>
+            </ul>
+          </template>
+
+          <JobConsole
+            class="volta-job"
+            always-show
+            :progress="progress"
+            :status-text="statusText"
+            :log-entries="logEntries"
+            :command-entries="commandEntries"
+            :busy="busy"
+            logs-placeholder="执行操作后在此显示 日志 输出…"
+            placeholder="执行操作后在此显示 PowerShell 输出…"
+          />
+        </div>
+      </div>
+    </template>
   </section>
 </template>
-
-<style scoped>
-.crumb {
-  display: flex;
-  gap: 0.4rem;
-  margin: 0 0 0.35rem;
-  font-size: 0.8rem;
-  color: var(--muted);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  font-family: var(--font-display);
-}
-.crumb a {
-  color: var(--accent);
-  text-decoration: none;
-}
-.banner-err {
-  color: var(--danger);
-  margin: 0 0 0.75rem;
-}
-.banner-warn {
-  color: var(--warn);
-  margin: 0 0 0.5rem;
-  font-size: 0.9rem;
-}
-.prereq-banner {
-  margin: 0 0 1rem;
-  padding: 0.9rem 1rem;
-  border: 1px solid color-mix(in srgb, var(--warn) 45%, var(--line));
-  border-radius: 0.75rem;
-  background: color-mix(in srgb, var(--warn) 12%, var(--panel));
-  color: var(--ink);
-  font-size: 0.95rem;
-}
-.pkg-layout {
-  display: grid;
-  grid-template-columns: 1.15fr 0.95fr;
-  gap: 1rem;
-  min-height: 440px;
-}
-.pkg-layout--embedded {
-  grid-template-columns: 1fr;
-  min-height: 280px;
-}
-.workspace-toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  margin-bottom: 0.65rem;
-}
-.pnpm-page.embedded {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-}
-.ver-panel {
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  max-height: 560px;
-}
-.ver-toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.45rem;
-  align-items: center;
-  margin-bottom: 0.65rem;
-}
-.search {
-  flex: 1;
-  min-width: 10rem;
-  padding: 0.4rem 0.65rem;
-  border: 1px solid var(--line);
-  border-radius: 0.4rem;
-  background: var(--panel-strong);
-  color: var(--ink);
-  font-family: var(--font-mono);
-  font-size: 0.85rem;
-}
-.hint {
-  margin-left: auto;
-  font-size: 0.8rem;
-  color: var(--muted);
-  font-family: var(--font-display);
-  letter-spacing: 0.06em;
-}
-.ver-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  overflow: auto;
-  flex: 1;
-  border-top: 1px solid var(--line);
-}
-.ver-list li {
-  display: flex;
-  align-items: center;
-  gap: 0.35rem;
-  border-bottom: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
-  padding: 0.35rem 0.15rem;
-}
-.ver-list li label {
-  flex: 1;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.35rem 0.5rem;
-  cursor: pointer;
-  min-width: 0;
-}
-.ver-num {
-  font-family: var(--font-mono);
-  font-weight: 600;
-  min-width: 5.5rem;
-}
-.btn.mini {
-  padding: 0.25rem 0.45rem;
-  font-size: 0.75rem;
-}
-@media (max-width: 900px) {
-  .pkg-layout {
-    grid-template-columns: 1fr;
-  }
-}
-</style>

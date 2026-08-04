@@ -23,7 +23,6 @@ public static class AppServices
     private static ClaudeCodeService? _claude;
     private static JobRunner? _jobs;
     private static SilentTaskRunner? _silent;
-    private static bool _updateProbeStarted;
     private static bool _postBootSilentStarted;
 
     /// <summary>本地 SQLite。</summary>
@@ -230,15 +229,14 @@ public static class AppServices
             toolIds = _db!.ListSoftware().Select(r => r.Id).ToList();
         }
 
-        var total = 3 + toolIds.Count;
+        // 启动只保证库/种子/服务就绪；安装态与更新探测进主壳后静默校准
+        const int total = 3;
         var done = 0;
 
         void Tick(string stage, string message)
         {
             done++;
-            var percent = total <= 0
-                ? 100
-                : (int)Math.Clamp(Math.Round(100.0 * done / total), 0, 100);
+            var percent = (int)Math.Clamp(Math.Round(100.0 * done / total), 0, 100);
             report?.Invoke(stage, message, percent);
         }
 
@@ -269,76 +267,72 @@ public static class AppServices
         }
 
         Tick("services", "初始化服务");
-
-        SoftwareCatalog catalog;
-        lock (Gate)
-        {
-            catalog = _software!;
-            // 服务创建后列表仍一致
-            toolIds = _db!.ListSoftware().Select(r => r.Id).ToList();
-        }
-
-        for (var i = 0; i < toolIds.Count; i++)
-        {
-            var id = toolIds[i];
-            var label = $"探测 {id}";
-            if (!RunTask(
-                    label,
-                    BootTaskSeverity.Data,
-                    () => catalog.ProbeTool(id, probeUpdates: false),
-                    out _))
-            {
-                degraded = true;
-                Tick("catalog", $"{label}（{i + 1}/{toolIds.Count}）已跳过");
-            }
-            else
-            {
-                Tick("catalog", $"{label}（{i + 1}/{toolIds.Count}）");
-            }
-        }
+        _ = toolIds;
 
         report?.Invoke(
             "ready",
-            degraded ? "服务就绪（部分数据任务已跳过）" : "服务就绪",
+            degraded ? "服务就绪（部分数据任务已跳过，状态校准将在后台进行）" : "服务就绪（状态校准将在后台进行）",
             100);
         return BootInitResult.Success(degraded);
     }
 
-    /// <summary>主壳就绪后：更新探测 + 版本缓存等静默任务。</summary>
+    /// <summary>主壳就绪后：安装态校准、更新探测、版本目录同步。</summary>
     public static void StartPostBootSilentTasks()
     {
-        StartBackgroundUpdateProbe();
-        EnqueueVersionCacheTasks();
-    }
-
-    /// <summary>主壳就绪后后台补探更新（不阻塞启动）。</summary>
-    public static void StartBackgroundUpdateProbe()
-    {
-        if (_updateProbeStarted || _software is null) return;
-        _updateProbeStarted = true;
-        var catalog = _software;
-        _ = Task.Run(() =>
-        {
-            try { catalog.ProbeUpdatesOnly(); }
-            catch { /* 静默：不影响主流程 */ }
-        });
-    }
-
-    /// <summary>入队 Node 版本目录增量同步（打开后执行）。</summary>
-    public static void EnqueueVersionCacheTasks()
-    {
         if (_postBootSilentStarted) return;
-        if (_volta is null) return;
+        if (_volta is null || _software is null) return;
         _postBootSilentStarted = true;
 
+        var catalog = _software;
         var volta = _volta;
+        var freshness = TimeSpan.FromHours(24);
+
         Silent.Enqueue(
-            "cache.versions.node",
-            "同步 Node.js 版本目录",
+            "detect.install",
+            "校准工具安装状态",
+            async (progress, ct) =>
+            {
+                await Task.Run(
+                        () => catalog.CalibrateInstallStates(progress, ct, freshness),
+                        ct)
+                    .ConfigureAwait(false);
+            });
+
+        Silent.Enqueue(
+            "detect.update",
+            "检查工具更新",
+            async (progress, ct) =>
+            {
+                await Task.Run(
+                        () =>
+                        {
+                            progress.Report(8);
+                            catalog.ProbeUpdatesOnly();
+                            progress.Report(100);
+                        },
+                        ct)
+                    .ConfigureAwait(false);
+            });
+
+        EnqueueOneVersionCache(volta, "node", "cache.versions.node", "同步 Node.js 版本目录");
+        EnqueueOneVersionCache(volta, "pnpm", "cache.versions.pnpm", "同步 pnpm 版本目录");
+        EnqueueOneVersionCache(volta, "yarn", "cache.versions.yarn", "同步 Yarn 版本目录");
+    }
+
+    /// <summary>入队单个 Volta 包的远程增量同步。</summary>
+    private static void EnqueueOneVersionCache(
+        VoltaPackageService volta,
+        string toolId,
+        string taskId,
+        string title)
+    {
+        Silent.Enqueue(
+            taskId,
+            title,
             async (progress, ct) =>
             {
                 progress.Report(8);
-                await volta.ListAsync("node", ltsOnly: false, forceRemote: true, ct).ConfigureAwait(false);
+                await volta.ListAsync(toolId, ltsOnly: false, forceRemote: true, ct).ConfigureAwait(false);
                 progress.Report(100);
             });
     }

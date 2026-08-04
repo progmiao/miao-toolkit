@@ -42,65 +42,77 @@ function emitSilentTask(task: MockSilentTask) {
   queueMicrotask(() => emit?.({ type: 'silent.task', task }))
 }
 
-/** 模拟进主壳后的 Node 版本目录同步。 */
+/** 模拟进主壳后的安装校准 / 更新探测 / 版本目录同步。 */
 function ensureMockSilentSync() {
   if (mockSilentStarted) return
   mockSilentStarted = true
-  const id = 'cache.versions.node'
-  const task: MockSilentTask = {
-    id,
-    title: '同步 Node.js 版本目录',
-    status: 'pending',
-    progress: 0,
-    detail: '排队中',
-    updatedAt: new Date().toISOString(),
+
+  const specs = [
+    { id: 'detect.install', title: '校准工具安装状态' },
+    { id: 'detect.update', title: '检查工具更新' },
+    { id: 'cache.versions.node', title: '同步 Node.js 版本目录' },
+    { id: 'cache.versions.pnpm', title: '同步 pnpm 版本目录' },
+    { id: 'cache.versions.yarn', title: '同步 Yarn 版本目录' },
+  ] as const
+
+  for (const [i, spec] of specs.entries()) {
+    const baseDelay = i * 400
+    const task: MockSilentTask = {
+      id: spec.id,
+      title: spec.title,
+      status: 'pending',
+      progress: 0,
+      detail: '排队中',
+      updatedAt: new Date().toISOString(),
+    }
+    mockSilentTasks[spec.id] = task
+    emitSilentTask(task)
+
+    setTimeout(() => {
+      const cur = mockSilentTasks[spec.id]
+      if (!cur || cur.status === 'cancelled') return
+      const running: MockSilentTask = {
+        ...cur,
+        status: 'running',
+        progress: 12,
+        detail: '执行中',
+        updatedAt: new Date().toISOString(),
+      }
+      mockSilentTasks[spec.id] = running
+      emitSilentTask(running)
+      replySilentQueue()
+    }, baseDelay + 200)
+
+    setTimeout(() => {
+      const cur = mockSilentTasks[spec.id]
+      if (!cur || cur.status === 'cancelled') return
+      const mid: MockSilentTask = {
+        ...cur,
+        progress: 68,
+        detail: '增量写入…',
+        updatedAt: new Date().toISOString(),
+      }
+      mockSilentTasks[spec.id] = mid
+      emitSilentTask(mid)
+    }, baseDelay + 700)
+
+    setTimeout(() => {
+      const cur = mockSilentTasks[spec.id]
+      if (!cur || cur.status === 'cancelled') return
+      const done: MockSilentTask = {
+        ...cur,
+        status: 'succeeded',
+        progress: 100,
+        detail: '完成',
+        updatedAt: new Date().toISOString(),
+      }
+      mockSilentTasks[spec.id] = done
+      emitSilentTask(done)
+      replySilentQueue()
+    }, baseDelay + 1400)
   }
-  mockSilentTasks[id] = task
+
   replySilentQueue()
-  emitSilentTask(task)
-
-  setTimeout(() => {
-    const cur = mockSilentTasks[id]
-    if (!cur || cur.status === 'cancelled') return
-    const running: MockSilentTask = {
-      ...cur,
-      status: 'running',
-      progress: 12,
-      detail: '执行中',
-      updatedAt: new Date().toISOString(),
-    }
-    mockSilentTasks[id] = running
-    emitSilentTask(running)
-    replySilentQueue()
-  }, 200)
-
-  setTimeout(() => {
-    const cur = mockSilentTasks[id]
-    if (!cur || cur.status === 'cancelled') return
-    const mid: MockSilentTask = {
-      ...cur,
-      progress: 68,
-      detail: '增量写入…',
-      updatedAt: new Date().toISOString(),
-    }
-    mockSilentTasks[id] = mid
-    emitSilentTask(mid)
-  }, 700)
-
-  setTimeout(() => {
-    const cur = mockSilentTasks[id]
-    if (!cur || cur.status === 'cancelled') return
-    const done: MockSilentTask = {
-      ...cur,
-      status: 'succeeded',
-      progress: 100,
-      detail: '完成',
-      updatedAt: new Date().toISOString(),
-    }
-    mockSilentTasks[id] = done
-    emitSilentTask(done)
-    replySilentQueue()
-  }, 1400)
 }
 
 /**

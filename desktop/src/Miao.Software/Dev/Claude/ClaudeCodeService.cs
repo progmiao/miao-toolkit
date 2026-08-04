@@ -24,7 +24,7 @@ public sealed class ClaudeCodeService
     public string SettingsPath =>
         Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".claude", "settings.json");
 
-    /// <summary>当前 CLI 是否可用。</summary>
+    /// <summary>当前 CLI 是否可用（现场探测；装/卸后或需强制刷新时用）。</summary>
     public ClaudeStatusDto GetStatus()
     {
         var version = TryCommandVersion("claude", "--version");
@@ -34,6 +34,26 @@ public sealed class ClaudeCodeService
             version is not null,
             version,
             wingetManaged,
+            File.Exists(SettingsPath),
+            secrets.Api?.Mode,
+            secrets.Proxy?.Mode,
+            HasMaskedKey(secrets));
+    }
+
+    /// <summary>
+    /// 读库安装态 + 本地密钥文件；不跑 claude/winget，供面板首屏。
+    /// </summary>
+    public ClaudeStatusDto GetStatusCached(AppDatabase db)
+    {
+        var state = db.GetToolState("claude-code");
+        var installed =
+            state is not null
+            && string.Equals(state.Status, "installed", StringComparison.OrdinalIgnoreCase);
+        var secrets = LoadSecrets();
+        return new ClaudeStatusDto(
+            installed,
+            installed ? state?.Version : null,
+            false,
             File.Exists(SettingsPath),
             secrets.Api?.Mode,
             secrets.Proxy?.Mode,

@@ -68,8 +68,7 @@ public static class UpdateProbe
         }
         catch
         {
-            // 网络/超时：不改状态，也不误报有更新
-            ClearUpdateMark(db, toolId, state);
+            // 网络/超时：保留原状态，勿误清「有更新」也不误报
         }
     }
 

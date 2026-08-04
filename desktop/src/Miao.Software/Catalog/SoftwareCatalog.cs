@@ -99,6 +99,42 @@ public sealed class SoftwareCatalog
         }
     }
 
+    /// <summary>
+    /// 校准安装态与展示版本：跳过 <paramref name="maxAge"/> 内已探测过的工具。
+    /// </summary>
+    public void CalibrateInstallStates(
+        IProgress<int>? progress,
+        CancellationToken cancellationToken,
+        TimeSpan maxAge)
+    {
+        var rows = _db.ListSoftware();
+        var total = Math.Max(1, rows.Count);
+        var i = 0;
+        foreach (var row in rows)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            i++;
+            progress?.Report((int)Math.Clamp(Math.Round(100.0 * i / total), 1, 99));
+            if (IsToolStateFresh(row.Id, maxAge))
+                continue;
+            ProbeTool(row.Id, probeUpdates: false);
+        }
+
+        progress?.Report(100);
+    }
+
+    /// <summary>tool_state.checked_at 是否在新鲜期内。</summary>
+    public bool IsToolStateFresh(string toolId, TimeSpan maxAge)
+    {
+        var state = _db.GetToolState(toolId);
+        if (state is null) return false;
+        if (string.Equals(state.Status, "unknown", StringComparison.OrdinalIgnoreCase))
+            return false;
+        if (!DateTimeOffset.TryParse(state.CheckedAt, out var at))
+            return false;
+        return DateTimeOffset.UtcNow - at < maxAge;
+    }
+
     /// <summary>组装发给 UI 的目录项列表。</summary>
     /// <param name="locale">界面语言。</param>
     /// <param name="group">可选过滤：daily / dev；null 表示全部。</param>
@@ -216,16 +252,14 @@ public sealed class SoftwareCatalog
     }
 
     /// <summary>
-    /// 解析列表展示版本：volta/node/pnpm/yarn 走 Volta 查询，其余用探测结果。
+    /// 列表展示版本：只读库，避免 get-catalog 时起进程。
+    /// Volta 系展示版本由静默校准 / Job 后的 ProbeTool 写入。
     /// </summary>
-    private string? ResolveDisplayVersion(string toolId, ToolStateRow? state)
+    private static string? ResolveDisplayVersion(string toolId, ToolStateRow? state)
     {
+        _ = toolId;
         if (state is null || !string.Equals(state.Status, "installed", StringComparison.OrdinalIgnoreCase))
             return null;
-
-        if (toolId is "volta" or "node" or "pnpm" or "yarn")
-            return _volta.GetCatalogDisplayVersion(toolId) ?? state.Version;
-
         return state.Version;
     }
 

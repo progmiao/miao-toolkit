@@ -45,6 +45,24 @@ public sealed class HostBridge
     private void OnSilentTaskChanged(SilentTaskInfo task)
     {
         _post?.Invoke(new { type = "silent.task", task = ToSilentTaskDto(task) });
+        // 安装态/更新/版本目录校准完成后推送目录，刷新列表角标与版本
+        if (string.Equals(task.Status, "succeeded", StringComparison.OrdinalIgnoreCase)
+            && (task.Id.StartsWith("detect.", StringComparison.OrdinalIgnoreCase)
+                || task.Id.StartsWith("cache.versions.", StringComparison.OrdinalIgnoreCase)))
+        {
+            try
+            {
+                if (_post is { } post)
+                {
+                    PostCatalog(post, "dev");
+                    PostCatalog(post, "daily");
+                }
+            }
+            catch
+            {
+                /* 静默：推送失败不影响任务本身 */
+            }
+        }
     }
 
     private void OnSilentQueueChanged(SilentQueueSnapshot queue)
@@ -274,7 +292,8 @@ public sealed class HostBridge
                 postToUi(new
                 {
                     type = "claude.status",
-                    status = AppServices.Claude.GetStatus(),
+                    // 首屏读库，避免 claude --version / winget 卡顿
+                    status = AppServices.Claude.GetStatusCached(AppServices.Db),
                     secrets = AppServices.Claude.GetSecretsPublic(),
                     plugins = AppServices.Claude.ListFeaturedPlugins(),
                 });

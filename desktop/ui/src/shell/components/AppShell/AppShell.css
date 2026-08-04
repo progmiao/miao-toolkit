@@ -529,6 +529,9 @@
 
 /* —— 底栏：贴底，与左侧相接 —— */
 .shell-bottom {
+  /* 高于内容区，避免后台任务弹窗被 shell-view 遮挡 */
+  position: relative;
+  z-index: 50;
   flex: 0 0 auto;
   box-sizing: border-box;
   display: flex;

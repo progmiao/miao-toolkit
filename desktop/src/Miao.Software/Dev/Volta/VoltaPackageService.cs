@@ -9,7 +9,7 @@ namespace Miao.Software.Dev.Volta;
 
 /// <summary>
 /// Volta 托管包（node / pnpm / yarn）：远程版本清单 + 本机已装/默认/当前。
-/// Node 版本优先读 SQLite 缓存；刷新时按「从新到旧，直到碰到库中已有版本」增量写入。
+/// 版本优先读 SQLite 缓存；刷新/静默任务按「从新到旧，直到碰到库中已有版本」增量写入。
 /// </summary>
 public sealed class VoltaPackageService
 {
@@ -112,6 +112,9 @@ public sealed class VoltaPackageService
             _db.UpsertPackageVersions(batch);
     }
 
+    /// <summary>
+    /// 拉取 npm registry，按新→旧增量写入，直到碰到库中已有版本即停止（首同步最多 80 条）。
+    /// </summary>
     private async Task SyncNpmPackageCacheAsync(string package, CancellationToken ct)
     {
         using var resp = await Http.GetAsync($"https://registry.npmjs.org/{package}", ct).ConfigureAwait(false);
@@ -131,22 +134,29 @@ public sealed class VoltaPackageService
         }
 
         var now = DateTimeOffset.UtcNow.ToString("O");
-        var list = new List<PackageVersionRow>();
+        var candidates = new List<(string Ver, string? Tag)>();
         foreach (var prop in versions.EnumerateObject())
         {
             var ver = prop.Name;
             if (ver.Contains('-', StringComparison.Ordinal)) continue;
             var tag = string.Equals(ver, latest, StringComparison.OrdinalIgnoreCase) ? "latest" : null;
-            list.Add(new PackageVersionRow(package, ver, tag, null, now));
+            candidates.Add((ver, tag));
         }
 
-        var top = list
-            .OrderByDescending(v => ParseVersion(v.Version))
-            .Take(80)
-            .ToList();
+        var batch = new List<PackageVersionRow>();
+        foreach (var (ver, tag) in candidates.OrderByDescending(c => ParseVersion(c.Ver)))
+        {
+            if (_db.HasPackageVersion(package, ver))
+                break;
 
-        if (top.Count > 0)
-            _db.UpsertPackageVersions(top);
+            batch.Add(new PackageVersionRow(package, ver, tag, null, now));
+            // 首同步保护：避免一次写入数千条历史版本
+            if (batch.Count >= 80)
+                break;
+        }
+
+        if (batch.Count > 0)
+            _db.UpsertPackageVersions(batch);
     }
 
     /// <summary>检测是否存在 nvm / fnm。</summary>

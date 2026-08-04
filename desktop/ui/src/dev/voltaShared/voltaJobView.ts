@@ -1,5 +1,5 @@
 /**
- * Volta / Node 批量任务：把宿主 console 流转成命令窗 append/upsert，并辅助算进度。
+ * Volta 包工具批量任务（node / pnpm / yarn）：把宿主 console 流转成命令窗 append/upsert，并辅助算进度。
  * 职责拆开，便于排查；组件本身不算进度、不解析业务流。
  *
  * 进度行（Fetching / Unpacking）按「阶段 + 包名」各自 upsert，互不覆盖：
@@ -312,7 +312,7 @@ export function applyVoltaConsoleChunk(
       continue
     }
 
-    if (/volta install|volta uninstall|当前 node:/i.test(line) || /^\[\d+\s*\/\s*\d+\]/.test(line)) {
+    if (/volta install|volta uninstall|当前 (?:node|pnpm|yarn):/i.test(line) || /^\[\d+\s*\/\s*\d+\]/.test(line)) {
       sink.append(line)
       continue
     }

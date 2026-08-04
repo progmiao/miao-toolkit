@@ -83,6 +83,8 @@ export type HostMessage = {
   action?: string
   versions?: string[]
   path?: string
+  /** dialog.folder：所选目录是否含 package.json（pin 前置校验） */
+  hasPackageJson?: boolean
   url?: string
   status?: unknown
   secrets?: unknown
