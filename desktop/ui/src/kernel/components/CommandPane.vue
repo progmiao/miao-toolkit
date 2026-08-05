@@ -1,7 +1,6 @@
 <script setup lang="ts">
 /**
- * 命令窗（封闭）：只负责按条目显示；append/upsert 由外部写入 entries。
- * 与 LogPane 独立组件，仅样式不同；共用 logEntries 模型。
+ * 输出窗（封闭）：只负责按条目显示；append/upsert 由外部写入 entries。
  */
 import { nextTick, ref, watch } from 'vue'
 import type { LogEntry } from '@kernel/console/logEntries'

@@ -74,8 +74,7 @@ export function useVoltaPackagePage(options: UseVoltaPackagePageOptions) {
   let voltaSession = createVoltaConsoleSession()
 
   const {
-    logEntries,
-    commandEntries,
+    outputEntries,
     progress,
     statusText,
     busy,
@@ -83,10 +82,10 @@ export function useVoltaPackagePage(options: UseVoltaPackagePageOptions) {
     cancel,
     isShared,
     setViewAdapters,
-    commandLog,
+    outputLog,
   } = useDevPanelJob({
     onFinished: () => {
-      commandLog.remove(VOLTA_FETCH_LINE_ID)
+      outputLog.remove(VOLTA_FETCH_LINE_ID)
       requestList(false)
     },
     onError: (message) => {
@@ -227,7 +226,7 @@ export function useVoltaPackagePage(options: UseVoltaPackagePageOptions) {
         )
       }
       if (msg.type === 'job-finished') {
-        commandLog.remove(VOLTA_FETCH_LINE_ID)
+        outputLog.remove(VOLTA_FETCH_LINE_ID)
         requestList(false)
       }
       if (!isShared) consumeJobMessage(msg)
@@ -389,8 +388,7 @@ export function useVoltaPackagePage(options: UseVoltaPackagePageOptions) {
     selectedList,
     versionSkeletonRows,
     bindVerListEl,
-    logEntries,
-    commandEntries,
+    outputEntries,
     progress,
     statusText,
     busy,

@@ -20,18 +20,18 @@ public sealed class ClaudeInstallHandler : IToolActionHandler
         sb.AppendLine("Write-Host '##progress 8'");
         sb.AppendLine($"$id = '{packageId}'");
         sb.AppendLine(@"
-Write-Host ""检测 winget 包 $id …""
+Write-Host ""正在检测 winget 包 $id""
 $listed = winget list --id $id -e 2>&1 | Out-String
 if ($LASTEXITCODE -eq 0 -and $listed -match [regex]::Escape($id)) {
   Write-Host '##progress 30'
-  Write-Host '已安装，尝试 upgrade…'
+  Write-Host '已安装，尝试 upgrade'
   winget upgrade --id $id -e --accept-package-agreements --accept-source-agreements
   if ($LASTEXITCODE -ne 0) {
-    Write-Host 'upgrade 无可用更新或已是最新，继续验证…'
+    Write-Host 'upgrade 无可用更新或已是最新，继续验证'
   }
 } else {
   Write-Host '##progress 30'
-  Write-Host '执行 install…'
+  Write-Host '执行 install'
   winget install --id $id -e --accept-package-agreements --accept-source-agreements
   if ($LASTEXITCODE -ne 0) { throw ""winget install 失败 exit=$LASTEXITCODE"" }
 }
@@ -102,6 +102,36 @@ public sealed class ClaudeInitHandler : IToolActionHandler
         {
             context.Jobs.EmitLog(context.JobId, "开始初始化 Claude Code…");
             var detail = _claude.Init();
+            foreach (var line in detail.Split('\n'))
+                context.Jobs.EmitLog(context.JobId, line);
+            context.Jobs.EmitProgress(context.JobId, 100);
+            return Task.FromResult(new JobResult(context.JobId, true, 0, detail));
+        }
+        catch (Exception ex)
+        {
+            return Task.FromResult(new JobResult(context.JobId, false, 1, ex.Message));
+        }
+    }
+}
+
+/// <summary>Claude Code：仅重置初始化写入的内容（同 Init，不含 API/代理/插件）。</summary>
+public sealed class ClaudeResetHandler : IToolActionHandler
+{
+    private readonly ClaudeCodeService _claude;
+
+    /// <summary>创建处理器。</summary>
+    public ClaudeResetHandler(ClaudeCodeService claude) => _claude = claude;
+
+    /// <inheritdoc />
+    public string HandlerId => "claude.reset";
+
+    /// <inheritdoc />
+    public Task<JobResult> ExecuteAsync(ToolActionContext context, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            context.Jobs.EmitLog(context.JobId, "开始重置初始化设置…");
+            var detail = _claude.Init(asReset: true);
             foreach (var line in detail.Split('\n'))
                 context.Jobs.EmitLog(context.JobId, line);
             context.Jobs.EmitProgress(context.JobId, 100);

@@ -8,6 +8,7 @@
   "ccs.description": "官方桌面端：管理 Claude Code 等 AI CLI 的供应商配置",
   "ccs.name": "CC Switch",
   "claude.action.init": "初始化配置",
+  "claude.action.reset": "重置初始化设置",
   "claude.action.install": "安装 / 更新 CLI",
   "claude.action.pluginInstall": "安装插件",
   "claude.action.pluginUninstall": "卸载插件",

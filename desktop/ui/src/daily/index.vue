@@ -56,9 +56,18 @@ onMounted(() => {
 
 onUnmounted(() => unsub?.())
 
-/** 安装与更新均走 install 动作（Handler 内同步/升级）。 */
+/** 安装与更新均走 install 动作（Handler 内同步/升级）；更新/卸载二次确认。 */
 async function run(it: CatalogItem, action: string) {
-  if (action === 'uninstall') {
+  const hostAction = action === 'update' ? 'install' : action
+  if (action === 'update') {
+    const ok = await confirmDialog({
+      title: '更新确认',
+      message: `确认更新 ${it.name}？`,
+      confirmText: '更新',
+      cancelText: '取消',
+    })
+    if (!ok) return
+  } else if (action === 'uninstall') {
     const ok = await confirmDialog({
       title: '卸载确认',
       message: `确认卸载 ${it.name}？`,
@@ -69,7 +78,7 @@ async function run(it: CatalogItem, action: string) {
     if (!ok) return
   }
   const jobId = crypto.randomUUID().replaceAll('-', '')
-  post({ type: 'run-job', jobId, toolId: it.id, action })
+  post({ type: 'run-job', jobId, toolId: it.id, action: hostAction })
 }
 </script>
 
@@ -124,7 +133,7 @@ async function run(it: CatalogItem, action: string) {
             type="button"
             class="btn"
             :disabled="busyId === it.id"
-            @click="run(it, 'install')"
+            @click="run(it, 'update')"
           >
             更新
           </button>

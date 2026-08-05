@@ -37,8 +37,7 @@ const {
   selectedList,
   versionSkeletonRows,
   bindVerListEl,
-  logEntries,
-  commandEntries,
+  outputEntries,
   progress,
   statusText,
   busy,
@@ -383,11 +382,9 @@ const tablistAria = computed(() => `${displayName} 功能`)
             always-show
             :progress="progress"
             :status-text="statusText"
-            :log-entries="logEntries"
-            :command-entries="commandEntries"
+            :entries="outputEntries"
             :busy="busy"
-            logs-placeholder="执行操作后在此显示 日志 输出…"
-            placeholder="执行操作后在此显示 PowerShell 输出…"
+            placeholder="执行操作后在此显示输出…"
           />
         </div>
       </div>

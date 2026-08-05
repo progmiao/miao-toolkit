@@ -1,5 +1,5 @@
 /**
- * Job 控制台状态：进度数值 + 命令/日志条目（显示组件只读 entries）。
+ * Job 控制台状态：进度 + 单轨输出（原命令/日志合并为一条时间线）。
  * 默认把 console chunk 按行 append；业务可通过 onConsoleChunk 自行解析（如 Volta）。
  */
 import { ref, type Ref } from 'vue'
@@ -7,6 +7,12 @@ import { post, type HostMessage } from '@kernel/bridge/bus'
 import { confirmDialog } from '@kernel/bridge/confirm'
 import { useLogEntries, type UseLogEntriesApi } from '@kernel/composables/useLogEntries'
 import type { LogEntry, LogEntryInput, LogEntryTone } from '@kernel/console/logEntries'
+import {
+  applySpinnerConsoleChunk,
+  createSpinnerConsoleSession,
+  finishSpinnerConsoleSession,
+  type SpinnerConsoleSession,
+} from '@kernel/console/applySpinnerConsoleChunk'
 
 export type ConsoleChunkHandlers = {
   append: (text: string, tone?: LogEntryTone) => void
@@ -22,7 +28,7 @@ export type UseJobConsoleOptions = {
   formatStarted?: (msg: HostMessage) => string
   formatFinished?: (msg: HostMessage) => string
   /**
-   * 业务接管命令窗写入与进度（如 Node Volta）。
+   * 业务接管输出窗写入与进度（如 Node Volta）。
    * 未提供时：console 按行 append，进度用宿主 ##progress。
    * 也可运行时通过 setViewAdapters 挂载（嵌入共用 Job 时）。
    */
@@ -40,43 +46,54 @@ export type JobViewAdapters = {
 }
 
 export type JobConsoleApi = {
-  /** @deprecated 兼容旧调用；请用 logEntries */
-  logs: Ref<string[]>
-  logEntries: Ref<LogEntry[]>
-  /** @deprecated 兼容旧调用；请用 commandEntries */
-  consoleLines: Ref<string[]>
-  commandEntries: Ref<LogEntry[]>
+  outputEntries: Ref<LogEntry[]>
   progress: Ref<number>
   statusText: Ref<string>
   batchCurrent: Ref<number>
   batchTotal: Ref<number>
   busy: Ref<boolean>
   currentJob: Ref<string | null>
-  appendStatus: (line: string) => void
+  /** 写入一行状态/摘要类输出（开始、结束、##log 等）。 */
+  appendLine: (line: string, tone?: LogEntryTone) => void
   appendConsole: (chunk: string) => void
   resetWhenIdle: () => void
   consumeJobMessage: (msg: HostMessage) => boolean
   cancel: () => void
-  commandLog: UseLogEntriesApi
-  statusLog: UseLogEntriesApi
+  /** 单轨输出缓冲（Volta 等可 remove/upsert）。 */
+  outputLog: UseLogEntriesApi
   /** 运行时挂载/卸载业务视图适配器（嵌入共用 Job 时用）。 */
   setViewAdapters: (adapters: JobViewAdapters | null) => void
 }
 
-function defaultAppendConsoleLines(chunk: string, commandLog: UseLogEntriesApi) {
-  let plain = chunk.replace(/\u001b\[[0-9;?]*[ -/]*[@-~]/g, '')
-  // ESC 丢失后的 CSI 残留（[K [?25h [2J …）；不误伤 [1/2]、[====>]
-  plain = plain.replace(/\[\??[0-9;]*[A-Za-z]/g, '')
-  const parts = plain.replace(/\r/g, '\n').split('\n')
-  for (const part of parts) {
-    const line = part.trimEnd()
-    if (line.trim().length) commandLog.append(line)
+function clampProgress(pct: number): number {
+  if (!Number.isFinite(pct)) return 0
+  return Math.round(Math.min(100, Math.max(0, pct)))
+}
+
+function spinnerSink(outputLog: UseLogEntriesApi) {
+  return {
+    append: (text: string, tone?: LogEntryTone) => {
+      outputLog.append(tone ? { text, tone } : text)
+    },
+    upsert: (id: string, text: string, tone?: LogEntryTone) => {
+      outputLog.upsert({ id, text, tone })
+    },
+    remove: (id: string) => {
+      outputLog.remove(id)
+    },
   }
 }
 
+function defaultAppendConsoleLines(
+  chunk: string,
+  outputLog: UseLogEntriesApi,
+  session: SpinnerConsoleSession,
+) {
+  applySpinnerConsoleChunk(session, chunk, spinnerSink(outputLog))
+}
+
 export function useJobConsole(options: UseJobConsoleOptions = {}): JobConsoleApi {
-  const statusLog = useLogEntries()
-  const commandLog = useLogEntries()
+  const outputLog = useLogEntries()
   const progress = ref(0)
   const statusText = ref('')
   const batchCurrent = ref(0)
@@ -84,11 +101,8 @@ export function useJobConsole(options: UseJobConsoleOptions = {}): JobConsoleApi
   const busy = ref(false)
   const currentJob = ref<string | null>(null)
 
-  /** 旧 API：字符串数组视图 */
-  const logs = ref<string[]>([])
-  const consoleLines = ref<string[]>([])
-
   let runtimeAdapters: JobViewAdapters = {}
+  let spinnerSession = createSpinnerConsoleSession()
 
   function resolveAdapters(): JobViewAdapters {
     return {
@@ -102,27 +116,19 @@ export function useJobConsole(options: UseJobConsoleOptions = {}): JobConsoleApi
     runtimeAdapters = adapters ? { ...adapters } : {}
   }
 
-  function syncLegacyViews() {
-    logs.value = statusLog.entries.value.map((e) => e.text)
-    consoleLines.value = commandLog.entries.value.map((e) => e.text)
-  }
-
   function handlers(): ConsoleChunkHandlers {
     return {
       append: (text, tone) => {
-        commandLog.append(tone ? { text, tone } : text)
-        syncLegacyViews()
+        outputLog.append(tone ? { text, tone } : text)
       },
       upsert: (id, text, tone) => {
-        commandLog.upsert({ id, text, tone })
-        syncLegacyViews()
+        outputLog.upsert({ id, text, tone })
       },
       remove: (id) => {
-        commandLog.remove(id)
-        syncLegacyViews()
+        outputLog.remove(id)
       },
       setProgress: (pct) => {
-        progress.value = Math.max(0, Math.min(100, pct))
+        progress.value = clampProgress(pct)
       },
       setStatusText: (text) => {
         statusText.value = text
@@ -130,9 +136,8 @@ export function useJobConsole(options: UseJobConsoleOptions = {}): JobConsoleApi
     }
   }
 
-  function appendStatus(line: string) {
-    statusLog.append(line)
-    syncLegacyViews()
+  function appendLine(line: string, tone?: LogEntryTone) {
+    outputLog.append(tone ? { text: line, tone } : line)
   }
 
   function appendConsole(chunk: string) {
@@ -144,19 +149,17 @@ export function useJobConsole(options: UseJobConsoleOptions = {}): JobConsoleApi
     if (adapters.onConsoleChunk) {
       adapters.onConsoleChunk(chunk, handlers())
     } else {
-      defaultAppendConsoleLines(chunk, commandLog)
-      syncLegacyViews()
+      defaultAppendConsoleLines(chunk, outputLog, spinnerSession)
     }
   }
 
   function clearBuffers() {
-    statusLog.clear()
-    commandLog.clear()
+    outputLog.clear()
     progress.value = 0
     statusText.value = ''
     batchCurrent.value = 0
     batchTotal.value = 0
-    syncLegacyViews()
+    spinnerSession = createSpinnerConsoleSession()
   }
 
   function resetWhenIdle() {
@@ -182,17 +185,17 @@ export function useJobConsole(options: UseJobConsoleOptions = {}): JobConsoleApi
       clearBuffers()
       const started = (options.formatStarted ?? defaultStarted)(msg)
       statusText.value = started
-      appendStatus(started)
+      appendLine(started)
       return true
     }
 
     if (msg.type === 'job-event') {
       if (msg.kind === 'progress' && msg.message) {
-        const pct = Number(msg.message) || 0
+        const pct = clampProgress(Number(msg.message) || 0)
         const adapters = resolveAdapters()
         if (adapters.onHostProgress) {
           const next = adapters.onHostProgress(pct, handlers())
-          if (typeof next === 'number') progress.value = next
+          if (typeof next === 'number') progress.value = clampProgress(next)
           else progress.value = pct
         } else {
           progress.value = pct
@@ -210,7 +213,7 @@ export function useJobConsole(options: UseJobConsoleOptions = {}): JobConsoleApi
       } else if (msg.kind === 'console' && msg.message) {
         appendConsole(msg.message)
       } else if (msg.kind === 'log' && msg.message) {
-        appendStatus(msg.message)
+        appendLine(msg.message)
       } else if (msg.message) {
         appendConsole(msg.message)
       }
@@ -219,15 +222,16 @@ export function useJobConsole(options: UseJobConsoleOptions = {}): JobConsoleApi
 
     if (msg.type === 'job-finished') {
       busy.value = false
+      finishSpinnerConsoleSession(spinnerSession, spinnerSink(outputLog))
       const cancelled =
         !msg.ok &&
         (String(msg.detail ?? '').toLowerCase().includes('cancelled') ||
           String(msg.detail ?? '').includes('已取消') ||
           msg.exitCode === -1)
-      progress.value = msg.ok ? 100 : cancelled ? 0 : progress.value
-      if (batchTotal.value > 0 && !cancelled) batchCurrent.value = batchTotal.value
+      progress.value = msg.ok ? 100 : 0
+      if (batchTotal.value > 0 && msg.ok) batchCurrent.value = batchTotal.value
       statusText.value = msg.ok ? '完成' : cancelled ? '已取消' : '失败'
-      appendStatus(
+      appendLine(
         cancelled
           ? '任务已取消'
           : (options.formatFinished ?? defaultFinished)(msg),
@@ -239,8 +243,10 @@ export function useJobConsole(options: UseJobConsoleOptions = {}): JobConsoleApi
 
     if (msg.type === 'error' && msg.message) {
       busy.value = false
+      finishSpinnerConsoleSession(spinnerSession, spinnerSink(outputLog))
+      progress.value = 0
       statusText.value = '错误'
-      appendStatus(`[错误] ${msg.message}`)
+      appendLine(`[错误] ${msg.message}`, 'err')
       options.onError?.(msg.message)
       return true
     }
@@ -261,30 +267,25 @@ export function useJobConsole(options: UseJobConsoleOptions = {}): JobConsoleApi
         tone: 'danger',
       })
       if (!ok) return
-      // 确认期间任务可能已结束
       if (currentJob.value !== jobId) return
       post({ type: 'cancel-job', jobId })
     })()
   }
 
   return {
-    logs,
-    logEntries: statusLog.entries,
-    consoleLines,
-    commandEntries: commandLog.entries,
+    outputEntries: outputLog.entries,
     progress,
     statusText,
     batchCurrent,
     batchTotal,
     busy,
     currentJob,
-    appendStatus,
+    appendLine,
     appendConsole,
     resetWhenIdle,
     consumeJobMessage,
     cancel,
-    commandLog,
-    statusLog,
+    outputLog,
     setViewAdapters,
   }
 }

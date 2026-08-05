@@ -41,6 +41,11 @@
                                           "nameKey":  "claude.action.init"
                                       },
                                       {
+                                          "id":  "reset",
+                                          "handler":  "claude.reset",
+                                          "nameKey":  "claude.action.reset"
+                                      },
+                                      {
                                           "id":  "plugin-install",
                                           "handler":  "claude.plugin-install",
                                           "nameKey":  "claude.action.pluginInstall"

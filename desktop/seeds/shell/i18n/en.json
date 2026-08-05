@@ -8,6 +8,7 @@
   "ccs.description": "Desktop app to manage AI CLI provider configs",
   "ccs.name": "CC Switch",
   "claude.action.init": "Initialize",
+  "claude.action.reset": "Reset init settings",
   "claude.action.install": "Install / Update CLI",
   "claude.action.pluginInstall": "Install plugins",
   "claude.action.pluginUninstall": "Uninstall plugins",

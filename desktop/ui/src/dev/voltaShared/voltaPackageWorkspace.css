@@ -64,8 +64,15 @@
   margin-left: -1px;
 }
 .folder-tab-label {
-  display: block;
-  padding: 0.48rem 1rem 0.42rem 0.85rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  /* 固定高度：短英文（API）与中文标签同高，避免 min-height 仍被行高撑开不一致 */
+  height: 2.2rem;
+  min-height: 2.2rem;
+  line-height: 1;
+  padding: 0 1rem 0 0.85rem;
   background: color-mix(in srgb, var(--panel) 55%, transparent);
   border: 1px solid color-mix(in srgb, var(--line) 90%, transparent);
   border-bottom: none;
@@ -339,6 +346,8 @@
 }
 
 .volta-split .progress-pct {
+  flex: 0 0 4ch;
+  width: 4ch;
   font-size: 0.62rem;
 }
 

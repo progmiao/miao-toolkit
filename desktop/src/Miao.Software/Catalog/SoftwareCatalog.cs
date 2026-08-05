@@ -46,6 +46,7 @@ public sealed class SoftwareCatalog
             new ClaudeInstallHandler(),
             new ClaudeUninstallHandler(),
             new ClaudeInitHandler(claude),
+            new ClaudeResetHandler(claude),
             new ClaudePluginInstallHandler(claude),
             new ClaudePluginUninstallHandler(claude),
             new HermesInstallHandler(),

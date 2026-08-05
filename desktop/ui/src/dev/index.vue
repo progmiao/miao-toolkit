@@ -84,8 +84,7 @@ const jobApi = useJobConsole({
 })
 
 const {
-  logEntries,
-  commandEntries,
+  outputEntries,
   progress,
   statusText,
   busy,
@@ -201,6 +200,8 @@ onMounted(() => {
       if (msg.group && msg.group !== 'dev') return
       items.value = msg.items as CatalogItem[]
       listLoading.value = false
+      // 任务进行中禁止因目录刷新切换选中工具
+      if (busy.value) return
       const q = typeof route.query.tool === 'string' ? route.query.tool : ''
       if (q && items.value.some((i) => i.id === q)) {
         activeId.value = q
@@ -236,14 +237,29 @@ watch(listLoading, (loading) => {
 })
 
 watch(filtered, (list) => {
+  if (busy.value) return
   if (!list.length) return
   if (!list.some((i) => i.id === activeId.value)) activeId.value = list[0].id
 })
 
+/**
+ * 概览安装 / 更新 / 卸载。更新与卸载均二次确认；宿主更新仍走 install。
+ * @param action - install | update | uninstall（update 仅 UI 语义，下发为 install）
+ */
 async function runAction(action: string, id: string) {
   if (busy.value) return
-  if (action === 'uninstall') {
-    const name = items.value.find((i) => i.id === id)?.name ?? id
+  const name = items.value.find((i) => i.id === id)?.name ?? id
+  const hostAction = action === 'update' ? 'install' : action
+
+  if (action === 'update') {
+    const ok = await confirmDialog({
+      title: '更新确认',
+      message: `确认更新 ${name}？`,
+      confirmText: '更新',
+      cancelText: '取消',
+    })
+    if (!ok) return
+  } else if (action === 'uninstall') {
     const message =
       id === 'volta'
         ? `确认卸载 ${name}？卸载后 Node / pnpm / Yarn 将无法通过 Volta 管理。`
@@ -257,8 +273,9 @@ async function runAction(action: string, id: string) {
     })
     if (!ok) return
   }
+
   const jobId = crypto.randomUUID().replaceAll('-', '')
-  post({ type: 'run-job', jobId, toolId: id, action })
+  post({ type: 'run-job', jobId, toolId: id, action: hostAction })
 }
 
 function openDoc(which: 'gitee' | 'github') {
@@ -348,7 +365,15 @@ function openDoc(which: 'gitee' | 'github') {
                 :update-available="Boolean(activeItem.updateAvailable)"
               />
               <div class="tool-overview-text">
-                <h2 class="panel-title">{{ activeItem.name }}</h2>
+                <h2 class="panel-title">
+                  {{ activeItem.name }}
+                  <span class="panel-title-meta">
+                    <template v-if="activeItem.status === 'installed'">
+                      · 已安装<span v-if="activeItem.version"> · {{ activeItem.version }}</span>
+                    </template>
+                    <template v-else-if="activeItem.status === 'missing'"> · 未安装</template>
+                  </span>
+                </h2>
                 <p v-if="activeItem.description" class="panel-desc">{{ activeItem.description }}</p>
                 <p v-if="featureTip" class="panel-tip tip-feature">{{ featureTip }}</p>
               </div>
@@ -375,7 +400,7 @@ function openDoc(which: 'gitee' | 'github') {
                     type="button"
                     class="btn action-btn"
                     :disabled="busy"
-                    @click="runAction('install', activeItem.id)"
+                    @click="runAction('update', activeItem.id)"
                   >
                     更新
                   </button>
@@ -437,8 +462,7 @@ function openDoc(which: 'gitee' | 'github') {
           v-if="!workspaceOwnsConsole"
           :progress="progress"
           :status-text="statusText"
-          :log-entries="logEntries"
-          :command-entries="commandEntries"
+          :entries="outputEntries"
           :busy="busy"
         />
       </aside>
@@ -822,6 +846,14 @@ function openDoc(which: 'gitee' | 'github') {
   letter-spacing: 0.06em;
   text-transform: uppercase;
   line-height: 1.25;
+}
+.panel-title-meta {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  font-weight: 550;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  color: var(--muted);
 }
 .panel-desc {
   margin: 0;

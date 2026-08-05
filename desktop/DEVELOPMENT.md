@@ -136,14 +136,13 @@
 
 ### 4.1 `JobConsole`（`kernel/components/JobConsole.vue`）
 
-- **用途**：双通道——左侧状态摘要 + 右侧命令输出（xterm / ConPTY）；有进度条。  
-- **用法**：父页传 `:busy` `:progress` `:logs` `:console-lines`，建议带 `placeholder` / `logs-placeholder`。  
-- **约定**：Handler 用 `Write-Host '##progress N'`（及 `##task` / `##batch` / `##log`）驱动进度；协议行由宿主剥离，不进命令窗。  
-- **执行**：宿主优先 ConPTY 跑 PowerShell，失败回退 stdout 管道；UI 用 xterm.js 实时渲染 ANSI。
+- **用途**：进度条 + 单轨「输出」面板（`CommandPane` 样式）。  
+- **用法**：父页传 `:busy` `:progress` `:entries`（`outputEntries`），可选 `placeholder`。  
+- **约定**：Handler 用 `Write-Host '##progress N'`（及 `##task` / `##batch` / `##log`）驱动进度；协议行由宿主剥离；`##log` 与 console 流写入同一时间线。  
 
 ### 4.2 `useJobConsole`（`kernel/composables/useJobConsole.ts`）
 
-- 维护 `logs` / `consoleLines`（流式块）/ `progress` / `statusText` / `busy` / `currentJob`。  
+- 维护 `outputEntries` / `progress` / `statusText` / `busy` / `currentJob`。  
 - 页面 `subscribe` 里先处理业务消息，再 `consumeJobMessage(msg)`。  
 - `onFinished` 里刷新目录或版本列表。
 

@@ -61,18 +61,26 @@ public sealed class ClaudeCodeService
     }
 
     /// <summary>应用初始化默认：DISABLE_LOGIN_COMMAND=1，并注册预设 marketplace。</summary>
-    public string Init()
+    /// <param name="asReset">true 时日志用「重置」措辞（内容与初始化相同）。</param>
+    public string Init(bool asReset = false)
     {
         MergeEnv(new Dictionary<string, string?> { ["DISABLE_LOGIN_COMMAND"] = "1" }, Array.Empty<string>());
         var presets = LoadPresets();
-        var logs = new List<string> { "已写入 DISABLE_LOGIN_COMMAND=1" };
+        var logs = new List<string>
+        {
+            asReset ? "已重置 DISABLE_LOGIN_COMMAND=1" : "已写入 DISABLE_LOGIN_COMMAND=1",
+        };
         foreach (var mp in presets.Marketplaces)
         {
             var source = mp.Source;
             if (string.IsNullOrWhiteSpace(source)) continue;
             var (ok, detail) = RunClaude($"plugin marketplace add {EscapeArg(source)}");
-            logs.Add(ok ? $"marketplace + {source}" : $"marketplace 跳过/失败 {source}: {detail}");
+            var tag = asReset ? "marketplace 重置" : "marketplace +";
+            logs.Add(ok ? $"{tag} {source}" : $"marketplace 跳过/失败 {source}: {detail}");
         }
+
+        if (asReset)
+            logs.Add("初始化相关设置已恢复（未改动 API / 代理 / 已装插件）");
 
         return string.Join("\n", logs);
     }

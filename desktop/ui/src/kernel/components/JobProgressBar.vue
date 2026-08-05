@@ -1,51 +1,58 @@
 <script setup lang="ts">
 /**
- * 任务进度条（封闭）：只显示 progress / 文案，不算进度。
+ * 任务进度条（封闭）：只显示 statusText + 0～100 整数进度。
+ * 右侧百分比列宽按「100%」固定，避免位数变化带动进度条宽度。
  */
 import { computed } from 'vue'
 
 const props = withDefaults(
   defineProps<{
-    progress: number
+    /** 0～100，组件内取整并钳制 */
+    progress?: number
+    /** 当前执行内容 / 状态文案 */
     statusText?: string
-    busy?: boolean
   }>(),
   {
+    progress: 0,
     statusText: '',
-    busy: false,
   },
 )
 
-const fillWidth = computed(() => Math.min(100, Math.max(0, props.progress)))
+const pct = computed(() => {
+  const n = Number(props.progress)
+  if (!Number.isFinite(n)) return 0
+  return Math.round(Math.min(100, Math.max(0, n)))
+})
 
 const labelText = computed(() => {
   const t = (props.statusText ?? '').trim()
-  if (t) return t
-  if (props.busy) return '执行中'
-  return '就绪'
+  return t || '就绪'
 })
+
+const isRunning = computed(() => pct.value > 0 && pct.value < 100)
+const isDone = computed(() => pct.value >= 100)
 </script>
 
 <template>
   <div class="progress-wrap">
     <div class="progress-label">
       <span class="progress-status" :title="labelText">{{ labelText }}</span>
-      <span v-if="busy || fillWidth > 0" class="progress-pct">{{ Math.round(fillWidth) }}%</span>
     </div>
     <div class="progress-track-row">
       <div
         class="progress-bar"
-        :class="{ 'is-busy': busy, 'is-done': !busy && fillWidth >= 100 }"
+        :class="{ 'is-busy': isRunning, 'is-done': isDone }"
         role="progressbar"
-        :aria-valuenow="fillWidth"
+        :aria-valuenow="pct"
         aria-valuemin="0"
         aria-valuemax="100"
         :aria-label="labelText"
       >
-        <i class="progress-fill" :style="{ width: fillWidth + '%' }">
+        <i class="progress-fill" :style="{ width: pct + '%' }">
           <span class="progress-sheen" aria-hidden="true" />
         </i>
       </div>
+      <span class="progress-pct">{{ pct }}%</span>
     </div>
   </div>
 </template>
@@ -57,14 +64,16 @@ const labelText = computed(() => {
   border-radius: 0.55rem;
   border: 1px solid color-mix(in srgb, var(--line) 80%, transparent);
   background: color-mix(in srgb, var(--panel) 42%, transparent);
+  min-width: 0;
+  overflow: hidden;
 }
 
 .progress-label {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
   margin-bottom: 0.28rem;
   min-height: 1em;
+  min-width: 0;
 }
 
 .progress-status {
@@ -79,19 +88,11 @@ const labelText = computed(() => {
   text-overflow: ellipsis;
 }
 
-.progress-pct {
-  flex: 0 0 auto;
-  font-size: 0.68rem;
-  font-weight: 700;
-  font-family: var(--font-mono);
-  font-variant-numeric: tabular-nums;
-  color: color-mix(in srgb, var(--accent) 85%, var(--ink));
-  letter-spacing: 0.04em;
-}
-
 .progress-track-row {
   display: flex;
   align-items: center;
+  gap: 0.45rem;
+  min-width: 0;
 }
 
 .progress-bar {
@@ -103,6 +104,20 @@ const labelText = computed(() => {
   background: color-mix(in srgb, var(--line) 50%, transparent);
   overflow: hidden;
   box-shadow: inset 0 1px 2px color-mix(in srgb, #000 18%, transparent);
+}
+
+.progress-pct {
+  flex: 0 0 4ch;
+  width: 4ch;
+  box-sizing: content-box;
+  text-align: right;
+  font-size: 0.68rem;
+  font-weight: 700;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: color-mix(in srgb, var(--accent) 85%, var(--ink));
+  letter-spacing: 0;
+  line-height: 1;
 }
 
 .progress-fill {

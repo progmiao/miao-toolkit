@@ -1,5 +1,5 @@
 /**
- * 命令/日志条目缓冲：供独立 CommandPane / LogPane 使用。
+ * 输出条目缓冲：供 JobConsole / CommandPane 使用。
  */
 import { ref, type Ref } from 'vue'
 import {
