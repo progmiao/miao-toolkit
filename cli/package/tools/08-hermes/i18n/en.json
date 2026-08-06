@@ -1,7 +1,7 @@
 {
   "hermes": {
-    "name": "Hermes Agent",
-    "description": "Official Hermes Agent CLI (terminal, TUI, gateway)",
+    "name": "Hermes",
+    "description": "Official Hermes CLI (terminal, TUI, gateway)",
     "action": {
       "install": {
         "name": "Install",

@@ -87,7 +87,11 @@ function onCancel(id: string) {
 
 <template>
   <div ref="rootEl" class="silent-tasks" :data-open="open ? '1' : '0'">
-    <p v-if="summary" class="silent-tasks-summary" :title="summary">{{ summary }}</p>
+    <p
+      class="silent-tasks-summary"
+      :class="{ 'is-empty': !summary }"
+      :title="summary || undefined"
+    >{{ summary || '\u00a0' }}</p>
     <button
       type="button"
       class="silent-tasks-btn"

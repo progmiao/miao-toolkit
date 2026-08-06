@@ -1,25 +1,37 @@
 .silent-tasks {
   position: relative;
+  box-sizing: border-box;
   display: flex;
   align-items: center;
-  gap: 0.55rem;
-  flex: 0 0 auto;
-  max-width: min(20rem, 42vw);
+  justify-content: flex-end;
+  gap: 0.45rem;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  height: 100%;
+  overflow: hidden;
   /* 低于 Toast(10000) / Confirm(11000)，高于页面内容与 Mock 角标 */
   z-index: 9995;
 }
 
 .silent-tasks-summary {
   margin: 0;
+  flex: 1 1 0;
   min-width: 0;
-  max-width: 14rem;
+  max-width: none;
   font-size: 0.68rem;
   line-height: 1.3;
   letter-spacing: 0.02em;
   color: var(--shell-muted);
+  text-align: right;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* 无进行中任务时仍占位，避免按钮左右跳动 */
+.silent-tasks-summary.is-empty {
+  visibility: hidden;
 }
 
 .silent-tasks-btn {

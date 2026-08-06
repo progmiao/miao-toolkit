@@ -43,7 +43,7 @@ function goRelated(id: string) {
   <div class="volta-workspace" :class="{ embedded: props.embedded }">
     <p class="hint">
       通过 WinGet 管理 Volta 本体。装好后可在下方相关工具中管理 Node / Pnpm / Yarn 多版本；
-      安装进度与命令输出见底部命令窗口。
+      安装进度与命令输出见本页底部共用输出区。
     </p>
     <div class="related">
       <span class="related-label">相关工具</span>

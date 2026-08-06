@@ -63,6 +63,20 @@ public sealed class HostBridge
                 /* 静默：推送失败不影响任务本身 */
             }
         }
+
+        if (string.Equals(task.Status, "succeeded", StringComparison.OrdinalIgnoreCase)
+            && string.Equals(task.Id, "cache.claude.plugins", StringComparison.OrdinalIgnoreCase))
+        {
+            try
+            {
+                if (_post is { } post)
+                    PostClaudeStatus(post);
+            }
+            catch
+            {
+                /* ignore */
+            }
+        }
     }
 
     private void OnSilentQueueChanged(SilentQueueSnapshot queue)
@@ -289,15 +303,18 @@ public sealed class HostBridge
             }
 
             case "claude.status":
-                postToUi(new
+            {
+                PostClaudeStatus(postToUi);
+                // 已安装且已初始化、库空时补同步
+                try
                 {
-                    type = "claude.status",
-                    // 首屏读库，避免 claude --version / winget 卡顿
-                    status = AppServices.Claude.GetStatusCached(AppServices.Db),
-                    secrets = AppServices.Claude.GetSecretsPublic(),
-                    plugins = AppServices.Claude.ListFeaturedPlugins(),
-                });
+                    if (!AppServices.Db.HasClaudePluginCache()
+                        && AppServices.Claude.IsInitialized(AppServices.Db))
+                        AppServices.EnqueueClaudePluginCache();
+                }
+                catch { /* ignore */ }
                 break;
+            }
 
             case "claude.set-api":
             {
@@ -309,13 +326,7 @@ public sealed class HostBridge
                     var authToken = root.TryGetProperty("authToken", out var a) ? a.GetString() : null;
                     var path = AppServices.Claude.ApplyApi(mode, apiKey, baseUrl, authToken);
                     postToUi(new { type = "claude.saved", path, kind = "api" });
-                    postToUi(new
-                    {
-                        type = "claude.status",
-                        status = AppServices.Claude.GetStatus(),
-                        secrets = AppServices.Claude.GetSecretsPublic(),
-                        plugins = AppServices.Claude.ListFeaturedPlugins(),
-                    });
+                    PostClaudeStatus(postToUi, liveStatus: true);
                 }
                 catch (Exception ex)
                 {
@@ -334,13 +345,7 @@ public sealed class HostBridge
                     var httpsProxy = root.TryGetProperty("httpsProxy", out var s) ? s.GetString() : null;
                     var path = AppServices.Claude.ApplyProxy(mode, httpProxy, httpsProxy);
                     postToUi(new { type = "claude.saved", path, kind = "proxy" });
-                    postToUi(new
-                    {
-                        type = "claude.status",
-                        status = AppServices.Claude.GetStatus(),
-                        secrets = AppServices.Claude.GetSecretsPublic(),
-                        plugins = AppServices.Claude.ListFeaturedPlugins(),
-                    });
+                    PostClaudeStatus(postToUi, liveStatus: true);
                 }
                 catch (Exception ex)
                 {
@@ -351,7 +356,17 @@ public sealed class HostBridge
             }
 
             case "run-job":
-                await StartJobAsync(root, postToUi).ConfigureAwait(false);
+                // 勿 await：Init 等同步 Handler 会堵死消息泵，导致 UI 无输出且无法 cancel-job
+                _ = StartJobAsync(root, postToUi).ContinueWith(
+                    t =>
+                    {
+                        if (t.IsFaulted)
+                        {
+                            var msg = t.Exception?.GetBaseException().Message ?? "任务失败";
+                            postToUi(new { type = "error", message = msg });
+                        }
+                    },
+                    TaskScheduler.Default);
                 break;
 
             case "cancel-job":
@@ -467,6 +482,22 @@ public sealed class HostBridge
         });
     }
 
+    private static void PostClaudeStatus(Action<object> postToUi, bool liveStatus = false)
+    {
+        var lists = AppServices.Claude.GetPluginLists(AppServices.Db);
+        postToUi(new
+        {
+            type = "claude.status",
+            status = liveStatus
+                ? AppServices.Claude.GetStatus()
+                : AppServices.Claude.GetStatusCached(AppServices.Db),
+            secrets = AppServices.Claude.GetSecretsPublic(),
+            pluginsInstall = lists.Install,
+            pluginsUpdate = lists.Update,
+            pluginsUninstall = lists.Uninstall,
+        });
+    }
+
     private static void PostCatalog(Action<object> postToUi, string? group)
     {
         var locale = AppServices.Db.GetSetting("locale", "zh");
@@ -512,6 +543,13 @@ public sealed class HostBridge
             var row = AppServices.Db.GetSoftware(toolId!);
             PostCatalog(postToUi, row?.Group);
 
+            // 初始化 / 插件装更卸后刷新三态插件列表
+            if (string.Equals(toolId, "claude-code", StringComparison.OrdinalIgnoreCase)
+                && IsClaudePluginDataAction(action))
+            {
+                PostClaudeStatus(postToUi);
+            }
+
             postToUi(new
             {
                 type = "job-finished",
@@ -526,6 +564,9 @@ public sealed class HostBridge
             lock (_running) { _running.Remove(jobId); }
         }
     }
+
+    private static bool IsClaudePluginDataAction(string? action) =>
+        action is "init" or "reset" or "plugin-install" or "plugin-update" or "plugin-uninstall";
 
     private static List<string>? ReadVersions(JsonElement root)
     {

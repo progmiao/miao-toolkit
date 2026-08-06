@@ -96,20 +96,37 @@ public sealed class ClaudeInitHandler : IToolActionHandler
     public string HandlerId => "claude.init";
 
     /// <inheritdoc />
-    public Task<JobResult> ExecuteAsync(ToolActionContext context, CancellationToken cancellationToken = default)
+    public async Task<JobResult> ExecuteAsync(ToolActionContext context, CancellationToken cancellationToken = default)
     {
         try
         {
-            context.Jobs.EmitLog(context.JobId, "开始初始化 Claude Code…");
-            var detail = _claude.Init();
-            foreach (var line in detail.Split('\n'))
-                context.Jobs.EmitLog(context.JobId, line);
+            context.Jobs.EmitTask(context.JobId, "初始化 Claude Code");
+            context.Jobs.EmitLog(context.JobId, "开始初始化 Claude Code");
+            context.Jobs.EmitProgress(context.JobId, 5);
+
+            var (ok, detail) = await Task.Run(
+                    () => _claude.Init(
+                        asReset: false,
+                        onStep: (text, pct) =>
+                        {
+                            context.Jobs.EmitTask(context.JobId, text);
+                            context.Jobs.EmitLog(context.JobId, text);
+                            context.Jobs.EmitProgress(context.JobId, pct);
+                        },
+                        db: context.Db),
+                    cancellationToken)
+                .ConfigureAwait(false);
+
             context.Jobs.EmitProgress(context.JobId, 100);
-            return Task.FromResult(new JobResult(context.JobId, true, 0, detail));
+            return new JobResult(context.JobId, ok, ok ? 0 : 1, detail);
+        }
+        catch (OperationCanceledException)
+        {
+            return new JobResult(context.JobId, false, -1, "cancelled");
         }
         catch (Exception ex)
         {
-            return Task.FromResult(new JobResult(context.JobId, false, 1, ex.Message));
+            return new JobResult(context.JobId, false, 1, ex.Message);
         }
     }
 }
@@ -126,20 +143,37 @@ public sealed class ClaudeResetHandler : IToolActionHandler
     public string HandlerId => "claude.reset";
 
     /// <inheritdoc />
-    public Task<JobResult> ExecuteAsync(ToolActionContext context, CancellationToken cancellationToken = default)
+    public async Task<JobResult> ExecuteAsync(ToolActionContext context, CancellationToken cancellationToken = default)
     {
         try
         {
-            context.Jobs.EmitLog(context.JobId, "开始重置初始化设置…");
-            var detail = _claude.Init(asReset: true);
-            foreach (var line in detail.Split('\n'))
-                context.Jobs.EmitLog(context.JobId, line);
+            context.Jobs.EmitTask(context.JobId, "重置初始化设置");
+            context.Jobs.EmitLog(context.JobId, "开始重置初始化设置");
+            context.Jobs.EmitProgress(context.JobId, 5);
+
+            var (ok, detail) = await Task.Run(
+                    () => _claude.Init(
+                        asReset: true,
+                        onStep: (text, pct) =>
+                        {
+                            context.Jobs.EmitTask(context.JobId, text);
+                            context.Jobs.EmitLog(context.JobId, text);
+                            context.Jobs.EmitProgress(context.JobId, pct);
+                        },
+                        db: context.Db),
+                    cancellationToken)
+                .ConfigureAwait(false);
+
             context.Jobs.EmitProgress(context.JobId, 100);
-            return Task.FromResult(new JobResult(context.JobId, true, 0, detail));
+            return new JobResult(context.JobId, ok, ok ? 0 : 1, detail);
+        }
+        catch (OperationCanceledException)
+        {
+            return new JobResult(context.JobId, false, -1, "cancelled");
         }
         catch (Exception ex)
         {
-            return Task.FromResult(new JobResult(context.JobId, false, 1, ex.Message));
+            return new JobResult(context.JobId, false, 1, ex.Message);
         }
     }
 }
@@ -167,13 +201,18 @@ public sealed class ClaudePluginInstallHandler : IToolActionHandler
         for (var i = 0; i < ids.Count; i++)
         {
             var id = ids[i];
-            context.Jobs.EmitProgress(context.JobId, (int)(10 + 80.0 * (i + 1) / ids.Count));
+            context.Jobs.EmitProgress(context.JobId, (int)(10 + 70.0 * (i + 1) / ids.Count));
             context.Jobs.EmitLog(context.JobId, $"安装插件 {id}…");
             var (ok, detail) = _claude.InstallPlugin(id);
             sb.AppendLine(ok ? $"OK {id}" : $"FAIL {id}: {detail}");
             if (!ok) okAll = false;
             else context.Jobs.EmitLog(context.JobId, detail);
         }
+
+        context.Jobs.EmitLog(context.JobId, "同步插件安装状态到本地库…");
+        var (syncOk, syncDetail) = _claude.SyncPluginCatalog(context.Db, updateRemote: false);
+        if (!syncOk) sb.AppendLine(syncDetail);
+        else context.Jobs.EmitLog(context.JobId, syncDetail);
 
         context.Jobs.EmitProgress(context.JobId, 100);
         return Task.FromResult(new JobResult(context.JobId, okAll, okAll ? 0 : 1, sb.ToString()));
@@ -184,6 +223,49 @@ public sealed class ClaudePluginInstallHandler : IToolActionHandler
         if (context.Options.TryGetValue("plugins", out var csv) && !string.IsNullOrWhiteSpace(csv))
             return csv.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
         return context.Versions.Where(v => !string.IsNullOrWhiteSpace(v)).ToList();
+    }
+}
+
+/// <summary>批量更新已装插件。</summary>
+public sealed class ClaudePluginUpdateHandler : IToolActionHandler
+{
+    private readonly ClaudeCodeService _claude;
+
+    /// <summary>创建处理器。</summary>
+    public ClaudePluginUpdateHandler(ClaudeCodeService claude) => _claude = claude;
+
+    /// <inheritdoc />
+    public string HandlerId => "claude.plugin-update";
+
+    /// <inheritdoc />
+    public Task<JobResult> ExecuteAsync(ToolActionContext context, CancellationToken cancellationToken = default)
+    {
+        var ids = context.Options.TryGetValue("plugins", out var csv) && !string.IsNullOrWhiteSpace(csv)
+            ? csv.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList()
+            : context.Versions.Where(v => !string.IsNullOrWhiteSpace(v)).ToList();
+
+        if (ids.Count == 0)
+            return Task.FromResult(new JobResult(context.JobId, false, 1, "未指定插件 id"));
+
+        var okAll = true;
+        var sb = new StringBuilder();
+        for (var i = 0; i < ids.Count; i++)
+        {
+            var id = ids[i];
+            context.Jobs.EmitProgress(context.JobId, (int)(10 + 70.0 * (i + 1) / ids.Count));
+            context.Jobs.EmitLog(context.JobId, $"更新插件 {id}…");
+            var (ok, detail) = _claude.UpdatePlugin(id);
+            sb.AppendLine(ok ? $"OK {id}" : $"FAIL {id}: {detail}");
+            if (!ok) okAll = false;
+            else context.Jobs.EmitLog(context.JobId, detail);
+        }
+
+        context.Jobs.EmitLog(context.JobId, "同步插件状态到本地库…");
+        var (syncOk, syncDetail) = _claude.SyncPluginCatalog(context.Db, updateRemote: false);
+        if (!syncOk) sb.AppendLine(syncDetail);
+
+        context.Jobs.EmitProgress(context.JobId, 100);
+        return Task.FromResult(new JobResult(context.JobId, okAll, okAll ? 0 : 1, sb.ToString()));
     }
 }
 
@@ -217,6 +299,9 @@ public sealed class ClaudePluginUninstallHandler : IToolActionHandler
             sb.AppendLine(ok ? $"OK {id}" : $"FAIL {id}: {detail}");
             if (!ok) okAll = false;
         }
+
+        context.Jobs.EmitLog(context.JobId, "同步插件状态到本地库…");
+        _ = _claude.SyncPluginCatalog(context.Db, updateRemote: false);
 
         context.Jobs.EmitProgress(context.JobId, 100);
         return Task.FromResult(new JobResult(context.JobId, okAll, okAll ? 0 : 1, sb.ToString()));

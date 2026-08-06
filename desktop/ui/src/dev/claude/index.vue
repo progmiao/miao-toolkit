@@ -1,8 +1,8 @@
 <script setup lang="ts">
 /**
  * Claude Code 工作区：
- * - 未安装 / 安装·更新·卸载进行中：内容区整页为进度+输出（方案 B）
- * - 已安装且非生命周期任务：梯形 Tab（初始化 / API / 代理 / 插件）
+ * - 未安装 / 安装·更新·卸载进行中：内容区整页为进度+输出
+ * - 已安装：上区 Tab+操作 / 下区共用进度+输出；空闲切 Tab 清空输出
  * 取消任务挂父级「终止」；状态读库，不提供刷新状态按钮。
  */
 import { computed, inject, onMounted, onUnmounted, ref, watch } from 'vue'
@@ -23,8 +23,9 @@ const props = defineProps<{
 
 useShellTitle(computed(() => (props.embedded ? '开发工具' : 'Claude Code')))
 
-type ClaudeTab = 'init' | 'api' | 'proxy' | 'plugin-install' | 'plugin-uninstall'
+type ClaudeTab = 'init' | 'api' | 'proxy' | 'plugin-install' | 'plugin-update' | 'plugin-uninstall'
 type LifecycleKind = 'install' | 'update' | 'uninstall'
+type PluginAction = 'plugin-install' | 'plugin-update' | 'plugin-uninstall'
 
 type Status = {
   installed: boolean
@@ -46,16 +47,27 @@ type Secrets = {
   httpsProxy?: string | null
 }
 
-type Plugin = { id: string; label: string; featured: boolean }
+type Plugin = {
+  id: string
+  label: string
+  featured: boolean
+  description?: string | null
+  installedVersion?: string | null
+  remoteVersion?: string | null
+  updateAvailable?: boolean
+}
 
 const workspaceOwnsConsole = inject(DEV_WORKSPACE_OWNS_CONSOLE_KEY, null)
 
 const tab = ref<ClaudeTab>('init')
 const status = ref<Status | null>(null)
 const secrets = ref<Secrets | null>(null)
-const plugins = ref<Plugin[]>([])
+const pluginsInstall = ref<Plugin[]>([])
+const pluginsUpdate = ref<Plugin[]>([])
+const pluginsUninstall = ref<Plugin[]>([])
 const selected = ref<Record<string, boolean>>({})
-const customPlugin = ref('')
+/** 插件列表过滤（安装 / 更新 / 卸载共用）。 */
+const filter = ref('')
 /** 已收到至少一次 claude.status，避免未装态闪 Tab。 */
 const statusReady = ref(false)
 /** 安装 / 更新 / 卸载；失败后保持直至成功或（已安装时）返回。 */
@@ -74,6 +86,7 @@ const tabs: { id: ClaudeTab; label: string }[] = [
   { id: 'api', label: 'API' },
   { id: 'proxy', label: '代理' },
   { id: 'plugin-install', label: '插件安装' },
+  { id: 'plugin-update', label: '插件更新' },
   { id: 'plugin-uninstall', label: '插件卸载' },
 ]
 
@@ -83,6 +96,7 @@ const {
   statusText,
   busy,
   consumeJobMessage,
+  resetWhenIdle,
   isShared,
 } = useDevPanelJob({
   onFinished: () => post({ type: 'claude.status' }),
@@ -99,14 +113,64 @@ const showLifecycleView = computed(
     lifecycleKind.value != null,
 )
 
-const featuredPlugins = computed(() => plugins.value.filter((p) => p.featured))
-const otherPlugins = computed(() => plugins.value.filter((p) => !p.featured))
-
-const selectedList = computed(() => {
-  const ids = plugins.value.filter((p) => selected.value[p.id]).map((p) => p.id)
-  if (customPlugin.value.trim()) ids.push(customPlugin.value.trim())
-  return [...new Set(ids)]
+const activePlugins = computed(() => {
+  if (tab.value === 'plugin-update') return pluginsUpdate.value
+  if (tab.value === 'plugin-uninstall') return pluginsUninstall.value
+  return pluginsInstall.value
 })
+
+const filteredPlugins = computed(() => {
+  const q = filter.value.trim().toLowerCase()
+  if (!q) return activePlugins.value
+  return activePlugins.value.filter((p) => {
+    const hay = `${p.id} ${p.label} ${p.description ?? ''} ${p.installedVersion ?? ''} ${p.remoteVersion ?? ''}`
+    return hay.toLowerCase().includes(q)
+  })
+})
+
+const featuredPlugins = computed(() =>
+  tab.value === 'plugin-install' ? filteredPlugins.value.filter((p) => p.featured) : [],
+)
+const otherPlugins = computed(() =>
+  tab.value === 'plugin-install' ? filteredPlugins.value.filter((p) => !p.featured) : filteredPlugins.value,
+)
+
+const selectedList = computed(() =>
+  filteredPlugins.value.filter((p) => selected.value[p.id]).map((p) => p.id),
+)
+
+const pluginEmptyHint = computed(() => {
+  if (filter.value.trim() && activePlugins.value.length && !filteredPlugins.value.length) {
+    return '无匹配的插件'
+  }
+  if (tab.value === 'plugin-update') return '暂无需要更新的已装插件'
+  if (tab.value === 'plugin-uninstall') return '暂无已安装插件'
+  return '暂无可安装插件（请先初始化 marketplace，或等待后台同步）'
+})
+
+const pluginActionLabel = computed(() => {
+  if (tab.value === 'plugin-update') return '更新'
+  if (tab.value === 'plugin-uninstall') return '卸载'
+  return '安装'
+})
+
+const pluginAction = computed<PluginAction>(() => {
+  if (tab.value === 'plugin-update') return 'plugin-update'
+  if (tab.value === 'plugin-uninstall') return 'plugin-uninstall'
+  return 'plugin-install'
+})
+
+function pluginRowLabel(p: Plugin) {
+  if (tab.value === 'plugin-update') {
+    const from = p.installedVersion || '?'
+    const to = p.remoteVersion || '?'
+    return `${p.label}（${from} → ${to}）`
+  }
+  if (tab.value === 'plugin-uninstall' && p.installedVersion) {
+    return `${p.label}（${p.installedVersion}）`
+  }
+  return p.id
+}
 
 function enterLifecycle(kind: LifecycleKind) {
   if (!lifecycleKind.value) tabBeforeLifecycle.value = tab.value
@@ -120,6 +184,8 @@ function applyLifecycleFinished(ok: boolean) {
   if (kind === 'update') {
     tab.value = tabBeforeLifecycle.value
     lifecycleKind.value = null
+    // 回到功能区：清掉装/更输出，显示默认空控制台
+    resetWhenIdle()
   }
   // install / uninstall：等 claude.status 再收口，避免 catalog 与 status 短暂不一致闪屏
 }
@@ -130,8 +196,10 @@ function settleLifecycleFromStatus() {
   if (kind === 'install' && isInstalled.value) {
     tab.value = 'init'
     lifecycleKind.value = null
+    resetWhenIdle()
   } else if (kind === 'uninstall' && !isInstalled.value) {
     lifecycleKind.value = null
+    resetWhenIdle()
   }
 }
 
@@ -143,9 +211,12 @@ onMounted(() => {
     if (msg.type === 'claude.status') {
       status.value = msg.status as Status
       secrets.value = msg.secrets as Secrets
-      plugins.value = (msg.plugins as Plugin[]) ?? []
+      pluginsInstall.value =
+        (msg.pluginsInstall as Plugin[]) ?? (msg.plugins as Plugin[]) ?? []
+      pluginsUpdate.value = (msg.pluginsUpdate as Plugin[]) ?? []
+      pluginsUninstall.value = (msg.pluginsUninstall as Plugin[]) ?? []
       statusReady.value = true
-      for (const p of plugins.value) {
+      for (const p of [...pluginsInstall.value, ...pluginsUpdate.value, ...pluginsUninstall.value]) {
         if (selected.value[p.id] === undefined) selected.value[p.id] = false
       }
       if (secrets.value?.httpProxy) httpProxy.value = secrets.value.httpProxy
@@ -156,6 +227,14 @@ onMounted(() => {
     }
     if (msg.type === 'claude.saved') {
       showToast(`已保存（${msg.kind}）`, { kind: 'ok' })
+      return
+    }
+    // 后台插件目录同步完成后拉取三态列表（Host 也会推送，此处兜底）
+    if (msg.type === 'silent.task') {
+      const task = msg.task as { id?: string; status?: string } | undefined
+      if (task?.id === 'cache.claude.plugins' && task.status === 'succeeded') {
+        post({ type: 'claude.status' })
+      }
       return
     }
     if (msg.type === 'job-started' && msg.toolId === 'claude-code') {
@@ -181,7 +260,8 @@ onUnmounted(() => {
 
 watch(tab, () => {
   selected.value = {}
-  customPlugin.value = ''
+  filter.value = ''
+  if (!busy.value) resetWhenIdle()
 })
 
 function selectTab(id: ClaudeTab) {
@@ -214,13 +294,13 @@ function saveProxy(mode: 'set' | 'clear') {
   })
 }
 
-function runPluginBatch(action: 'plugin-install' | 'plugin-uninstall') {
+function runPluginBatch() {
   const ids = selectedList.value
   if (!ids.length) {
-    showToast('请先勾选或填写插件', { kind: 'warn' })
+    showToast('请先勾选插件', { kind: 'warn' })
     return
   }
-  runJob(action, { versions: ids, plugins: ids.join(',') })
+  runJob(pluginAction.value, { versions: ids, plugins: ids.join(',') })
 }
 
 async function runReset() {
@@ -240,20 +320,18 @@ async function runReset() {
 
 <template>
   <section class="claude-page volta-page" :class="{ embedded: props.embedded }">
-    <!-- 方案 B：未安装 / 装更卸 → 整区仅进度+输出（操作在概览区） -->
+    <!-- 未安装 / CLI 装更卸：整区仅进度+输出 -->
     <template v-if="showLifecycleView">
       <div class="folder-body folder-body--lifecycle">
-        <div class="volta-split volta-split--lifecycle">
-          <JobConsole
-            class="volta-job"
-            always-show
-            :progress="progress"
-            :status-text="statusText"
-            :entries="outputEntries"
-            :busy="busy"
-            placeholder="执行安装、更新或卸载后在此显示输出…"
-          />
-        </div>
+        <JobConsole
+          class="claude-lifecycle-job"
+          always-show
+          :progress="progress"
+          :status-text="statusText"
+          :entries="outputEntries"
+          :busy="busy"
+          placeholder="执行安装、更新或卸载后在此显示输出…"
+        />
       </div>
     </template>
 
@@ -278,21 +356,14 @@ async function runReset() {
       </RegionLock>
 
       <div class="folder-body">
-        <div
-          class="volta-split"
-          :class="{
-            'is-job-locked': busy,
-            'volta-split--init': tab === 'init',
-            'volta-split--form': tab === 'api' || tab === 'proxy',
-            'volta-split--plugins': tab === 'plugin-install' || tab === 'plugin-uninstall',
-          }"
-        >
-          <div
-            v-if="busy && tab !== 'init'"
-            class="volta-ops-lock"
-            title="任务进行中，请先终止"
-            aria-hidden="true"
-          />
+        <div class="tool-stack" :class="{ 'is-job-locked': busy }">
+          <div class="tool-ops">
+            <div
+              v-if="busy"
+              class="tool-ops-lock"
+              title="任务进行中，请先终止"
+              aria-hidden="true"
+            />
 
           <template v-if="tab === 'init'">
             <div class="ver-head claude-init-head">
@@ -386,31 +457,20 @@ async function runReset() {
           <template v-else>
             <div class="ver-head">
               <input
-                v-model="customPlugin"
+                v-model="filter"
                 class="search"
-                type="text"
-                placeholder="自定义插件 id…"
-                :aria-label="`自定义插件，已选 ${selectedList.length} 项`"
+                type="search"
+                placeholder="过滤插件…"
+                :aria-label="`过滤插件，已选 ${selectedList.length} 项`"
               />
               <button
-                v-if="tab === 'plugin-install'"
                 type="button"
                 class="btn btn-install"
                 :disabled="busy || !selectedList.length"
-                :title="!selectedList.length ? '请先勾选插件' : '安装所选插件'"
-                @click="runPluginBatch('plugin-install')"
+                :title="!selectedList.length ? '请先勾选插件' : `${pluginActionLabel}所选插件`"
+                @click="runPluginBatch()"
               >
-                安装
-              </button>
-              <button
-                v-else
-                type="button"
-                class="btn btn-install"
-                :disabled="busy || !selectedList.length"
-                :title="!selectedList.length ? '请先勾选插件' : '卸载所选插件'"
-                @click="runPluginBatch('plugin-uninstall')"
-              >
-                卸载
+                {{ pluginActionLabel }}
               </button>
             </div>
             <ul class="ver-list ver-list--install" aria-label="插件列表">
@@ -430,7 +490,7 @@ async function runReset() {
                       :disabled="busy"
                     />
                   </span>
-                  <span class="ver-num">{{ p.id }}</span>
+                  <span class="ver-num" :title="p.description || p.id">{{ pluginRowLabel(p) }}</span>
                 </label>
               </li>
               <li v-if="otherPlugins.length && featuredPlugins.length" class="claude-list-label">
@@ -451,15 +511,16 @@ async function runReset() {
                       :disabled="busy"
                     />
                   </span>
-                  <span class="ver-num">{{ p.id }}</span>
+                  <span class="ver-num" :title="p.description || p.id">{{ pluginRowLabel(p) }}</span>
                 </label>
               </li>
-              <li v-if="!plugins.length" class="empty-hint">暂无插件清单</li>
+              <li v-if="!filteredPlugins.length" class="empty-hint">{{ pluginEmptyHint }}</li>
             </ul>
           </template>
+          </div>
 
           <JobConsole
-            class="volta-job"
+            class="tool-console"
             always-show
             :progress="progress"
             :status-text="statusText"
@@ -482,48 +543,30 @@ async function runReset() {
 
 .folder-body--lifecycle {
   flex: 1;
+  min-width: 0;
   min-height: 0;
+  display: flex;
+  flex-direction: column;
   border-top: 1px solid color-mix(in srgb, var(--line) 85%, transparent);
   border-radius: 0.65rem;
 }
 
-.volta-split--lifecycle {
-  grid-template-columns: 1fr;
-  grid-template-rows: auto minmax(0, 1fr);
-  grid-template-areas:
-    'prog'
-    'panes';
-}
-
-.volta-split--form {
-  --volta-list-w: minmax(14rem, 20rem);
-}
-
-.volta-split--plugins {
-  --volta-list-w: minmax(12rem, 16rem);
-}
-
-.volta-split--init {
-  grid-template-columns: 1fr;
-  grid-template-rows: auto auto minmax(0, 1fr);
-  grid-template-areas:
-    'head'
-    'prog'
-    'panes';
-}
-
-.volta-split--init :deep(.progress-wrap) {
-  margin-top: 0;
+.claude-lifecycle-job {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  width: 100%;
 }
 
 .claude-init-head {
   width: 100%;
+  min-width: 0;
   justify-content: flex-start;
 }
 
 .claude-pane {
-  grid-area: list;
   min-height: 0;
+  flex: 1 1 auto;
   overflow: auto;
   padding: 0.55rem 0.45rem;
   border: 1px solid color-mix(in srgb, var(--line) 80%, transparent);

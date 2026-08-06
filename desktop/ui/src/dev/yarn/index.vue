@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * Yarn 工作区：梯形 Tab + 左版本列表 + 右进度/日志/PowerShell。
+ * Yarn 工作区：梯形 Tab + 上区操作 + 下区共用进度/输出。
  * 取消任务挂到父级 tool-overview「终止」。
  * 逻辑见 voltaShared；本页仅保留工具文案与模板，便于日后单独演进。
  */
@@ -99,16 +99,14 @@ const tablistAria = computed(() => `${displayName} 功能`)
       </RegionLock>
 
       <div class="folder-body">
-        <div
-          class="volta-split"
-          :class="{ 'is-job-locked': busy, 'volta-split--specify': tab === 'specify' }"
-        >
-          <div
-            v-if="busy"
-            class="volta-ops-lock"
-            title="任务进行中，请先终止"
-            aria-hidden="true"
-          />
+        <div class="tool-stack" :class="{ 'is-job-locked': busy }">
+          <div class="tool-ops">
+            <div
+              v-if="busy"
+              class="tool-ops-lock"
+              title="任务进行中，请先终止"
+              aria-hidden="true"
+            />
           <!-- 批量安装 -->
           <template v-if="tab === 'batch-install'">
             <div class="ver-head">
@@ -376,9 +374,10 @@ const tablistAria = computed(() => `${displayName} 功能`)
               <li v-if="!listForTab.length && !loading" class="empty-hint">暂无已安装版本</li>
             </ul>
           </template>
+          </div>
 
           <JobConsole
-            class="volta-job"
+            class="tool-console"
             always-show
             :progress="progress"
             :status-text="statusText"

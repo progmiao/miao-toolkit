@@ -131,8 +131,8 @@ export const MOCK_DEV: CatalogItem[] = [
   },
   {
     id: 'hermes',
-    name: 'Hermes Agent',
-    description: 'Hermes Agent 官方 CLI',
+    name: 'Hermes',
+    description: 'Hermes 官方 CLI',
     group: 'dev',
     status: 'missing',
     actions: ['install', 'uninstall'],

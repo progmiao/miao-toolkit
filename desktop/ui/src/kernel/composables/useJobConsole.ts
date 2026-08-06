@@ -88,8 +88,25 @@ function defaultAppendConsoleLines(
   chunk: string,
   outputLog: UseLogEntriesApi,
   session: SpinnerConsoleSession,
+  onDownload?: (info: {
+    downloadPct: number
+    downloaded: string
+    total: string
+  }) => void,
 ) {
-  applySpinnerConsoleChunk(session, chunk, spinnerSink(outputLog))
+  const result = applySpinnerConsoleChunk(session, chunk, spinnerSink(outputLog))
+  if (
+    result?.downloadPct != null &&
+    result.downloaded &&
+    result.total &&
+    onDownload
+  ) {
+    onDownload({
+      downloadPct: result.downloadPct,
+      downloaded: result.downloaded,
+      total: result.total,
+    })
+  }
 }
 
 export function useJobConsole(options: UseJobConsoleOptions = {}): JobConsoleApi {
@@ -140,6 +157,17 @@ export function useJobConsole(options: UseJobConsoleOptions = {}): JobConsoleApi
     outputLog.append(tone ? { text: line, tone } : line)
   }
 
+  function applyDownloadProgress(info: {
+    downloadPct: number
+    downloaded: string
+    total: string
+  }) {
+    // 下载阶段映射到总进度约 30–85，且只升不降（保留宿主 ##progress 下限）
+    const mapped = clampProgress(30 + (info.downloadPct / 100) * 55)
+    if (mapped > progress.value) progress.value = mapped
+    statusText.value = `下载 ${info.downloaded} / ${info.total}`
+  }
+
   function appendConsole(chunk: string) {
     if (!chunk) return
     const plain = chunk.replace(/\u001b\[[0-9;?]*[ -/]*[@-~]/g, '').trim()
@@ -149,7 +177,7 @@ export function useJobConsole(options: UseJobConsoleOptions = {}): JobConsoleApi
     if (adapters.onConsoleChunk) {
       adapters.onConsoleChunk(chunk, handlers())
     } else {
-      defaultAppendConsoleLines(chunk, outputLog, spinnerSession)
+      defaultAppendConsoleLines(chunk, outputLog, spinnerSession, applyDownloadProgress)
     }
   }
 

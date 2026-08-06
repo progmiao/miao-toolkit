@@ -80,6 +80,7 @@ export function useVoltaPackagePage(options: UseVoltaPackagePageOptions) {
     busy,
     consumeJobMessage,
     cancel,
+    resetWhenIdle,
     isShared,
     setViewAdapters,
     outputLog,
@@ -262,6 +263,8 @@ export function useVoltaPackagePage(options: UseVoltaPackagePageOptions) {
   watch(tab, () => {
     selected.value = {}
     filter.value = ''
+    // 空闲切 Tab：清空共用控制台，避免串台
+    if (!busy.value) resetWhenIdle()
   })
 
   function selectTab(id: VoltaPackageTab) {

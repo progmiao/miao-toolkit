@@ -53,6 +53,7 @@ function ensureMockSilentSync() {
     { id: 'cache.versions.node', title: '同步 Node.js 版本目录' },
     { id: 'cache.versions.pnpm', title: '同步 pnpm 版本目录' },
     { id: 'cache.versions.yarn', title: '同步 Yarn 版本目录' },
+    { id: 'cache.claude.plugins', title: '同步 Claude 插件目录' },
   ] as const
 
   for (const [i, spec] of specs.entries()) {
@@ -311,7 +312,11 @@ export function handleMockRequest(message: Record<string, unknown>) {
           hasSecrets: false,
         },
         secrets: {},
-        plugins: [{ id: 'superpowers@superpowers-marketplace', label: 'superpowers', featured: true }],
+        pluginsInstall: [
+          { id: 'superpowers@superpowers-marketplace', label: 'superpowers', featured: true },
+        ],
+        pluginsUpdate: [],
+        pluginsUninstall: [],
       })
       break
 

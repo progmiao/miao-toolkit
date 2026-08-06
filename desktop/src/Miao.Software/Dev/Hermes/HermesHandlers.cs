@@ -5,7 +5,7 @@ using Miao.Software.Detect;
 namespace Miao.Software.Dev.Hermes;
 
 /// <summary>
-/// Hermes Agent：官方 install.ps1 安装或已存在时 hermes update。
+/// Hermes：官方 install.ps1 安装或已存在时 hermes update。
 /// </summary>
 public sealed class HermesInstallHandler : IToolActionHandler
 {
@@ -31,7 +31,7 @@ Write-Host '##progress 8'
 Refresh-Path
 $desk = winget list --id fathah.HermesDesktop -e 2>&1 | Out-String
 if ($desk -match 'HermesDesktop|fathah') {
-  Write-Host '注意：检测到 WinGet Hermes Desktop，与 Hermes Agent CLI 相互独立。'
+  Write-Host '注意：检测到 WinGet Hermes Desktop，与 Hermes CLI 相互独立。'
 }
 Write-Host '##progress 20'
 if (Test-Hermes) {

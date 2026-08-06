@@ -317,6 +317,48 @@ public static class AppServices
         EnqueueOneVersionCache(volta, "node", "cache.versions.node", "同步 Node.js 版本目录");
         EnqueueOneVersionCache(volta, "pnpm", "cache.versions.pnpm", "同步 pnpm 版本目录");
         EnqueueOneVersionCache(volta, "yarn", "cache.versions.yarn", "同步 Yarn 版本目录");
+        EnqueueClaudePluginCache();
+    }
+
+    /// <summary>
+    /// 进入工具箱后：Claude 已安装且已初始化时，后台同步插件目录并校验安装态后落库。
+    /// </summary>
+    public static void EnqueueClaudePluginCache()
+    {
+        if (_claude is null || _db is null) return;
+        var claude = _claude;
+        var db = _db;
+
+        var state = db.GetToolState("claude-code");
+        var installed =
+            state is not null
+            && string.Equals(state.Status, "installed", StringComparison.OrdinalIgnoreCase);
+        if (!installed) return;
+
+        // 未初始化则跳过：无 marketplace / 无 DISABLE_LOGIN，同步无效
+        if (!claude.IsInitialized(db)) return;
+
+        Silent.Enqueue(
+            "cache.claude.plugins",
+            "同步 Claude 插件目录",
+            async (progress, ct) =>
+            {
+                await Task.Run(
+                        () =>
+                        {
+                            progress.Report(8);
+                            var (ok, detail) = claude.SyncPluginCatalog(
+                                db,
+                                onStep: (_, pct) => progress.Report(Math.Clamp(pct, 8, 99)),
+                                updateRemote: true);
+                            if (!ok)
+                                throw new InvalidOperationException(detail);
+                            db.SetSetting("claude.initialized", "1");
+                            progress.Report(100);
+                        },
+                        ct)
+                    .ConfigureAwait(false);
+            });
     }
 
     /// <summary>入队单个 Volta 包的远程增量同步。</summary>

@@ -51,6 +51,11 @@
                                           "nameKey":  "claude.action.pluginInstall"
                                       },
                                       {
+                                          "id":  "plugin-update",
+                                          "handler":  "claude.plugin-update",
+                                          "nameKey":  "claude.action.pluginUpdate"
+                                      },
+                                      {
                                           "id":  "plugin-uninstall",
                                           "handler":  "claude.plugin-uninstall",
                                           "nameKey":  "claude.action.pluginUninstall"

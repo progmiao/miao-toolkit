@@ -60,6 +60,9 @@ const isDone = computed(() => pct.value >= 100)
 <style scoped>
 .progress-wrap {
   flex: 0 0 auto;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
   padding: 0.4rem 0.65rem 0.45rem;
   border-radius: 0.55rem;
   border: 1px solid color-mix(in srgb, var(--line) 80%, transparent);
@@ -108,7 +111,9 @@ const isDone = computed(() => pct.value >= 100)
 
 .progress-pct {
   flex: 0 0 4ch;
+  flex-shrink: 0;
   width: 4ch;
+  max-width: 4ch;
   box-sizing: content-box;
   text-align: right;
   font-size: 0.68rem;

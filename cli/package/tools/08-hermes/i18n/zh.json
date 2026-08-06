@@ -1,7 +1,7 @@
 ﻿{
   "hermes": {
-    "name": "Hermes Agent",
-    "description": "Hermes Agent 官方 CLI（命令行/TUI/Gateway）",
+    "name": "Hermes",
+    "description": "Hermes 官方 CLI（命令行/TUI/Gateway）",
     "action": {
       "install": {
         "name": "安装",

@@ -22,7 +22,7 @@ public sealed class AppDatabase : IDisposable
         Migrate();
     }
 
-    /// <summary>建表与轻量迁移（schema 4：+package_versions 缓存）。</summary>
+    /// <summary>建表与轻量迁移（schema 5：+claude_plugins 插件目录缓存）。</summary>
     private void Migrate()
     {
         using var cmd = _conn.CreateCommand();
@@ -82,6 +82,20 @@ public sealed class AppDatabase : IDisposable
               updated_at TEXT NOT NULL,
               PRIMARY KEY (tool_id, version)
             );
+
+            CREATE TABLE IF NOT EXISTS claude_plugins (
+              plugin_id TEXT PRIMARY KEY NOT NULL,
+              name TEXT NOT NULL,
+              marketplace TEXT NOT NULL,
+              description TEXT,
+              featured INTEGER NOT NULL DEFAULT 0,
+              remote_version TEXT,
+              installed INTEGER NOT NULL DEFAULT 0,
+              installed_version TEXT,
+              update_available INTEGER NOT NULL DEFAULT 0,
+              in_catalog INTEGER NOT NULL DEFAULT 1,
+              checked_at TEXT NOT NULL
+            );
             """;
         cmd.ExecuteNonQuery();
 
@@ -94,13 +108,13 @@ public sealed class AppDatabase : IDisposable
 
         SetSettingIfMissing("locale", "zh");
         var prevSchema = GetSetting("schema_version", "0");
-        if (prevSchema is not "3" and not "4")
+        if (prevSchema is not "3" and not "4" and not "5")
         {
             // 旧库升级到 seeds 模型时强制重灌
             SetSetting("seed_version", "0");
         }
 
-        SetSetting("schema_version", "4");
+        SetSetting("schema_version", "5");
     }
 
     /// <summary>读取设置；不存在返回 <paramref name="fallback"/>。</summary>
@@ -573,6 +587,111 @@ public sealed class AppDatabase : IDisposable
             reader.GetString(4));
     }
 
+    /// <summary>全量替换 Claude 插件目录缓存（含已装但远端已删的行）。</summary>
+    public void ReplaceClaudePlugins(IEnumerable<ClaudePluginRow> rows)
+    {
+        using var tx = _conn.BeginTransaction();
+        using (var del = _conn.CreateCommand())
+        {
+            del.Transaction = tx;
+            del.CommandText = "DELETE FROM claude_plugins;";
+            del.ExecuteNonQuery();
+        }
+
+        foreach (var row in rows)
+        {
+            using var cmd = _conn.CreateCommand();
+            cmd.Transaction = tx;
+            cmd.CommandText =
+                """
+                INSERT INTO claude_plugins(
+                  plugin_id, name, marketplace, description, featured,
+                  remote_version, installed, installed_version, update_available, in_catalog, checked_at)
+                VALUES($id, $name, $mp, $desc, $feat, $rv, $inst, $iv, $upd, $cat, $t)
+                """;
+            cmd.Parameters.AddWithValue("$id", row.PluginId);
+            cmd.Parameters.AddWithValue("$name", row.Name);
+            cmd.Parameters.AddWithValue("$mp", row.Marketplace);
+            cmd.Parameters.AddWithValue("$desc", (object?)row.Description ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("$feat", row.Featured ? 1 : 0);
+            cmd.Parameters.AddWithValue("$rv", (object?)row.RemoteVersion ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("$inst", row.Installed ? 1 : 0);
+            cmd.Parameters.AddWithValue("$iv", (object?)row.InstalledVersion ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("$upd", row.UpdateAvailable ? 1 : 0);
+            cmd.Parameters.AddWithValue("$cat", row.InCatalog ? 1 : 0);
+            cmd.Parameters.AddWithValue("$t", row.CheckedAt);
+            cmd.ExecuteNonQuery();
+        }
+
+        tx.Commit();
+    }
+
+    /// <summary>可安装：未装且仍在远端目录；推荐优先，其余按名称。</summary>
+    public IReadOnlyList<ClaudePluginRow> ListClaudePluginsForInstall() =>
+        QueryClaudePlugins(
+            """
+            SELECT plugin_id, name, marketplace, description, featured,
+                   remote_version, installed, installed_version, update_available, in_catalog, checked_at
+            FROM claude_plugins
+            WHERE installed = 0 AND in_catalog = 1
+            ORDER BY featured DESC, name COLLATE NOCASE ASC
+            """);
+
+    /// <summary>可更新：已装且有新版本。</summary>
+    public IReadOnlyList<ClaudePluginRow> ListClaudePluginsForUpdate() =>
+        QueryClaudePlugins(
+            """
+            SELECT plugin_id, name, marketplace, description, featured,
+                   remote_version, installed, installed_version, update_available, in_catalog, checked_at
+            FROM claude_plugins
+            WHERE installed = 1 AND update_available = 1
+            ORDER BY name COLLATE NOCASE ASC
+            """);
+
+    /// <summary>可卸载：已装（含远端已删但仍本地保留）。</summary>
+    public IReadOnlyList<ClaudePluginRow> ListClaudePluginsForUninstall() =>
+        QueryClaudePlugins(
+            """
+            SELECT plugin_id, name, marketplace, description, featured,
+                   remote_version, installed, installed_version, update_available, in_catalog, checked_at
+            FROM claude_plugins
+            WHERE installed = 1
+            ORDER BY name COLLATE NOCASE ASC
+            """);
+
+    /// <summary>是否已有任一 Claude 插件缓存行。</summary>
+    public bool HasClaudePluginCache()
+    {
+        using var cmd = _conn.CreateCommand();
+        cmd.CommandText = "SELECT 1 FROM claude_plugins LIMIT 1";
+        return cmd.ExecuteScalar() is not null;
+    }
+
+    private List<ClaudePluginRow> QueryClaudePlugins(string sql)
+    {
+        using var cmd = _conn.CreateCommand();
+        cmd.CommandText = sql;
+        var list = new List<ClaudePluginRow>();
+        using var reader = cmd.ExecuteReader();
+        while (reader.Read())
+        {
+            list.Add(new ClaudePluginRow(
+                reader.GetString(0),
+                reader.GetString(1),
+                reader.GetString(2),
+                reader.IsDBNull(3) ? null : reader.GetString(3),
+                reader.GetInt64(4) != 0,
+                reader.IsDBNull(5) ? null : reader.GetString(5),
+                reader.GetInt64(6) != 0,
+                reader.IsDBNull(7) ? null : reader.GetString(7),
+                reader.GetInt64(8) != 0,
+                reader.GetInt64(9) != 0,
+                reader.GetString(10)));
+        }
+
+        return list;
+    }
+
     /// <inheritdoc />
     public void Dispose() => _conn.Dispose();
 }
@@ -599,6 +718,20 @@ public sealed record PackageVersionRow(
     string? Lts,
     string? ReleaseDate,
     string UpdatedAt);
+
+/// <summary>claude_plugins 缓存一行。</summary>
+public sealed record ClaudePluginRow(
+    string PluginId,
+    string Name,
+    string Marketplace,
+    string? Description,
+    bool Featured,
+    string? RemoteVersion,
+    bool Installed,
+    string? InstalledVersion,
+    bool UpdateAvailable,
+    bool InCatalog,
+    string CheckedAt);
 
 /// <summary>网站分类一行。</summary>
 public sealed record SiteCategoryRow(

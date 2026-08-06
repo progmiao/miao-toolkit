@@ -63,7 +63,10 @@ const visible = computed(
   display: flex;
   flex-direction: column;
   gap: 0.65rem;
+  min-width: 0;
   min-height: 0;
+  width: 100%;
+  max-width: 100%;
   flex: 1;
 }
 

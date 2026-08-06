@@ -89,6 +89,9 @@ export type HostMessage = {
   status?: unknown
   secrets?: unknown
   plugins?: unknown
+  pluginsInstall?: unknown
+  pluginsUpdate?: unknown
+  pluginsUninstall?: unknown
   /** boot.progress */
   stage?: string
   percent?: number

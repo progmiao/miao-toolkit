@@ -2,16 +2,8 @@
   "schemaVersion": 1,
   "marketplaces": [
     {
-      "source": "obra/superpowers-marketplace",
+      "source": "https://github.com/obra/superpowers-marketplace.git",
       "label": "obra/superpowers-marketplace"
-    },
-    {
-      "source": "anthropics/claude-code",
-      "label": "anthropics/claude-code"
-    },
-    {
-      "source": "anthropics/claude-plugins-community",
-      "label": "anthropics/claude-plugins-community"
     }
   ],
   "featuredPlugins": [
