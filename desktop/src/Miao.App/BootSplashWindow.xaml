@@ -1,0 +1,157 @@
+<Window x:Class="Miao.App.BootSplashWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Miao"
+        WindowStyle="None"
+        ResizeMode="NoResize"
+        ShowInTaskbar="False"
+        Background="#060A12"
+        AllowsTransparency="False"
+        Focusable="False"
+        ShowActivated="False">
+  <!--
+    独立 HWND 盖住主窗客户区（WebView）：避免 Hidden→Visible 闪缩与 airspace。
+    外框/标题栏始终是 MainWindow，收起遮罩时窗口尺寸不变。
+  -->
+  <Grid ClipToBounds="True" Background="#060A12">
+    <Grid IsHitTestVisible="False">
+      <Ellipse Width="420" Height="420"
+               HorizontalAlignment="Left"
+               VerticalAlignment="Top"
+               Margin="48,48,0,0"
+               Opacity="0.55"
+               RenderTransformOrigin="0.5,0.5">
+        <Ellipse.Effect>
+          <BlurEffect Radius="48" />
+        </Ellipse.Effect>
+        <Ellipse.Fill>
+          <RadialGradientBrush>
+            <GradientStop Color="#8C5EC9D6" Offset="0" />
+            <GradientStop Color="#005EC9D6" Offset="0.68" />
+          </RadialGradientBrush>
+        </Ellipse.Fill>
+        <Ellipse.RenderTransform>
+          <TranslateTransform x:Name="OrbA" />
+        </Ellipse.RenderTransform>
+      </Ellipse>
+      <Ellipse Width="380" Height="380"
+               HorizontalAlignment="Right"
+               VerticalAlignment="Bottom"
+               Margin="0,0,24,40"
+               Opacity="0.5"
+               RenderTransformOrigin="0.5,0.5">
+        <Ellipse.Effect>
+          <BlurEffect Radius="48" />
+        </Ellipse.Effect>
+        <Ellipse.Fill>
+          <RadialGradientBrush>
+            <GradientStop Color="#737C9CFF" Offset="0" />
+            <GradientStop Color="#007C9CFF" Offset="0.68" />
+          </RadialGradientBrush>
+        </Ellipse.Fill>
+        <Ellipse.RenderTransform>
+          <TranslateTransform x:Name="OrbB" />
+        </Ellipse.RenderTransform>
+      </Ellipse>
+
+      <Rectangle Opacity="0.18">
+        <Rectangle.Fill>
+          <DrawingBrush TileMode="Tile" Viewport="0,0,48,48" ViewportUnits="Absolute">
+            <DrawingBrush.Drawing>
+              <DrawingGroup>
+                <GeometryDrawing Geometry="M0,0 L48,0">
+                  <GeometryDrawing.Pen>
+                    <Pen Brush="#335EC9D6" Thickness="1" />
+                  </GeometryDrawing.Pen>
+                </GeometryDrawing>
+                <GeometryDrawing Geometry="M0,0 L0,48">
+                  <GeometryDrawing.Pen>
+                    <Pen Brush="#335EC9D6" Thickness="1" />
+                  </GeometryDrawing.Pen>
+                </GeometryDrawing>
+              </DrawingGroup>
+            </DrawingBrush.Drawing>
+          </DrawingBrush>
+        </Rectangle.Fill>
+        <Rectangle.OpacityMask>
+          <RadialGradientBrush Center="0.5,0.45" GradientOrigin="0.5,0.45"
+                               RadiusX="0.55" RadiusY="0.45">
+            <GradientStop Color="#FF000000" Offset="0.2" />
+            <GradientStop Color="#00000000" Offset="0.9" />
+          </RadialGradientBrush>
+        </Rectangle.OpacityMask>
+      </Rectangle>
+    </Grid>
+
+    <StackPanel VerticalAlignment="Center"
+                HorizontalAlignment="Center"
+                MaxWidth="820"
+                Margin="16">
+      <TextBlock x:Name="HostBootAscii"
+                 xml:space="preserve"
+                 FontFamily="Cascadia Mono, Consolas, Courier New"
+                 FontSize="24"
+                 LineHeight="28"
+                 LineStackingStrategy="BlockLineHeight"
+                 Foreground="#5EC9D6"
+                 TextAlignment="Left"
+                 HorizontalAlignment="Center"
+                 SnapsToDevicePixels="True"
+                 TextOptions.TextFormattingMode="Ideal"
+                 TextOptions.TextHintingMode="Fixed">
+        <TextBlock.Effect>
+          <DropShadowEffect Color="#5EC9D6" BlurRadius="22" ShadowDepth="0" Opacity="0.45" />
+        </TextBlock.Effect>
+        <TextBlock.Triggers>
+          <EventTrigger RoutedEvent="FrameworkElement.Loaded">
+            <BeginStoryboard>
+              <Storyboard RepeatBehavior="Forever" AutoReverse="True">
+                <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                 From="0.72" To="1"
+                                 Duration="0:0:0.9" />
+              </Storyboard>
+            </BeginStoryboard>
+          </EventTrigger>
+        </TextBlock.Triggers>
+      </TextBlock>
+
+      <Border Height="184" Margin="0,9,0,0" Width="480" MaxWidth="480">
+        <TextBlock x:Name="HostBootHint"
+                   Text=""
+                   Visibility="Collapsed"
+                   VerticalAlignment="Center"
+                   HorizontalAlignment="Center"
+                   TextAlignment="Center"
+                   FontSize="13"
+                   Foreground="#FB7185"
+                   TextWrapping="Wrap"
+                   MaxWidth="420" />
+      </Border>
+    </StackPanel>
+
+    <Grid.Triggers>
+      <EventTrigger RoutedEvent="FrameworkElement.Loaded">
+        <BeginStoryboard>
+          <Storyboard RepeatBehavior="Forever" AutoReverse="True">
+            <DoubleAnimation Storyboard.TargetName="OrbA"
+                             Storyboard.TargetProperty="X"
+                             From="0" To="28"
+                             Duration="0:0:7" />
+            <DoubleAnimation Storyboard.TargetName="OrbA"
+                             Storyboard.TargetProperty="Y"
+                             From="0" To="-22"
+                             Duration="0:0:7" />
+            <DoubleAnimation Storyboard.TargetName="OrbB"
+                             Storyboard.TargetProperty="X"
+                             From="0" To="-24"
+                             Duration="0:0:9" />
+            <DoubleAnimation Storyboard.TargetName="OrbB"
+                             Storyboard.TargetProperty="Y"
+                             From="0" To="18"
+                             Duration="0:0:9" />
+          </Storyboard>
+        </BeginStoryboard>
+      </EventTrigger>
+    </Grid.Triggers>
+  </Grid>
+</Window>

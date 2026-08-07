@@ -22,6 +22,8 @@ public sealed class TerminalBuddyInstallHandler : IToolActionHandler
 
         var sb = new StringBuilder();
         sb.AppendLine("$ErrorActionPreference = 'Stop'");
+        // 禁止 Invoke-WebRequest 进度条刷屏（正在写入请求流…），否则 \r 进度会污染输出窗
+        sb.AppendLine("$ProgressPreference = 'SilentlyContinue'");
         sb.AppendLine($"$owner = '{Escape(owner)}'; $repo = '{Escape(repo)}'; $asset = '{Escape(asset)}'");
         sb.AppendLine(@"
 $installDir = Join-Path $env:LOCALAPPDATA 'Programs\terminal-buddy'
@@ -37,19 +39,22 @@ $item = $rel.assets | Where-Object { $_.name -eq $asset } | Select-Object -First
 if (-not $item) { throw ""Release 中未找到 $asset"" }
 $url = $item.browser_download_url
 if (-not $url) { $url = $item.download_url }
-$needDownload = $true
 if (Test-Path $exePath) {
   try {
     $localVer = [Diagnostics.FileVersionInfo]::GetVersionInfo($exePath).FileVersion
     Write-Host ""本地 FileVersion=$localVer · 远程 tag=$tag""
-  } catch { $localVer = $null }
+  } catch { }
   Write-Host '将下载最新 Release 覆盖安装（同步）'
+} else {
+  Write-Host ""远程 tag=$tag · 首次安装""
 }
 Write-Host ""下载: $url""
 Write-Host '##progress 30'
+Write-Host '##task 正在下载…'
 $tmp = Join-Path $env:TEMP (""tb-"" + [guid]::NewGuid().ToString('N') + '.exe')
 Invoke-WebRequest -Uri $url -OutFile $tmp -UseBasicParsing
 Write-Host '##progress 70'
+Write-Host '##task 正在写入安装目录…'
 Copy-Item -LiteralPath $tmp -Destination $exePath -Force
 Remove-Item -LiteralPath $tmp -Force -ErrorAction SilentlyContinue
 Set-Content -Path $marker -Value ((Get-Date -Format o) + ""`n"" + $tag) -Encoding UTF8

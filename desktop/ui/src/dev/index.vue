@@ -26,6 +26,7 @@ import { useJobConsole } from '@kernel/composables/useJobConsole'
 import { useShellTitle } from '@kernel/composables/useShellTitle'
 import {
   buildTagFilters,
+  isBlockedByNodePrereq,
   showInstallAction,
   showUninstallAction,
   showUpdateAction,
@@ -119,6 +120,10 @@ const panelLoaders: Record<string, () => Promise<Component>> = {
   pnpm: () => import('./pnpm/index.vue'),
   yarn: () => import('./yarn/index.vue'),
   claude: () => import('./claude/index.vue'),
+  terminalBuddy: () => import('./terminalBuddy/index.vue'),
+  ccSwitch: () => import('./ccSwitch/index.vue'),
+  ccConnect: () => import('./ccConnect/index.vue'),
+  hermes: () => import('./hermes/index.vue'),
 }
 
 const panelComponents: Record<string, Component> = Object.fromEntries(
@@ -136,6 +141,11 @@ const activeItem = computed(
   () => filtered.value.find((i) => i.id === activeId.value)
     ?? items.value.find((i) => i.id === activeId.value)
     ?? null,
+)
+
+/** 当前工具被 Node 18+ 闸门挡住（CC Switch / CC Connect）。 */
+const nodePrereqBlocked = computed(() =>
+  isBlockedByNodePrereq(activeItem.value, items.value),
 )
 
 /**
@@ -248,8 +258,16 @@ watch(filtered, (list) => {
  */
 async function runAction(action: string, id: string) {
   if (busy.value) return
-  const name = items.value.find((i) => i.id === id)?.name ?? id
+  const item = items.value.find((i) => i.id === id)
+  const name = item?.name ?? id
   const hostAction = action === 'update' ? 'install' : action
+
+  if (
+    (action === 'install' || action === 'update') &&
+    isBlockedByNodePrereq(item, items.value)
+  ) {
+    return
+  }
 
   if (action === 'update') {
     const ok = await confirmDialog({
@@ -277,20 +295,12 @@ async function runAction(action: string, id: string) {
   const jobId = crypto.randomUUID().replaceAll('-', '')
   post({ type: 'run-job', jobId, toolId: id, action: hostAction })
 }
-
-function openDoc(which: 'gitee' | 'github') {
-  const url =
-    which === 'gitee'
-      ? 'https://gitee.com/updateme/terminal-buddy'
-      : 'https://github.com/updateme/terminal-buddy'
-  post({ type: 'open-url', url })
-}
 </script>
 
 <template>
   <section class="page dev-page">
     <RegionLock :active="busy" title="任务进行中，请先终止">
-      <nav class="filter-bar" aria-label="分类过滤">
+      <nav class="filter-bar filter-bar--compact" aria-label="分类过滤">
         <button
           v-for="f in filters"
           :key="f.id"
@@ -309,7 +319,7 @@ function openDoc(which: 'gitee' | 'github') {
       <RegionLock class="dev-list-lock" :active="busy" title="任务进行中，请先终止">
         <ul
           ref="listEl"
-          class="dev-list dev-frost"
+          class="dev-list panel-frost"
           :class="{ 'dev-list--loading': listLoading }"
           :aria-busy="listLoading"
           aria-label="工具列表"
@@ -332,6 +342,7 @@ function openDoc(which: 'gitee' | 'github') {
             <li
               v-for="it in filtered"
               :key="it.id"
+              class="side-nav-item"
               :class="{ active: activeId === it.id }"
               @click="selectRow(it)"
             >
@@ -353,7 +364,7 @@ function openDoc(which: 'gitee' | 'github') {
         </ul>
       </RegionLock>
 
-      <aside class="job-panel dev-frost" :class="{ 'job-panel--fill': workspaceOwnsConsole }">
+      <aside class="job-panel panel-frost" :class="{ 'job-panel--fill': workspaceOwnsConsole }">
         <div v-if="activeItem" class="panel-box">
           <!-- 工具概览：Logo + 名称 + 说明 + 安装/更新/卸载 -->
           <div class="tool-overview" aria-label="工具概览">
@@ -370,12 +381,32 @@ function openDoc(which: 'gitee' | 'github') {
                   <span class="panel-title-meta">
                     <template v-if="activeItem.status === 'installed'">
                       · 已安装<span v-if="activeItem.version"> · {{ activeItem.version }}</span>
+                      <span
+                        v-if="activeItem.updateAvailable"
+                        class="panel-title-update"
+                      >
+                        <template v-if="activeItem.latestVersion">
+                          · 可更新 {{ activeItem.latestVersion }}
+                        </template>
+                        <template v-else> · 有更新</template>
+                      </span>
                     </template>
                     <template v-else-if="activeItem.status === 'missing'"> · 未安装</template>
                   </span>
                 </h2>
                 <p v-if="activeItem.description" class="panel-desc">{{ activeItem.description }}</p>
                 <p v-if="featureTip" class="panel-tip tip-feature">{{ featureTip }}</p>
+                <p v-if="nodePrereqBlocked" class="prereq-banner-inline">
+                  <span>缺少前置：Node.js 18+</span>
+                  <button
+                    type="button"
+                    class="btn secondary prereq-go"
+                    :disabled="busy"
+                    @click="selectToolById('node')"
+                  >
+                    前往 Node.js
+                  </button>
+                </p>
               </div>
             </div>
 
@@ -389,8 +420,9 @@ function openDoc(which: 'gitee' | 'github') {
                   <button
                     v-if="showInstallAction(activeItem)"
                     type="button"
-                    class="btn action-btn"
-                    :disabled="busy"
+                    class="btn btn-overview"
+                    :disabled="busy || nodePrereqBlocked"
+                    :title="nodePrereqBlocked ? '请先安装 Node.js 18+' : undefined"
                     @click="runAction('install', activeItem.id)"
                   >
                     安装
@@ -398,8 +430,9 @@ function openDoc(which: 'gitee' | 'github') {
                   <button
                     v-if="showUpdateAction(activeItem)"
                     type="button"
-                    class="btn action-btn"
-                    :disabled="busy"
+                    class="btn btn-overview"
+                    :disabled="busy || nodePrereqBlocked"
+                    :title="nodePrereqBlocked ? '请先安装 Node.js 18+' : undefined"
                     @click="runAction('update', activeItem.id)"
                   >
                     更新
@@ -407,7 +440,7 @@ function openDoc(which: 'gitee' | 'github') {
                   <button
                     v-if="showUninstallAction(activeItem)"
                     type="button"
-                    class="btn secondary action-btn"
+                    class="btn secondary btn-overview"
                     :disabled="busy"
                     @click="runAction('uninstall', activeItem.id)"
                   >
@@ -416,21 +449,17 @@ function openDoc(which: 'gitee' | 'github') {
                   <button
                     v-if="overviewExtra?.refresh"
                     type="button"
-                    class="btn secondary action-btn"
+                    class="btn secondary btn-overview"
                     :disabled="busy || overviewExtra.refreshing"
                     @click="overviewExtra.refresh?.()"
                   >
                     {{ overviewExtra.refreshLabel || '刷新清单' }}
                   </button>
-                  <template v-if="activeItem.id === 'terminal-buddy'">
-                    <button type="button" class="btn ghost" @click="openDoc('gitee')">Gitee 文档</button>
-                    <button type="button" class="btn ghost" @click="openDoc('github')">GitHub 文档</button>
-                  </template>
                 </div>
               </RegionLock>
               <button
                 type="button"
-                class="btn danger action-btn"
+                class="btn danger btn-overview"
                 :disabled="!busy"
                 title="终止当前任务"
                 @click="cancel"
@@ -481,49 +510,6 @@ function openDoc(which: 'gitee' | 'github') {
   overflow: hidden;
   background: transparent;
 }
-.filter-bar {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.45rem;
-  margin: 0 0 0.65rem;
-  flex: 0 0 auto;
-  padding: 0.4rem 0.5rem;
-  border-radius: 0.75rem;
-  border: 1px solid color-mix(in srgb, var(--line) 80%, transparent);
-  background: color-mix(in srgb, var(--panel) 42%, transparent);
-  backdrop-filter: blur(16px) saturate(1.3);
-  -webkit-backdrop-filter: blur(16px) saturate(1.3);
-}
-.filter-chip {
-  border: 1px solid color-mix(in srgb, var(--line) 90%, transparent);
-  background: color-mix(in srgb, var(--panel) 55%, transparent);
-  color: var(--muted);
-  padding: 0.35rem 0.85rem;
-  border-radius: 999px;
-  font-weight: 600;
-  font-size: 0.88rem;
-  letter-spacing: 0.04em;
-  cursor: pointer;
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  transition:
-    background 0.2s ease,
-    border-color 0.2s ease,
-    color 0.2s ease,
-    transform 0.15s ease,
-    box-shadow 0.2s ease;
-}
-.filter-chip:hover {
-  color: var(--ink);
-  border-color: color-mix(in srgb, var(--accent) 40%, var(--line));
-  transform: translateY(-1px);
-}
-.filter-chip.active {
-  color: var(--accent-ink);
-  background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent-2) 50%, var(--accent)));
-  border-color: transparent;
-  box-shadow: 0 0 14px var(--glow);
-}
 .dev-layout {
   flex: 1;
   min-height: 0;
@@ -540,19 +526,6 @@ function openDoc(which: 'gitee' | 'github') {
   height: 100%;
   display: flex;
   flex-direction: column;
-}
-
-/* 列表 / 操作区：半透明磨砂面板 */
-.dev-frost {
-  background: color-mix(in srgb, var(--panel) 42%, transparent);
-  border: 1px solid color-mix(in srgb, var(--line) 85%, transparent);
-  border-radius: 0.9rem;
-  backdrop-filter: blur(22px) saturate(1.4);
-  -webkit-backdrop-filter: blur(22px) saturate(1.4);
-  box-shadow:
-    inset 0 1px 0 color-mix(in srgb, #fff 28%, transparent),
-    inset 0 0 36px color-mix(in srgb, var(--accent) 5%, transparent),
-    0 10px 28px color-mix(in srgb, var(--ink) 5%, transparent);
 }
 
 .dev-list {
@@ -581,9 +554,6 @@ function openDoc(which: 'gitee' | 'github') {
   cursor: pointer;
   min-width: 0;
   max-width: 100%;
-  transition:
-    background 0.2s ease,
-    box-shadow 0.22s ease;
 }
 .dev-list li.empty-row {
   display: flex;
@@ -593,15 +563,6 @@ function openDoc(which: 'gitee' | 'github') {
   justify-content: center;
   align-items: center;
   min-height: 2.75rem;
-}
-.dev-list li:not(.empty-row):not(.skel-row):hover {
-  background: color-mix(in srgb, var(--accent) 10%, transparent);
-}
-.dev-list li.active {
-  background: color-mix(in srgb, var(--accent) 16%, transparent);
-  box-shadow:
-    inset 3px 0 0 var(--accent),
-    0 0 18px color-mix(in srgb, var(--glow) 55%, transparent);
 }
 
 /* —— 列表加载：骨架与真实行同结构/同内边距 —— */
@@ -724,44 +685,7 @@ function openDoc(which: 'gitee' | 'github') {
   max-width: 100%;
   margin-top: 0.05rem;
 }
-.meta {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  box-sizing: border-box;
-  height: 1.1rem;
-  padding: 0 0.38rem;
-  font-size: 0.65rem;
-  font-weight: 650;
-  letter-spacing: 0.02em;
-  line-height: 1;
-  border-radius: 0.3rem;
-  border: 1px solid transparent;
-  white-space: nowrap;
-  max-width: 100%;
-  vertical-align: middle;
-}
-.meta-status.status-installed {
-  color: var(--ok);
-  background: color-mix(in srgb, var(--ok) 14%, transparent);
-  border-color: color-mix(in srgb, var(--ok) 28%, transparent);
-  font-variant-numeric: tabular-nums;
-}
-.meta-status.status-outdated {
-  color: var(--warn);
-  background: color-mix(in srgb, var(--warn) 14%, transparent);
-  border-color: color-mix(in srgb, var(--warn) 28%, transparent);
-}
-.meta-status.status-missing {
-  color: var(--muted);
-  background: color-mix(in srgb, var(--muted) 12%, transparent);
-  border-color: color-mix(in srgb, var(--muted) 22%, transparent);
-}
-.meta-status.status-unknown {
-  color: var(--muted);
-  background: color-mix(in srgb, var(--muted) 10%, transparent);
-  border-color: color-mix(in srgb, var(--muted) 20%, transparent);
-}
+/* 状态 .meta 见 styles/status.css */
 .job-panel {
   min-height: 0;
   height: 100%;
@@ -855,6 +779,10 @@ function openDoc(which: 'gitee' | 'github') {
   text-transform: none;
   color: var(--muted);
 }
+.panel-title-update {
+  color: var(--accent);
+  font-weight: 700;
+}
 .panel-desc {
   margin: 0;
   color: var(--muted);
@@ -887,37 +815,10 @@ function openDoc(which: 'gitee' | 'github') {
   align-items: stretch;
   gap: 0.5rem;
 }
-/** 安装 / 更新 / 卸载：大按钮，高度贴齐左侧信息块 */
+/** 安装 / 更新 / 卸载 / 终止：高度贴齐左侧信息块（尺寸见 buttons.css .btn-overview） */
 .actions--tall {
   align-items: stretch;
   align-self: stretch;
-}
-.actions--tall .action-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 100%;
-  min-width: 4.6rem;
-  padding: 0.65rem 1.15rem;
-  font-size: 0.95rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  border-radius: 0.55rem;
-}
-.prereq-chip {
-  display: inline-flex;
-  align-items: center;
-  align-self: center;
-  height: 1.45rem;
-  padding: 0 0.55rem;
-  font-size: 0.72rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  color: var(--warn);
-  border: 1px dashed color-mix(in srgb, var(--warn) 55%, transparent);
-  border-radius: 0.35rem;
-  background: color-mix(in srgb, var(--warn) 10%, transparent);
-  white-space: nowrap;
 }
 .actions--tall .prereq-chip {
   align-self: center;
@@ -967,20 +868,6 @@ function openDoc(which: 'gitee' | 'github') {
     box-shadow: 0 0 16px var(--glow);
   }
 }
-.panel-tip {
-  margin: 0.35rem 0 0;
-  padding: 0.4rem 0.6rem;
-  border-radius: 0.45rem;
-  font-size: 0.8rem;
-  line-height: 1.35;
-  color: var(--ink);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-}
-.tip-feature {
-  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--line));
-  background: color-mix(in srgb, var(--accent) 10%, transparent);
-}
 .job-panel :deep(.job-console) {
   flex: 1;
   min-height: 0;
@@ -1006,7 +893,7 @@ function openDoc(which: 'gitee' | 'github') {
   .tool-overview-actions {
     justify-content: flex-start;
   }
-  .actions--tall .action-btn {
+  .actions--tall .btn-overview {
     min-height: 2.75rem;
   }
 }

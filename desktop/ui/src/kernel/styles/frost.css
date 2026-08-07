@@ -1,0 +1,37 @@
+/**
+ * 磨砂面板与侧栏选中条（开发列表 / 设置 / 工具集等）。
+ */
+.panel-frost {
+  background: color-mix(in srgb, var(--panel) 42%, transparent);
+  border: 1px solid color-mix(in srgb, var(--line) 85%, transparent);
+  border-radius: 0.9rem;
+  backdrop-filter: blur(22px) saturate(1.4);
+  -webkit-backdrop-filter: blur(22px) saturate(1.4);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, #fff 28%, transparent),
+    inset 0 0 36px color-mix(in srgb, var(--accent) 5%, transparent),
+    0 10px 28px color-mix(in srgb, var(--ink) 5%, transparent);
+}
+
+.panel-frost--flat {
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, #fff 28%, transparent),
+    inset 0 0 36px color-mix(in srgb, var(--accent) 5%, transparent);
+}
+
+/** 侧栏/列表项：悬停与左侧强调条选中态 */
+.side-nav-item {
+  transition: background 0.2s ease, box-shadow 0.22s ease;
+}
+
+.side-nav-item:hover {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+.side-nav-item.active,
+.side-nav-item.is-active {
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  box-shadow:
+    inset 3px 0 0 var(--accent),
+    0 0 18px color-mix(in srgb, var(--glow) 55%, transparent);
+}

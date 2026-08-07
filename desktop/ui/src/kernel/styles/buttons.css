@@ -1,0 +1,214 @@
+/**
+ * 公共按钮体系（全站统一）。
+ *
+ * 变体：
+ * - `.btn` / `.btn.secondary` / `.btn.danger` / `.btn.ghost` / `.btn.mini` → 通用
+ * - `.btn-overview` → 工具概览：安装 / 更新 / 卸载 / 终止
+ * - `.btn-ops` → 工具内操作条：执行 / 保存 / 选择 / 插件安装等
+ * - `.btn-install` → `.btn-ops` 主色强调的别名（历史兼容）
+ *
+ * 布局容器：
+ * - `.actions--tall` → 概览区按钮贴齐信息块高度
+ * - `.ver-head` / `.ver-project` → 由各工作区 CSS 负责行高；内部 `.btn` 自动套用 ops 尺寸
+ */
+:root {
+  --btn-ops-h: 1.85rem;
+}
+
+/* —— 基础 —— */
+.btn {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  border: 1px solid color-mix(in srgb, var(--accent) 55%, transparent);
+  border-radius: 0.45rem;
+  padding: 0.45rem 1rem;
+  background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent-2) 55%, var(--accent)));
+  color: var(--accent-ink);
+  font-family: var(--font-ui);
+  font-weight: 700;
+  font-size: 0.95rem;
+  letter-spacing: 0.04em;
+  line-height: 1.25;
+  text-align: center;
+  cursor: pointer;
+  text-decoration: none;
+  box-shadow: 0 0 16px color-mix(in srgb, var(--glow) 55%, transparent);
+  transition: filter 0.2s ease, transform 0.15s ease;
+}
+
+.btn:hover:not(:disabled) {
+  filter: brightness(1.08);
+  transform: translateY(-1px);
+}
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.btn.secondary {
+  background: color-mix(in srgb, var(--panel-strong) 80%, transparent);
+  color: var(--ink);
+  border-color: var(--line);
+  box-shadow: none;
+}
+
+.btn.danger {
+  background: linear-gradient(135deg, #e11d48, #be123c);
+  border-color: color-mix(in srgb, var(--danger) 60%, transparent);
+  color: #fff;
+}
+
+.btn.ghost {
+  background: transparent;
+  color: var(--accent);
+  box-shadow: none;
+}
+
+/** 文档链等小按钮（Gitee 文档 / 关联工具…） */
+.btn.mini {
+  appearance: none;
+  -webkit-appearance: none;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  box-sizing: border-box;
+  min-height: 1.7rem;
+  height: 1.7rem;
+  padding: 0 0.7rem !important;
+  font-family: "Noto Sans SC", "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC", sans-serif !important;
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  line-height: 1 !important;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.btn.mini .btn-label {
+  display: block;
+  line-height: 1;
+  transform: translateY(-0.05em);
+}
+
+.btn.mini::-moz-focus-inner {
+  border: 0;
+  padding: 0;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+/* —— 工具概览：安装 / 更新 / 卸载 / 终止 —— */
+.btn-overview {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  min-width: 4.6rem;
+  min-height: 2.75rem;
+  padding: 0.55rem 1.15rem;
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 1.25;
+  text-align: center;
+  border-radius: 0.55rem;
+}
+
+/** 概览信息块同高时贴齐拉伸 */
+.actions--tall {
+  align-items: stretch;
+  align-self: stretch;
+}
+
+.actions--tall .btn-overview {
+  min-height: 100%;
+}
+
+@media (max-width: 900px) {
+  .actions--tall .btn-overview {
+    min-height: 2.75rem;
+  }
+}
+
+/* —— 工具内操作按钮（执行 / 重置 / 保存 / 安装…） —— */
+.btn.btn-ops,
+.btn.btn-install,
+.ver-head > .btn,
+.ver-project > .btn {
+  appearance: none;
+  -webkit-appearance: none;
+  box-sizing: border-box;
+  /*
+   * 必须压过工作区里的 display 覆盖。
+   * 主字体用 Noto Sans SC（已引入），避免 Rajdhani 行高 strut 套在中文上回落偏下。
+   */
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  flex: 0 0 auto;
+  margin: 0;
+  height: var(--btn-ops-h);
+  min-height: var(--btn-ops-h);
+  max-height: var(--btn-ops-h);
+  padding: 0 0.75rem !important;
+  border-width: 1px;
+  font-family: "Noto Sans SC", "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC", sans-serif !important;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 1 !important;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.btn.btn-ops::-moz-focus-inner,
+.btn.btn-install::-moz-focus-inner,
+.ver-head > .btn::-moz-focus-inner,
+.ver-project > .btn::-moz-focus-inner {
+  border: 0;
+  padding: 0;
+}
+
+/** 按钮内文案：可光学微调（模板用 <span class="btn-label">） */
+.btn.btn-ops .btn-label,
+.btn.btn-install .btn-label,
+.ver-head > .btn .btn-label,
+.ver-project > .btn .btn-label {
+  display: block;
+  line-height: 1;
+  /* 中文在固定高度内光学略偏下，上移半个像素量级 */
+  transform: translateY(-0.05em);
+}
+
+/**
+ * 主操作强调（执行 / 保存 / 安装…）：柔和光晕，行内不上浮。
+ * secondary / ghost / danger 保持各自变体，不加主色光晕。
+ */
+.btn.btn-ops:not(.secondary):not(.ghost):not(.danger),
+.btn.btn-install:not(.secondary):not(.ghost):not(.danger),
+.ver-head > .btn.btn-install,
+.ver-head > .btn.btn-ops:not(.secondary):not(.ghost):not(.danger),
+.ver-project > .btn.btn-install,
+.ver-project > .btn.btn-ops:not(.secondary):not(.ghost):not(.danger) {
+  box-shadow: 0 0 8px color-mix(in srgb, var(--glow) 35%, transparent);
+  transform: none;
+}
+
+.btn.btn-ops:not(.secondary):not(.ghost):not(.danger):hover:not(:disabled),
+.btn.btn-install:not(.secondary):not(.ghost):not(.danger):hover:not(:disabled),
+.ver-head > .btn.btn-install:hover:not(:disabled),
+.ver-head > .btn.btn-ops:not(.secondary):not(.ghost):not(.danger):hover:not(:disabled),
+.ver-project > .btn.btn-install:hover:not(:disabled),
+.ver-project > .btn.btn-ops:not(.secondary):not(.ghost):not(.danger):hover:not(:disabled) {
+  transform: none;
+  filter: brightness(1.06);
+}

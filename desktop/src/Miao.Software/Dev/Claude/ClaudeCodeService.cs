@@ -375,13 +375,28 @@ public sealed class ClaudeCodeService
         return RunClaude($"plugin uninstall {EscapeArg(pluginId)}");
     }
 
-    /// <summary>更新已装插件。</summary>
+    /// <summary>更新已装插件；若 CLI 判定未安装则改为 install（兼容缓存误判后的修复路径）。</summary>
     public (bool Ok, string Detail) UpdatePlugin(string pluginId)
     {
         if (string.IsNullOrWhiteSpace(pluginId))
             return (false, "缺少 pluginId");
-        return RunClaude($"plugin update {EscapeArg(pluginId)}");
+        var (ok, detail) = RunClaude($"plugin update {EscapeArg(pluginId)}");
+        if (ok) return (ok, detail);
+        if (LooksLikeNotInstalled(detail))
+        {
+            var (ok2, detail2) = RunClaude($"plugin install {EscapeArg(pluginId)}");
+            if (ok2)
+                return (true, $"update 时未安装，已改为 install：{detail2}");
+            return (false, $"update 失败：{detail}\ninstall 失败：{detail2}");
+        }
+
+        return (ok, detail);
     }
+
+    private static bool LooksLikeNotInstalled(string detail) =>
+        detail.Contains("is not installed", StringComparison.OrdinalIgnoreCase)
+        || detail.Contains("not installed", StringComparison.OrdinalIgnoreCase)
+        || detail.Contains("未安装", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>读取脱敏后的密钥摘要（不回传明文密钥）。</summary>
     public ClaudeSecretsPublicDto GetSecretsPublic()
@@ -616,13 +631,14 @@ public sealed class ClaudeCodeService
         }
     }
 
-    /// <summary>本地校验已装插件：CLI list、installed_plugins.json、cache 目录。</summary>
+    /// <summary>本地校验已装插件：仅信任 CLI 与 installed_plugins.json（cache 目录是下载缓存，不能当已装）。</summary>
     private Dictionary<string, string?> DiscoverInstalledPlugins(IReadOnlyList<string> marketNames)
     {
         var map = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
         MergeInstalledFromCli(map);
         MergeInstalledFromJsonFile(map);
-        MergeInstalledFromCacheDirs(map, marketNames);
+        // cache 仅补全「确已安装」条目的版本号，避免 marketplace 下载缓存冒充已装（导致更新失败：not installed）
+        EnrichInstalledVersionsFromCacheDirs(map, marketNames);
         return map;
     }
 
@@ -732,10 +748,12 @@ public sealed class ClaudeCodeService
         }
     }
 
-    private static void MergeInstalledFromCacheDirs(
+    private static void EnrichInstalledVersionsFromCacheDirs(
         Dictionary<string, string?> map,
         IReadOnlyList<string> marketNames)
     {
+        if (map.Count == 0) return;
+
         var cacheRoot = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
             ".claude",
@@ -760,17 +778,19 @@ public sealed class ClaudeCodeService
                 var name = Path.GetFileName(pluginDir);
                 if (string.IsNullOrWhiteSpace(name)) continue;
                 var pluginId = $"{name}@{market}";
+                if (!map.ContainsKey(pluginId)) continue;
+                if (!string.IsNullOrWhiteSpace(map[pluginId])) continue;
+
+                // 跳过已标记 orphaned 的缓存版本
                 var versions = Directory.EnumerateDirectories(pluginDir)
+                    .Where(dir => !File.Exists(Path.Combine(dir, ".orphaned_at")))
                     .Select(Path.GetFileName)
                     .Where(v => !string.IsNullOrWhiteSpace(v))
                     .Cast<string>()
                     .OrderByDescending(v => v, StringComparer.OrdinalIgnoreCase)
                     .ToList();
                 if (versions.Count == 0) continue;
-                if (!map.ContainsKey(pluginId) || string.IsNullOrWhiteSpace(map[pluginId]))
-                    map[pluginId] = versions[0];
-                else
-                    map.TryAdd(pluginId, versions[0]);
+                map[pluginId] = versions[0];
             }
         }
     }

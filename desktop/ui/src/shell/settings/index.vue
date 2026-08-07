@@ -213,10 +213,11 @@ function resetAll() {
 <template>
   <section class="page settings-page">
     <div class="settings-layout">
-      <ul class="settings-nav settings-frost">
+      <ul class="settings-nav panel-frost panel-frost--flat">
         <li
           v-for="s in sections"
           :key="s.id"
+          class="side-nav-item"
           :class="{ active: activeSection === s.id }"
           @click="activeSection = s.id"
         >
@@ -224,7 +225,7 @@ function resetAll() {
         </li>
       </ul>
 
-      <aside class="settings-panel settings-frost">
+      <aside class="settings-panel panel-frost panel-frost--flat">
         <div v-if="activeSection === 'general'" class="pane">
           <h2 class="sec-title">界面语言</h2>
           <p class="sec-hint">写入本地配置；切换后各页面文案按新语言刷新。</p>
@@ -418,16 +419,6 @@ function resetAll() {
   gap: 1rem;
   align-items: stretch;
 }
-.settings-frost {
-  background: color-mix(in srgb, var(--panel) 42%, transparent);
-  border: 1px solid color-mix(in srgb, var(--line) 85%, transparent);
-  border-radius: 0.9rem;
-  backdrop-filter: blur(22px) saturate(1.4);
-  -webkit-backdrop-filter: blur(22px) saturate(1.4);
-  box-shadow:
-    inset 0 1px 0 color-mix(in srgb, #fff 28%, transparent),
-    inset 0 0 36px color-mix(in srgb, var(--accent) 5%, transparent);
-}
 .settings-nav {
   list-style: none;
   margin: 0;
@@ -436,7 +427,7 @@ function resetAll() {
   min-height: 0;
   height: 100%;
 }
-.settings-nav li {
+.settings-nav .side-nav-item {
   display: flex;
   align-items: center;
   min-height: 2.75rem;
@@ -446,16 +437,6 @@ function resetAll() {
   cursor: pointer;
   font-weight: 700;
   font-size: 0.92rem;
-  transition: background 0.2s ease, box-shadow 0.22s ease;
-}
-.settings-nav li:hover {
-  background: color-mix(in srgb, var(--accent) 10%, transparent);
-}
-.settings-nav li.active {
-  background: color-mix(in srgb, var(--accent) 16%, transparent);
-  box-shadow:
-    inset 3px 0 0 var(--accent),
-    0 0 18px color-mix(in srgb, var(--glow) 55%, transparent);
 }
 .settings-panel {
   min-height: 0;
@@ -475,11 +456,6 @@ function resetAll() {
   font-size: 0.85rem;
   font-weight: 700;
   color: var(--muted);
-}
-.sec-hint {
-  margin: 0 0 1rem;
-  color: var(--muted);
-  font-size: 0.9rem;
 }
 .mode-tabs {
   display: flex;

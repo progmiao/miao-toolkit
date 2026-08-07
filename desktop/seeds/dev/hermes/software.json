@@ -10,7 +10,8 @@
                                    "cli"
                                ],
                       "ui":  {
-                                 "mode":  "generic"
+                                 "mode":  "panel",
+                                 "entry":  "hermes"
                              },
                       "install":  {
                                       "strategy":  "custom",

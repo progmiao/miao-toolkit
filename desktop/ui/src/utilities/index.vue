@@ -176,11 +176,6 @@ async function copyAll() {
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
-.panel-hint {
-  margin: 0 0 1rem;
-  color: var(--muted);
-  font-size: 0.9rem;
-}
 .util-body {
   min-height: 0;
   min-width: 0;

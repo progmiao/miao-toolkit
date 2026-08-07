@@ -8,8 +8,8 @@ using Miao.Data;
 namespace Miao.Software.Detect;
 
 /// <summary>
-/// 按软件声明的 update.strategy 探测是否有可用更新，并写入 tool_state.detail（update:…）。
-/// node / pnpm / yarn 等未声明策略的工具永不标记更新。
+/// 按软件声明的 update.strategy 探测是否有可用更新，并写入 tool_state.detail。
+/// 有更新时 detail 形如 <c>update:{strategy}</c> 或 <c>update:{strategy}:{latestVersion}</c>。
 /// </summary>
 public static class UpdateProbe
 {
@@ -18,9 +18,6 @@ public static class UpdateProbe
     /// <summary>
     /// 在已安装探测之后调用：有更新则 detail 以 <c>update:</c> 开头；否则清除旧 update: 前缀。
     /// </summary>
-    /// <param name="db">数据库。</param>
-    /// <param name="toolId">软件 id。</param>
-    /// <param name="manifest">软件定义。</param>
     public static void ProbeAndStore(AppDatabase db, string toolId, SoftwareDefinition? manifest)
     {
         var state = db.GetToolState(toolId);
@@ -37,7 +34,6 @@ public static class UpdateProbe
             return;
         }
 
-        // Volta 托管的多版本工具：目录层不提供「本体更新」
         if (toolId is "node" or "pnpm" or "yarn")
         {
             ClearUpdateMark(db, toolId, state);
@@ -46,20 +42,26 @@ public static class UpdateProbe
 
         try
         {
-            var available = strategy switch
+            // null = 无更新；"" = 有更新但未知版本；非空 = 最新版本号
+            var latest = strategy switch
             {
                 "winget" => ProbeWinget(manifest!.Install!),
+                "npm" => ProbeNpm(manifest!.Install!, state.Version),
                 "gitee-release" => ProbeGiteeRelease(manifest!.Install!),
+                "github-release" => ProbeGithubRelease(manifest!.Install!, state.Version),
                 "hermes" => ProbeHermes(),
-                _ => false,
+                _ => null,
             };
 
-            if (available)
+            if (latest is not null)
             {
-                var detail = state.Detail is { Length: > 0 } d && !d.StartsWith("update:", StringComparison.OrdinalIgnoreCase)
-                    ? $"update:{strategy}|{d}"
-                    : $"update:{strategy}";
-                db.UpsertToolState(toolId, "installed", state.Version, detail);
+                var mark = latest.Length == 0
+                    ? $"update:{strategy}"
+                    : $"update:{strategy}:{latest}";
+                var prior = state.Detail;
+                if (prior is { Length: > 0 } && !prior.StartsWith("update:", StringComparison.OrdinalIgnoreCase))
+                    mark = $"{mark}|{prior}";
+                db.UpsertToolState(toolId, "installed", state.Version, mark);
             }
             else
             {
@@ -68,8 +70,27 @@ public static class UpdateProbe
         }
         catch
         {
-            // 网络/超时：保留原状态，勿误清「有更新」也不误报
+            // 网络/超时：保留原状态
         }
+    }
+
+    /// <summary>
+    /// 从 tool_state.detail 解析最新可用版本（无则 null）。
+    /// </summary>
+    public static string? TryParseLatestVersion(string? detail)
+    {
+        if (string.IsNullOrWhiteSpace(detail) ||
+            !detail.StartsWith("update:", StringComparison.OrdinalIgnoreCase))
+            return null;
+
+        var body = detail["update:".Length..];
+        var pipe = body.IndexOf('|');
+        if (pipe >= 0) body = body[..pipe];
+
+        var colon = body.IndexOf(':');
+        if (colon < 0) return null;
+        var ver = body[(colon + 1)..].Trim();
+        return string.IsNullOrWhiteSpace(ver) ? null : ver;
     }
 
     private static void ClearUpdateMark(AppDatabase db, string toolId, ToolStateRow? state)
@@ -78,7 +99,6 @@ public static class UpdateProbe
         if (state.Detail is null || !state.Detail.StartsWith("update:", StringComparison.OrdinalIgnoreCase))
             return;
 
-        // 去掉 update: 前缀，保留其后非策略说明（| 后）
         var rest = state.Detail;
         var idx = rest.IndexOf('|');
         var cleaned = idx >= 0 ? rest[(idx + 1)..] : null;
@@ -87,10 +107,10 @@ public static class UpdateProbe
         db.UpsertToolState(toolId, state.Status, state.Version, cleaned);
     }
 
-    /// <summary>WinGet：list 输出 Available 列有版本则视为可更新。</summary>
-    private static bool ProbeWinget(SoftwareInstallManifest install)
+    /// <summary>WinGet：有 Available 列时返回可用版本；否则 null。</summary>
+    private static string? ProbeWinget(SoftwareInstallManifest install)
     {
-        if (string.IsNullOrWhiteSpace(install.PackageId)) return false;
+        if (string.IsNullOrWhiteSpace(install.PackageId)) return null;
 
         var source = string.IsNullOrWhiteSpace(install.WingetSource)
             ? ""
@@ -108,33 +128,31 @@ public static class UpdateProbe
         };
 
         using var p = Process.Start(psi);
-        if (p is null) return false;
+        if (p is null) return null;
         var output = p.StandardOutput.ReadToEnd() + p.StandardError.ReadToEnd();
         if (!p.WaitForExit(25000))
         {
             try { p.Kill(entireProcessTree: true); } catch { /* ignore */ }
-            return false;
+            return null;
         }
 
-        // 有 Available 列且该行含包 id 时，取 Available 版本号
         foreach (var line in output.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
         {
             if (!line.Contains(install.PackageId, StringComparison.OrdinalIgnoreCase))
                 continue;
-            // 典型：Name Id Version Available Source —— Available 为倒数第二或中间版本号
             var versions = Regex.Matches(line, @"\b\d+(?:\.\d+)+\b")
                 .Select(m => m.Value)
                 .ToList();
-            // 仅 Version 一列时不算有更新；出现两个及以上版本号通常为 Version + Available
+            // Version + Available → 取最后一个为可用版本
             if (versions.Count >= 2)
-                return true;
+                return versions[^1];
         }
 
-        return false;
+        return null;
     }
 
-    /// <summary>Gitee Release：远程 tag 与本地标记/文件版本不一致则有更新。</summary>
-    private static bool ProbeGiteeRelease(SoftwareInstallManifest install)
+    /// <summary>Gitee Release：有更新时返回远程 tag。</summary>
+    private static string? ProbeGiteeRelease(SoftwareInstallManifest install)
     {
         var owner = install.GiteeOwner ?? "updateme";
         var repo = install.GiteeRepo ?? "terminal-buddy";
@@ -142,10 +160,10 @@ public static class UpdateProbe
         var api = $"https://gitee.com/api/v5/repos/{owner}/{repo}/releases/latest";
 
         using var resp = Http.GetAsync(api).GetAwaiter().GetResult();
-        if (!resp.IsSuccessStatusCode) return false;
+        if (!resp.IsSuccessStatusCode) return null;
         using var doc = JsonDocument.Parse(resp.Content.ReadAsStream());
         var tag = doc.RootElement.TryGetProperty("tag_name", out var t) ? t.GetString() : null;
-        if (string.IsNullOrWhiteSpace(tag)) return false;
+        if (string.IsNullOrWhiteSpace(tag)) return null;
 
         var marker = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -158,29 +176,95 @@ public static class UpdateProbe
         }
 
         if (!string.IsNullOrWhiteSpace(localTag))
-            return !string.Equals(NormalizeTag(localTag), NormalizeTag(tag), StringComparison.OrdinalIgnoreCase);
+        {
+            return !string.Equals(NormalizeTag(localTag), NormalizeTag(tag), StringComparison.OrdinalIgnoreCase)
+                ? NormalizeTag(tag!)
+                : null;
+        }
 
-        // 无标记：有 exe 且远程 tag 存在时，用 FileVersion 粗比（无法比则保守认为无更新提示需装过一次）
         var exe = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "Programs", "terminal-buddy", asset);
-        if (!File.Exists(exe)) return false;
+        if (!File.Exists(exe)) return null;
 
         try
         {
             var fv = FileVersionInfo.GetVersionInfo(exe).FileVersion;
-            if (string.IsNullOrWhiteSpace(fv)) return false;
-            return !NormalizeTag(tag!).Contains(NormalizeTag(fv), StringComparison.OrdinalIgnoreCase)
-                   && !NormalizeTag(fv).Contains(NormalizeTag(tag!), StringComparison.OrdinalIgnoreCase);
+            if (string.IsNullOrWhiteSpace(fv)) return null;
+            var newer = !NormalizeTag(tag!).Contains(NormalizeTag(fv), StringComparison.OrdinalIgnoreCase)
+                        && !NormalizeTag(fv).Contains(NormalizeTag(tag!), StringComparison.OrdinalIgnoreCase);
+            return newer ? NormalizeTag(tag!) : null;
         }
         catch
         {
-            return false;
+            return null;
         }
     }
 
-    /// <summary>Hermes：<c>hermes update --check</c> 输出含 update available。</summary>
-    private static bool ProbeHermes()
+    /// <summary>GitHub Release：有更新时返回远程 tag。</summary>
+    private static string? ProbeGithubRelease(SoftwareInstallManifest install, string? localVersion)
+    {
+        var owner = install.GithubOwner;
+        var repo = install.GithubRepo;
+        if (string.IsNullOrWhiteSpace(owner) || string.IsNullOrWhiteSpace(repo))
+            return null;
+        if (string.IsNullOrWhiteSpace(localVersion))
+            return null;
+
+        var api = $"https://api.github.com/repos/{owner}/{repo}/releases/latest";
+        using var req = new HttpRequestMessage(HttpMethod.Get, api);
+        req.Headers.TryAddWithoutValidation("User-Agent", "miao-toolkit");
+        req.Headers.TryAddWithoutValidation("Accept", "application/vnd.github+json");
+        using var resp = Http.Send(req);
+        if (!resp.IsSuccessStatusCode) return null;
+        using var doc = JsonDocument.Parse(resp.Content.ReadAsStream());
+        var tag = doc.RootElement.TryGetProperty("tag_name", out var t) ? t.GetString() : null;
+        if (string.IsNullOrWhiteSpace(tag)) return null;
+
+        return !string.Equals(NormalizeTag(localVersion!), NormalizeTag(tag!), StringComparison.OrdinalIgnoreCase)
+            ? NormalizeTag(tag!)
+            : null;
+    }
+
+    /// <summary>npm：有更新时返回 registry 版本。</summary>
+    private static string? ProbeNpm(SoftwareInstallManifest install, string? localVersion)
+    {
+        if (string.IsNullOrWhiteSpace(install.NpmPackage) || string.IsNullOrWhiteSpace(localVersion))
+            return null;
+
+        var pkg = install.NpmPackage!.Replace("'", "''");
+        var psi = new ProcessStartInfo
+        {
+            FileName = "powershell.exe",
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            CreateNoWindow = true,
+        };
+        psi.ArgumentList.Add("-NoProfile");
+        psi.ArgumentList.Add("-Command");
+        psi.ArgumentList.Add(
+            "$env:Path=[Environment]::GetEnvironmentVariable('Path','Machine')+';'+[Environment]::GetEnvironmentVariable('Path','User'); if (-not (Get-Command npm -EA SilentlyContinue)) { exit 2 }; npm view '" +
+            pkg +
+            "' version");
+
+        using var p = Process.Start(psi);
+        if (p is null) return null;
+        var output = (p.StandardOutput.ReadToEnd() + p.StandardError.ReadToEnd()).Trim();
+        if (!p.WaitForExit(25000))
+        {
+            try { p.Kill(entireProcessTree: true); } catch { /* ignore */ }
+            return null;
+        }
+
+        if (p.ExitCode != 0 || string.IsNullOrWhiteSpace(output)) return null;
+        var remote = output.Split('\n', '\r')[0].Trim().TrimStart('v', 'V');
+        var local = localVersion.Trim().TrimStart('v', 'V');
+        return !string.Equals(remote, local, StringComparison.OrdinalIgnoreCase) ? remote : null;
+    }
+
+    /// <summary>Hermes：有更新时返回空字符串（CLI 未给出目标版本号）。</summary>
+    private static string? ProbeHermes()
     {
         var psi = new ProcessStartInfo
         {
@@ -196,16 +280,16 @@ public static class UpdateProbe
             "$env:Path=[Environment]::GetEnvironmentVariable('Path','Machine')+';'+[Environment]::GetEnvironmentVariable('Path','User'); if (-not (Get-Command hermes -EA SilentlyContinue)) { exit 2 }; hermes update --check 2>&1 | Out-String");
 
         using var p = Process.Start(psi);
-        if (p is null) return false;
+        if (p is null) return null;
         var output = p.StandardOutput.ReadToEnd() + p.StandardError.ReadToEnd();
         if (!p.WaitForExit(60000))
         {
             try { p.Kill(entireProcessTree: true); } catch { /* ignore */ }
-            return false;
+            return null;
         }
 
-        if (p.ExitCode != 0) return false;
-        return Regex.IsMatch(output, "update available", RegexOptions.IgnoreCase);
+        if (p.ExitCode != 0) return null;
+        return Regex.IsMatch(output, "update available", RegexOptions.IgnoreCase) ? "" : null;
     }
 
     private static string NormalizeTag(string s) =>

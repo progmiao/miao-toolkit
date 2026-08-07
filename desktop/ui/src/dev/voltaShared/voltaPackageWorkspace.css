@@ -1,6 +1,6 @@
 /**
  * 工具工作区共用样式（node / pnpm / yarn / Claude 等）。
- * 布局：上区功能操作 · 下区共用进度+输出（一工具一控制台）。
+ * 布局：左功能操作 · 右共用进度+输出（一工具一控制台）。
  */
 
 .volta-page {
@@ -10,20 +10,6 @@
   flex: 1;
   height: 100%;
   overflow: hidden;
-}
-.prereq-banner {
-  margin: 0 0 0.75rem;
-  padding: 0.75rem 0.9rem;
-  border: 1px solid color-mix(in srgb, var(--warn) 45%, var(--line));
-  border-radius: 0.65rem;
-  background: color-mix(in srgb, var(--warn) 12%, var(--panel));
-  font-size: 0.9rem;
-  flex: 0 0 auto;
-}
-.prereq-actions {
-  display: flex;
-  gap: 0.5rem;
-  margin-top: 0.55rem;
 }
 .banner-err {
   color: var(--danger);
@@ -110,20 +96,46 @@
 }
 
 /**
- * 上：功能操作（列表/表单）
- * 下：本工具唯一进度+输出
+ * 左：功能操作（列表/表单）
+ * 右：本工具唯一进度+输出
  */
 .tool-stack {
-  --tool-head-h: 1.85rem;
+  --tool-ops-w: 13.75rem;
+  --tool-head-h: var(--btn-ops-h, 1.85rem);
   --ver-check-size: 1rem;
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-rows: minmax(0, 1.15fr) minmax(11rem, 0.9fr);
-  gap: 0.65rem;
+  grid-template-columns: var(--tool-ops-w) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+  gap: 0.65rem 0.75rem;
   align-items: stretch;
   overflow: hidden;
   position: relative;
+}
+
+.tool-stack--wide {
+  --tool-ops-w: minmax(14rem, 22rem);
+}
+
+/** 指定版本：目录选择通栏顶行，其下仍为左列表 / 右输出 */
+.tool-stack--specify {
+  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-areas:
+    'project project'
+    'ops console';
+}
+
+.tool-stack--specify > .ver-project-row {
+  grid-area: project;
+}
+
+.tool-stack--specify > .tool-ops {
+  grid-area: ops;
+}
+
+.tool-stack--specify > .tool-console {
+  grid-area: console;
 }
 
 .tool-ops {
@@ -136,7 +148,7 @@
   position: relative;
 }
 
-/** 任务中：只锁上区操作，下区进度/输出可看 */
+/** 任务中：只锁左侧操作，右侧进度/输出可看 */
 .tool-ops-lock {
   position: absolute;
   inset: 0;
@@ -153,6 +165,57 @@
   height: 100%;
   display: flex !important;
   flex-direction: column;
+}
+
+.tool-console :deep(.progress-wrap) {
+  flex: 0 0 auto;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  height: var(--tool-head-h);
+  min-height: var(--tool-head-h);
+  max-height: var(--tool-head-h);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.14rem;
+  padding: 0.18rem 0.55rem;
+  border-radius: 0.4rem;
+  margin: 0;
+}
+
+.tool-console :deep(.progress-label) {
+  margin-bottom: 0;
+  min-height: 0;
+}
+
+.tool-console :deep(.progress-status) {
+  font-size: 0.65rem;
+  line-height: 1.1;
+  letter-spacing: 0.04em;
+}
+
+.tool-console :deep(.progress-track-row) {
+  gap: 0.4rem;
+}
+
+.tool-console :deep(.progress-bar) {
+  height: 0.28rem;
+}
+
+.tool-console :deep(.progress-pct) {
+  flex: 0 0 4ch;
+  flex-shrink: 0;
+  width: 4ch;
+  max-width: 4ch;
+  font-size: 0.62rem;
+}
+
+.tool-console :deep(.job-panes) {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: auto;
 }
 
 .ver-head {
@@ -172,6 +235,7 @@
   gap: 0.35rem;
   min-width: 0;
   flex: 0 0 auto;
+  width: 100%;
 }
 
 .ver-project {
@@ -218,17 +282,13 @@
   color: var(--muted);
 }
 
+/* 操作按钮尺寸/居中见 kernel/styles/buttons.css（.btn-ops / .ver-head > .btn） */
 .ver-project > .btn {
-  box-sizing: border-box;
   height: 100%;
+  max-height: none;
   min-height: 0;
-  margin: 0;
-  padding-top: 0;
-  padding-bottom: 0;
-  line-height: 1;
-  display: inline-flex;
-  align-items: center;
   align-self: stretch;
+  /* display/居中由 buttons.css 统一 */
 }
 
 .ver-project-hint {
@@ -256,50 +316,32 @@
 
 .ver-head .search,
 .ver-head > .btn {
-  box-sizing: border-box;
   height: 100%;
+  max-height: none;
   min-height: 0;
-  margin: 0;
-  padding-top: 0;
-  padding-bottom: 0;
-  line-height: 1;
-  display: inline-flex;
-  align-items: center;
   align-self: stretch;
+  margin: 0;
 }
 
 .ver-head .search {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
   flex: 1;
   min-width: 0;
-  padding-left: 0.55rem;
-  padding-right: 0.55rem;
+  padding: 0 0.55rem;
   border: 1px solid var(--line);
   border-radius: 0.4rem;
   background: var(--panel-strong);
   color: var(--ink);
   font-family: var(--font-mono);
   font-size: 0.82rem;
+  line-height: 1;
+  text-align: left;
 }
 
-.ver-head > .btn {
-  flex: 0 0 auto;
-  padding-left: 0.85rem;
-  padding-right: 0.85rem;
-  font-size: 0.82rem;
-}
-
-.ver-head > .btn.btn-install {
-  padding: 0 0.7rem;
-  font-size: 0.74rem;
-  font-weight: 650;
-  letter-spacing: 0.06em;
-  box-shadow: 0 0 8px color-mix(in srgb, var(--glow) 35%, transparent);
-  transform: none;
-}
-.ver-head > .btn.btn-install:hover:not(:disabled) {
-  transform: none;
-  filter: brightness(1.06);
-}
+/* display/居中由 buttons.css !important 统一，此处只负责拉高贴齐 */
 
 .search {
   flex: 1;
@@ -461,7 +503,7 @@
   flex: 0 0 auto;
 }
 
-.ver-list--install .tag {
+.ver-list--install .ver-tag {
   flex: 0 0 auto;
   white-space: nowrap;
 }
@@ -607,7 +649,10 @@
   min-width: 3.6rem;
 }
 
-.tag {
+/** 版本行旁的 LTS 等标记（勿复用目录 `.tag`，避免冲掉状态色） */
+.ver-tag {
+  display: inline-flex;
+  align-items: center;
   font-size: 0.68rem;
   padding: 0.08rem 0.35rem;
   border-radius: 0.28rem;
@@ -615,7 +660,8 @@
   color: var(--muted);
 }
 
-.empty-hint {
+/** 版本列表空态：压掉行样式 */
+.ver-list .empty-hint {
   padding: 0.85rem !important;
   color: var(--muted);
   font-size: 0.85rem;
@@ -643,6 +689,20 @@
 
 @media (max-width: 900px) {
   .tool-stack {
-    grid-template-rows: minmax(0, 1fr) minmax(10rem, 0.95fr);
+    grid-template-columns: 1fr;
+    grid-template-rows: minmax(12rem, 1fr) minmax(11rem, 0.95fr);
+  }
+
+  .tool-stack--wide {
+    --tool-ops-w: 100%;
+  }
+
+  .tool-stack--specify {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto minmax(12rem, 1fr) minmax(11rem, 0.95fr);
+    grid-template-areas:
+      'project'
+      'ops'
+      'console';
   }
 }

@@ -9,9 +9,9 @@
   min-width: 0;
   max-width: 100%;
   height: 100%;
-  overflow: hidden;
-  /* 低于 Toast(10000) / Confirm(11000)，高于页面内容与 Mock 角标 */
-  z-index: 9995;
+  /* 摘要截断在 .silent-tasks-summary；此处勿 hidden，以免误伤 */
+  overflow: visible;
+  z-index: 1;
 }
 
 .silent-tasks-summary {
@@ -83,11 +83,8 @@
 }
 
 .silent-tasks-panel {
-  position: absolute;
-  z-index: 1;
-  right: 0;
-  bottom: calc(100% + 0.45rem);
-  width: min(22rem, calc(100vw - 2rem));
+  /* Teleport 到 body：fixed + 高 z-index，避免被 shell-view / overflow 压住 */
+  z-index: 9995;
   max-height: min(22rem, 48vh);
   overflow: auto;
   padding: 0.7rem 0.75rem 0.8rem;
@@ -97,6 +94,7 @@
   box-shadow: 0 10px 28px color-mix(in srgb, #000 28%, transparent);
   backdrop-filter: blur(14px) saturate(1.25);
   -webkit-backdrop-filter: blur(14px) saturate(1.25);
+  box-sizing: border-box;
 }
 
 .silent-tasks-panel-head {

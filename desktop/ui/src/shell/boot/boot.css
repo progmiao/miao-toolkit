@@ -21,12 +21,10 @@
   background: var(--boot-bg);
   color: var(--boot-ink);
   font-family: "Rajdhani", "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
-  transition: opacity 0.4s ease, transform 0.4s ease;
 }
 
 .boot-page.is-finishing {
-  opacity: 0;
-  transform: scale(1.02);
+  /* 保持不透明，避免与主壳切换时出现空帧黑底 */
   pointer-events: none;
 }
 
@@ -148,9 +146,10 @@
   flex: 0 0 auto;
   max-width: 100%;
   overflow: visible;
-  font-family: Consolas, "Cascadia Mono", "Courier New", monospace;
-  font-size: clamp(0.95rem, 2.8vw, 1.55rem);
-  line-height: 1.15;
+  /* 与 HTML splash / 宿主共用 Cascadia Mono，盒线字符宽度一致 */
+  font-family: "Cascadia Mono", Consolas, "Courier New", monospace;
+  font-size: 24px;
+  line-height: 28px;
   letter-spacing: 0;
   font-kerning: none;
   font-variant-ligatures: none;
@@ -306,7 +305,7 @@
 
 .boot-body-enter-active,
 .boot-body-leave-active {
-  transition: opacity 0.35s ease;
+  transition: opacity 0.36s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .boot-body-enter-from,

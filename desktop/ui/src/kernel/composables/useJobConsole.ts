@@ -53,6 +53,8 @@ export type JobConsoleApi = {
   batchTotal: Ref<number>
   busy: Ref<boolean>
   currentJob: Ref<string | null>
+  /** 点击后立刻标忙碌（可选文案）；返回是否抢占成功。 */
+  beginJob: (jobId: string, label?: string) => boolean
   /** 写入一行状态/摘要类输出（开始、结束、##log 等）。 */
   appendLine: (line: string, tone?: LogEntryTone) => void
   appendConsole: (chunk: string) => void
@@ -170,14 +172,19 @@ export function useJobConsole(options: UseJobConsoleOptions = {}): JobConsoleApi
 
   function appendConsole(chunk: string) {
     if (!chunk) return
-    const plain = chunk.replace(/\u001b\[[0-9;?]*[ -/]*[@-~]/g, '').trim()
+    // 去掉偶发夹在 console 流里的协议行，避免 ##progress 出现在输出窗
+    const cleaned = chunk
+      .replace(/\u001b\[[0-9;?]*[ -/]*[@-~]/g, '')
+      .replace(/(?:^|\r?\n)##(?:progress|task|batch|log)\b[^\r\n]*/gi, '')
+    const plain = cleaned.trim()
+    if (!plain) return
     if (/^##(?:progress|task|batch|log)\b/i.test(plain)) return
 
     const adapters = resolveAdapters()
     if (adapters.onConsoleChunk) {
-      adapters.onConsoleChunk(chunk, handlers())
+      adapters.onConsoleChunk(cleaned, handlers())
     } else {
-      defaultAppendConsoleLines(chunk, outputLog, spinnerSession, applyDownloadProgress)
+      defaultAppendConsoleLines(cleaned, outputLog, spinnerSession, applyDownloadProgress)
     }
   }
 
@@ -193,6 +200,20 @@ export function useJobConsole(options: UseJobConsoleOptions = {}): JobConsoleApi
   function resetWhenIdle() {
     if (busy.value) return
     clearBuffers()
+  }
+
+  /**
+   * 点击后立刻进入忙碌态（不必等宿主 job-started），避免同步任务堵 UI 时按钮仍可点。
+   * 随后 job-started 会再清缓冲并写入正式开始行。
+   */
+  function beginJob(jobId: string, label?: string) {
+    if (busy.value) return false
+    busy.value = true
+    currentJob.value = jobId
+    const text = label?.trim() || '任务已提交…'
+    statusText.value = text
+    appendLine(text)
+    return true
   }
 
   function defaultStarted(msg: HostMessage): string {
@@ -308,6 +329,7 @@ export function useJobConsole(options: UseJobConsoleOptions = {}): JobConsoleApi
     batchTotal,
     busy,
     currentJob,
+    beginJob,
     appendLine,
     appendConsole,
     resetWhenIdle,

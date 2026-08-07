@@ -40,8 +40,10 @@ function pushLog(message: string, at?: string) {
 }
 
 function emitComplete(fastPath: boolean) {
+  // Boot 保持不透明；App.vue 预挂主壳后再淡出 Boot
   finishing.value = true
-  const delay = fastPath ? 220 : 480
+  // 略留「即将进入…」可读，再与主壳交叉；fastPath 更短但仍连续
+  const delay = fastPath ? 120 : 220
   window.setTimeout(() => {
     window.dispatchEvent(
       new CustomEvent('miao:boot-complete', {
@@ -51,8 +53,23 @@ function emitComplete(fastPath: boolean) {
   }, delay)
 }
 
+function dismissHtmlSplash() {
+  const el = document.getElementById('boot-splash')
+  if (!el) return
+  // 已在淡出中则忽略
+  if (el.dataset.fading === '1') return
+  el.dataset.fading = '1'
+  el.style.transition = 'opacity 0.32s cubic-bezier(0.4, 0, 0.2, 1)'
+  el.style.opacity = '0'
+  window.setTimeout(() => el.remove(), 340)
+}
+
 function onHost(msg: HostMessage) {
   switch (msg.type) {
+    case 'boot.surface-ready':
+      // 宿主已显示 WebView 并收起 WPF：淡出 HTML splash → Vue Boot（同视觉）
+      dismissHtmlSplash()
+      break
     case 'boot.log':
       if (typeof msg.message === 'string' && msg.message) {
         pushLog(msg.message, msg.at)
@@ -82,6 +99,7 @@ function onHost(msg: HostMessage) {
       percent.value = 100
       status.value = '即将进入…'
       pushLog(msg.degraded ? '启动完成（部分数据已跳过）' : '启动完成')
+      dismissHtmlSplash()
       emitComplete(!!msg.fastPath)
       break
     case 'boot.fatal':
@@ -95,15 +113,19 @@ function onHost(msg: HostMessage) {
 }
 
 let unsub: (() => void) | null = null
+let splashFallbackTimer: number | undefined
 
 onMounted(() => {
   unsub = subscribe(onHost)
   post({ type: 'boot.ui-ready' })
   post({ type: 'boot.subscribe' })
+  // 浏览器 Mock / 未收到 surface-ready 时兜底淡出，避免一直挡着
+  splashFallbackTimer = window.setTimeout(() => dismissHtmlSplash(), 2500)
 })
 
 onUnmounted(() => {
   unsub?.()
+  if (splashFallbackTimer != null) window.clearTimeout(splashFallbackTimer)
 })
 
 watch(phase, () => {

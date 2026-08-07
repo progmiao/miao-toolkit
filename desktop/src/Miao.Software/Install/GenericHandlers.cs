@@ -54,7 +54,7 @@ public sealed class InstallerLaunchHandler : IToolActionHandler
 }
 
 /// <summary>
-/// 通用：WinGet 安装或已存在时升级（CC Switch / CC Connect 等）。
+/// 通用：WinGet 安装或已存在时升级（CC Switch 等）。
 /// </summary>
 public sealed class WingetInstallHandler : IToolActionHandler
 {
@@ -144,7 +144,7 @@ public sealed class WingetUninstallHandler : IToolActionHandler
 }
 
 /// <summary>
-/// 通用：通过 npm 全局安装 CLI 包（CC Connect 等）。
+/// 通用：通过 npm 全局安装 / 升级 CLI 包（CC Connect 等）。
 /// </summary>
 public sealed class NpmGlobalInstallHandler : IToolActionHandler
 {
@@ -162,12 +162,62 @@ public sealed class NpmGlobalInstallHandler : IToolActionHandler
         var sb = new StringBuilder();
         sb.AppendLine("$ErrorActionPreference = 'Stop'");
         sb.AppendLine("$env:Path = [Environment]::GetEnvironmentVariable('Path','Machine') + ';' + [Environment]::GetEnvironmentVariable('Path','User')");
-        sb.AppendLine("Write-Host '##progress 15'");
-        sb.AppendLine("if (-not (Get-Command npm -ErrorAction SilentlyContinue)) { throw '未找到 npm，请先安装 Node.js' }");
+        sb.AppendLine("Write-Host '##progress 10'");
+        sb.AppendLine(@"
+if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
+  throw '未找到 Node.js。请先安装 Node.js 18+ 后再安装本工具。'
+}
+if (-not (Get-Command npm -ErrorAction SilentlyContinue)) {
+  throw '未找到 npm。请先安装 Node.js（含 npm）后再安装本工具。'
+}
+$nodeVerRaw = (node -v 2>$null)
+$nodeVer = ($nodeVerRaw -replace '^v','').Trim()
+$major = [int]($nodeVer.Split('.')[0])
+if ($major -lt 18) { throw ""需要 Node.js 18+，当前为 $nodeVerRaw"" }
+Write-Host ""前置检查通过：Node.js $nodeVerRaw""
+Write-Host '##progress 25'
+");
         sb.AppendLine($"Write-Host 'npm install -g {Escape(pkg)}'");
         sb.AppendLine($"npm install -g {Escape(pkg)}");
         sb.AppendLine("if ($LASTEXITCODE -ne 0) { throw \"npm 失败 exit=$LASTEXITCODE\" }");
         sb.AppendLine("Write-Host '##progress 100'");
+        sb.AppendLine("Write-Host '完成'");
+
+        var result = await context.Jobs
+            .RunPowerShellAsync(context.JobId, sb.ToString(), cancellationToken: cancellationToken)
+            .ConfigureAwait(false);
+
+        InstallDetector.ProbeAndStore(context.Db, context.ToolId, install?.Detect);
+        return result;
+    }
+
+    private static string Escape(string s) => s.Replace("'", "''");
+}
+
+/// <summary>通用：npm 全局卸载 CLI 包。</summary>
+public sealed class NpmGlobalUninstallHandler : IToolActionHandler
+{
+    /// <inheritdoc />
+    public string HandlerId => "generic.npm-global-uninstall";
+
+    /// <inheritdoc />
+    public async Task<JobResult> ExecuteAsync(ToolActionContext context, CancellationToken cancellationToken = default)
+    {
+        var install = context.Manifest.Install;
+        var pkg = install?.NpmPackage;
+        if (string.IsNullOrWhiteSpace(pkg))
+            return new JobResult(context.JobId, false, 1, "软件定义缺少 install.npmPackage");
+
+        var sb = new StringBuilder();
+        sb.AppendLine("$ErrorActionPreference = 'Stop'");
+        sb.AppendLine("$env:Path = [Environment]::GetEnvironmentVariable('Path','Machine') + ';' + [Environment]::GetEnvironmentVariable('Path','User')");
+        sb.AppendLine("Write-Host '##progress 20'");
+        sb.AppendLine("if (-not (Get-Command npm -ErrorAction SilentlyContinue)) { throw '未找到 npm，请先安装 Node.js' }");
+        sb.AppendLine($"Write-Host 'npm uninstall -g {Escape(pkg)}'");
+        sb.AppendLine($"npm uninstall -g {Escape(pkg)}");
+        sb.AppendLine("if ($LASTEXITCODE -ne 0) { throw \"npm uninstall 失败 exit=$LASTEXITCODE\" }");
+        sb.AppendLine("Write-Host '##progress 100'");
+        sb.AppendLine("Write-Host '完成'");
 
         var result = await context.Jobs
             .RunPowerShellAsync(context.JobId, sb.ToString(), cancellationToken: cancellationToken)

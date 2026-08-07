@@ -4,6 +4,7 @@ using Miao.Common.Software;
 using Miao.Data;
 using Miao.Software.Detect;
 using Miao.Software.Jobs;
+using Miao.Software.Dev.CcSwitch;
 using Miao.Software.Dev.Claude;
 using Miao.Software.Dev.Hermes;
 using Miao.Software.Dev.TerminalBuddy;
@@ -38,6 +39,7 @@ public sealed class SoftwareCatalog
             new WingetInstallHandler(),
             new WingetUninstallHandler(),
             new NpmGlobalInstallHandler(),
+            new NpmGlobalUninstallHandler(),
             new RegistryUninstallHandler(),
             new VoltaInstallHandler(),
             new VoltaUninstallHandler(),
@@ -54,6 +56,7 @@ public sealed class SoftwareCatalog
             new HermesUninstallHandler(),
             new TerminalBuddyInstallHandler(),
             new TerminalBuddyUninstallHandler(),
+            new CcSwitchInstallHandler(),
         };
         _handlers = list.ToDictionary(h => h.HandlerId, StringComparer.OrdinalIgnoreCase);
         ReloadGroupsFromSeeds();
@@ -164,6 +167,9 @@ public sealed class SoftwareCatalog
                 updateAvailable = false;
 
             var version = ResolveDisplayVersion(row.Id, state);
+            var latestVersion = updateAvailable
+                ? UpdateProbe.TryParseLatestVersion(state?.Detail)
+                : null;
 
             items.Add(new CatalogItemDto(
                 row.Id,
@@ -176,7 +182,8 @@ public sealed class SoftwareCatalog
                 uiMode,
                 uiEntry,
                 manifest.Tags.ToArray(),
-                updateAvailable));
+                updateAvailable,
+                latestVersion));
         }
 
         return items;

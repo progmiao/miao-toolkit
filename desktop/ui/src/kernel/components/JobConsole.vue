@@ -21,7 +21,7 @@ const props = withDefaults(
     alwaysShow: false,
     statusText: '',
     entries: () => [],
-    placeholder: '执行操作后在此显示输出…',
+    placeholder: '执行操作时在此显示输出…',
   },
 )
 

@@ -122,7 +122,7 @@ async function run(it: CatalogItem, action: string) {
           <button
             v-if="showInstallAction(it)"
             type="button"
-            class="btn"
+            class="btn btn-overview"
             :disabled="busyId === it.id"
             @click="run(it, 'install')"
           >
@@ -131,7 +131,7 @@ async function run(it: CatalogItem, action: string) {
           <button
             v-if="showUpdateAction(it)"
             type="button"
-            class="btn"
+            class="btn btn-overview"
             :disabled="busyId === it.id"
             @click="run(it, 'update')"
           >
@@ -140,7 +140,7 @@ async function run(it: CatalogItem, action: string) {
           <button
             v-if="showUninstallAction(it)"
             type="button"
-            class="btn secondary"
+            class="btn secondary btn-overview"
             :disabled="busyId === it.id"
             @click="run(it, 'uninstall')"
           >
@@ -155,48 +155,6 @@ async function run(it: CatalogItem, action: string) {
 </template>
 
 <style scoped>
-.filter-bar {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.45rem;
-  margin: 0 0 0.75rem;
-  padding: 0.4rem 0.5rem;
-  border-radius: 0.75rem;
-  border: 1px solid color-mix(in srgb, var(--line) 80%, transparent);
-  background: color-mix(in srgb, var(--panel) 42%, transparent);
-  backdrop-filter: blur(16px) saturate(1.3);
-  -webkit-backdrop-filter: blur(16px) saturate(1.3);
-}
-.filter-chip {
-  border: 1px solid color-mix(in srgb, var(--line) 90%, transparent);
-  background: color-mix(in srgb, var(--panel) 55%, transparent);
-  color: var(--muted);
-  padding: 0.35rem 0.85rem;
-  border-radius: 999px;
-  font-weight: 600;
-  font-size: 0.88rem;
-  letter-spacing: 0.04em;
-  cursor: pointer;
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  transition:
-    background 0.2s ease,
-    border-color 0.2s ease,
-    color 0.2s ease,
-    transform 0.15s ease,
-    box-shadow 0.2s ease;
-}
-.filter-chip:hover {
-  color: var(--ink);
-  border-color: color-mix(in srgb, var(--accent) 40%, var(--line));
-  transform: translateY(-1px);
-}
-.filter-chip.active {
-  color: var(--accent-ink);
-  background: linear-gradient(135deg, var(--accent), color-mix(in srgb, var(--accent-2) 50%, var(--accent)));
-  border-color: transparent;
-  box-shadow: 0 0 14px var(--glow);
-}
 .daily-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));

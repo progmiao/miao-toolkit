@@ -23,6 +23,8 @@ export type CatalogItem = {
   tags: string[]
   /** 已安装且有可用更新时为 true */
   updateAvailable?: boolean
+  /** 可更新时的最新版本号（若宿主已探测到） */
+  latestVersion?: string | null
 }
 
 /** 一级分类。 */

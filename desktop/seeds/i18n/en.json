@@ -1,11 +1,11 @@
 {
   "ccc.action.install": "Install / Update",
   "ccc.action.uninstall": "Uninstall",
-  "ccc.description": "Bridge AI coding agents to IM (Microsoft Store / WinGet)",
+  "ccc.description": "Bridge AI coding agents to IM (npm; needs Node.js 18+)",
   "ccc.name": "CC Connect",
   "ccs.action.install": "Install / Update",
   "ccs.action.uninstall": "Uninstall",
-  "ccs.description": "Desktop app to manage AI CLI provider configs",
+  "ccs.description": "Official desktop app (GitHub MSI); needs Node.js 18+",
   "ccs.name": "CC Switch",
   "claude.action.init": "Initialize",
   "claude.action.install": "Install / Update CLI",

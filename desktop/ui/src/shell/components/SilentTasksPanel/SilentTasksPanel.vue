@@ -1,8 +1,9 @@
 <script setup lang="ts">
 /**
  * 底栏静默任务：单行摘要 + 图标角标；点击弹出进行中 / 最近完成列表。
+ * 弹层 Teleport 到 body + fixed，避免被 shell-bottom overflow / 页面 stacking 压住。
  */
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import {
   cancelSilentTask,
   pickActiveTask,
@@ -20,6 +21,9 @@ const snap = ref<SilentQueueSnapshot>({
 })
 const open = ref(false)
 const rootEl = ref<HTMLElement | null>(null)
+const btnEl = ref<HTMLElement | null>(null)
+const panelEl = ref<HTMLElement | null>(null)
+const panelStyle = ref<Record<string, string>>({})
 
 let unsub: (() => void) | undefined
 
@@ -50,16 +54,46 @@ const statusLabel: Record<SilentTask['status'], string> = {
   cancelled: '已取消',
 }
 
+function placePanel() {
+  const btn = btnEl.value
+  if (!btn) return
+  const r = btn.getBoundingClientRect()
+  const gap = 8
+  const width = Math.min(22 * 16, window.innerWidth - 32)
+  let right = window.innerWidth - r.right
+  right = Math.max(16, Math.min(right, window.innerWidth - width - 16))
+  panelStyle.value = {
+    position: 'fixed',
+    right: `${right}px`,
+    bottom: `${window.innerHeight - r.top + gap}px`,
+    width: `${width}px`,
+  }
+}
+
+function onWinChange() {
+  if (open.value) placePanel()
+}
+
 onMounted(() => {
   unsub = subscribeSilentTasks((s) => {
     snap.value = s
   })
   requestSilentList()
+  window.addEventListener('resize', onWinChange)
+  window.addEventListener('scroll', onWinChange, true)
 })
 
 onUnmounted(() => {
   unsub?.()
   document.removeEventListener('pointerdown', onDocPointer, true)
+  window.removeEventListener('resize', onWinChange)
+  window.removeEventListener('scroll', onWinChange, true)
+})
+
+watch(open, async (v) => {
+  if (!v) return
+  await nextTick()
+  placePanel()
 })
 
 function toggle() {
@@ -73,9 +107,10 @@ function toggle() {
 }
 
 function onDocPointer(ev: PointerEvent) {
-  const el = rootEl.value
-  if (!el) return
-  if (ev.target instanceof Node && el.contains(ev.target)) return
+  const t = ev.target
+  if (!(t instanceof Node)) return
+  if (rootEl.value?.contains(t)) return
+  if (panelEl.value?.contains(t)) return
   open.value = false
   document.removeEventListener('pointerdown', onDocPointer, true)
 }
@@ -93,6 +128,7 @@ function onCancel(id: string) {
       :title="summary || undefined"
     >{{ summary || '\u00a0' }}</p>
     <button
+      ref="btnEl"
       type="button"
       class="silent-tasks-btn"
       :aria-expanded="open"
@@ -115,57 +151,66 @@ function onCancel(id: string) {
       <span v-if="badge > 0" class="silent-tasks-badge">{{ badge > 9 ? '9+' : badge }}</span>
     </button>
 
-    <div v-if="open" class="silent-tasks-panel" role="dialog" aria-label="后台任务">
-      <header class="silent-tasks-panel-head">
-        <strong>后台任务</strong>
-        <span class="silent-tasks-panel-count">
-          {{ badge > 0 ? `${badge} 进行中` : '空闲' }}
-        </span>
-      </header>
+    <Teleport to="body">
+      <div
+        v-if="open"
+        ref="panelEl"
+        class="silent-tasks-panel"
+        role="dialog"
+        aria-label="后台任务"
+        :style="panelStyle"
+      >
+        <header class="silent-tasks-panel-head">
+          <strong>后台任务</strong>
+          <span class="silent-tasks-panel-count">
+            {{ badge > 0 ? `${badge} 进行中` : '空闲' }}
+          </span>
+        </header>
 
-      <section v-if="activeTasks.length" class="silent-tasks-section">
-        <h4>进行中</h4>
-        <ul>
-          <li v-for="t in activeTasks" :key="t.id" class="silent-tasks-row">
-            <div class="silent-tasks-row-main">
-              <span class="silent-tasks-row-title">{{ t.title }}</span>
-              <span class="silent-tasks-row-meta">{{ statusLabel[t.status] }}</span>
-            </div>
-            <div class="silent-tasks-bar" aria-hidden="true">
-              <i :style="{ width: `${t.progress}%` }" />
-            </div>
-            <p v-if="t.detail" class="silent-tasks-row-detail">{{ t.detail }}</p>
-            <button
-              v-if="t.status === 'pending' || t.status === 'running'"
-              type="button"
-              class="silent-tasks-cancel"
-              @click="onCancel(t.id)"
-            >
-              取消
-            </button>
-          </li>
-        </ul>
-      </section>
+        <section v-if="activeTasks.length" class="silent-tasks-section">
+          <h4>进行中</h4>
+          <ul>
+            <li v-for="t in activeTasks" :key="t.id" class="silent-tasks-row">
+              <div class="silent-tasks-row-main">
+                <span class="silent-tasks-row-title">{{ t.title }}</span>
+                <span class="silent-tasks-row-meta">{{ statusLabel[t.status] }}</span>
+              </div>
+              <div class="silent-tasks-bar" aria-hidden="true">
+                <i :style="{ width: `${t.progress}%` }" />
+              </div>
+              <p v-if="t.detail" class="silent-tasks-row-detail">{{ t.detail }}</p>
+              <button
+                v-if="t.status === 'pending' || t.status === 'running'"
+                type="button"
+                class="silent-tasks-cancel"
+                @click="onCancel(t.id)"
+              >
+                取消
+              </button>
+            </li>
+          </ul>
+        </section>
 
-      <section v-if="recentTasks.length" class="silent-tasks-section">
-        <h4>最近</h4>
-        <ul>
-          <li v-for="t in recentTasks" :key="t.id" class="silent-tasks-row is-done">
-            <div class="silent-tasks-row-main">
-              <span class="silent-tasks-row-title">{{ t.title }}</span>
-              <span
-                class="silent-tasks-row-meta"
-                :data-status="t.status"
-              >{{ statusLabel[t.status] }}</span>
-            </div>
-            <p v-if="t.detail" class="silent-tasks-row-detail">{{ t.detail }}</p>
-          </li>
-        </ul>
-      </section>
+        <section v-if="recentTasks.length" class="silent-tasks-section">
+          <h4>最近</h4>
+          <ul>
+            <li v-for="t in recentTasks" :key="t.id" class="silent-tasks-row is-done">
+              <div class="silent-tasks-row-main">
+                <span class="silent-tasks-row-title">{{ t.title }}</span>
+                <span
+                  class="silent-tasks-row-meta"
+                  :data-status="t.status"
+                >{{ statusLabel[t.status] }}</span>
+              </div>
+              <p v-if="t.detail" class="silent-tasks-row-detail">{{ t.detail }}</p>
+            </li>
+          </ul>
+        </section>
 
-      <p v-if="!activeTasks.length && !recentTasks.length" class="silent-tasks-empty">
-        暂无后台任务
-      </p>
-    </div>
+        <p v-if="!activeTasks.length && !recentTasks.length" class="silent-tasks-empty">
+          暂无后台任务
+        </p>
+      </div>
+    </Teleport>
   </div>
 </template>

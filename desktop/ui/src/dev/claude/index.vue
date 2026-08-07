@@ -2,7 +2,8 @@
 /**
  * Claude Code 工作区：
  * - 未安装 / 安装·更新·卸载进行中：内容区整页为进度+输出
- * - 已安装：上区 Tab+操作 / 下区共用进度+输出；空闲切 Tab 清空输出
+ * - 已安装·初始化：第一行执行/重置，下方整宽进度+输出
+ * - 已安装·其他 Tab：左操作 / 右共用进度+输出；空闲切 Tab 清空输出
  * 取消任务挂父级「终止」；状态读库，不提供刷新状态按钮。
  */
 import { computed, inject, onMounted, onUnmounted, ref, watch } from 'vue'
@@ -95,6 +96,7 @@ const {
   progress,
   statusText,
   busy,
+  beginJob,
   consumeJobMessage,
   resetWhenIdle,
   isShared,
@@ -272,6 +274,7 @@ function selectTab(id: ClaudeTab) {
 function runJob(action: string, extra?: Record<string, unknown>) {
   if (busy.value) return
   const jobId = crypto.randomUUID().replaceAll('-', '')
+  beginJob(jobId, `开始：${action}`)
   post({ type: 'run-job', jobId, toolId: 'claude-code', action, ...extra })
 }
 
@@ -330,7 +333,6 @@ async function runReset() {
           :status-text="statusText"
           :entries="outputEntries"
           :busy="busy"
-          placeholder="执行安装、更新或卸载后在此显示输出…"
         />
       </div>
     </template>
@@ -356,7 +358,63 @@ async function runReset() {
       </RegionLock>
 
       <div class="folder-body">
-        <div class="tool-stack" :class="{ 'is-job-locked': busy }">
+        <!-- 初始化：第一行按钮，下方整宽进度+输出 -->
+        <div
+          v-if="tab === 'init'"
+          class="claude-init-layout"
+          :class="{ 'is-job-locked': busy }"
+        >
+          <div class="tool-ops claude-init-ops">
+            <div
+              v-if="busy"
+              class="tool-ops-lock"
+              title="任务进行中，请先终止"
+              aria-hidden="true"
+            />
+            <div class="ver-head claude-init-head">
+              <button
+                type="button"
+                class="btn btn-ops"
+                :disabled="busy"
+                title="执行初始化"
+                @click="runJob('init')"
+              >
+                <span class="btn-label">执行</span>
+              </button>
+              <button
+                type="button"
+                class="btn secondary btn-ops"
+                :disabled="busy"
+                title="仅重置初始化设置"
+                @click="runReset"
+              >
+                <span class="btn-label">重置</span>
+              </button>
+            </div>
+          </div>
+          <JobConsole
+            class="tool-console claude-init-console"
+            always-show
+            :progress="progress"
+            :status-text="statusText"
+            :entries="outputEntries"
+            :busy="busy"
+          />
+        </div>
+
+        <div
+          v-else
+          class="tool-stack"
+          :class="{
+            'is-job-locked': busy,
+            'tool-stack--wide':
+              tab === 'api' ||
+              tab === 'proxy' ||
+              tab === 'plugin-install' ||
+              tab === 'plugin-update' ||
+              tab === 'plugin-uninstall',
+          }"
+        >
           <div class="tool-ops">
             <div
               v-if="busy"
@@ -365,33 +423,10 @@ async function runReset() {
               aria-hidden="true"
             />
 
-          <template v-if="tab === 'init'">
-            <div class="ver-head claude-init-head">
-              <button
-                type="button"
-                class="btn btn-install"
-                :disabled="busy"
-                title="执行初始化"
-                @click="runJob('init')"
-              >
-                执行
-              </button>
-              <button
-                type="button"
-                class="btn secondary claude-head-btn"
-                :disabled="busy"
-                title="仅重置初始化设置"
-                @click="runReset"
-              >
-                重置
-              </button>
-            </div>
-          </template>
-
-          <template v-else-if="tab === 'api'">
+          <template v-if="tab === 'api'">
             <div class="ver-head">
-              <button type="button" class="btn btn-install" :disabled="busy" @click="saveApi">
-                保存
+              <button type="button" class="btn btn-ops" :disabled="busy" @click="saveApi">
+                <span class="btn-label">保存</span>
               </button>
             </div>
             <div class="claude-pane claude-pane--form">
@@ -399,8 +434,8 @@ async function runReset() {
                 当前：{{ secrets?.apiMode || '未配置'
                 }}<template v-if="secrets?.apiKeyMasked"> · Key {{ secrets.apiKeyMasked }}</template>
               </p>
-              <div class="claude-form">
-                <label>
+              <div class="form-stack">
+                <label class="field-stack field-stack--sm">
                   模式
                   <select v-model="apiMode">
                     <option value="official">官方 API Key</option>
@@ -408,16 +443,16 @@ async function runReset() {
                     <option value="clear">清除</option>
                   </select>
                 </label>
-                <label v-if="apiMode === 'official'">
+                <label v-if="apiMode === 'official'" class="field-stack field-stack--sm">
                   ANTHROPIC_API_KEY
                   <input v-model="apiKey" type="password" autocomplete="off" placeholder="sk-ant-…" />
                 </label>
                 <template v-if="apiMode === 'custom'">
-                  <label>
+                  <label class="field-stack field-stack--sm">
                     Base URL
                     <input v-model="baseUrl" type="url" placeholder="https://…" />
                   </label>
-                  <label>
+                  <label class="field-stack field-stack--sm">
                     Token
                     <input v-model="authToken" type="password" autocomplete="off" />
                   </label>
@@ -428,25 +463,25 @@ async function runReset() {
 
           <template v-else-if="tab === 'proxy'">
             <div class="ver-head">
-              <button type="button" class="btn btn-install" :disabled="busy" @click="saveProxy('set')">
-                保存
+              <button type="button" class="btn btn-ops" :disabled="busy" @click="saveProxy('set')">
+                <span class="btn-label">保存</span>
               </button>
               <button
                 type="button"
-                class="btn secondary claude-head-btn"
+                class="btn secondary btn-ops"
                 :disabled="busy"
                 @click="saveProxy('clear')"
               >
-                清除
+                <span class="btn-label">清除</span>
               </button>
             </div>
             <div class="claude-pane claude-pane--form">
-              <div class="claude-form">
-                <label>
+              <div class="form-stack">
+                <label class="field-stack field-stack--sm">
                   HTTP_PROXY
                   <input v-model="httpProxy" placeholder="http://127.0.0.1:7890" />
                 </label>
-                <label>
+                <label class="field-stack field-stack--sm">
                   HTTPS_PROXY
                   <input v-model="httpsProxy" placeholder="留空则同 HTTP" />
                 </label>
@@ -465,12 +500,12 @@ async function runReset() {
               />
               <button
                 type="button"
-                class="btn btn-install"
+                class="btn btn-ops"
                 :disabled="busy || !selectedList.length"
                 :title="!selectedList.length ? '请先勾选插件' : `${pluginActionLabel}所选插件`"
                 @click="runPluginBatch()"
               >
-                {{ pluginActionLabel }}
+                <span class="btn-label">{{ pluginActionLabel }}</span>
               </button>
             </div>
             <ul class="ver-list ver-list--install" aria-label="插件列表">
@@ -526,7 +561,6 @@ async function runReset() {
             :status-text="statusText"
             :entries="outputEntries"
             :busy="busy"
-            placeholder="执行操作后在此显示输出…"
           />
         </div>
       </div>
@@ -535,6 +569,13 @@ async function runReset() {
 </template>
 
 <style scoped>
+.claude-page {
+  /* 初始化区在 tool-stack 外，与公共 ops 行高对齐 */
+  --tool-head-h: var(--btn-ops-h, 1.85rem);
+  --tool-ops-w: 13.75rem;
+  --ver-check-size: 1rem;
+}
+
 .claude-page.embedded {
   display: flex;
   flex-direction: column;
@@ -558,11 +599,38 @@ async function runReset() {
   width: 100%;
 }
 
+.claude-init-layout {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  overflow: hidden;
+}
+
+.claude-init-ops {
+  position: relative;
+  flex: 0 0 auto;
+  width: 100%;
+  max-width: min(22rem, 100%);
+  min-height: 0;
+}
+
 .claude-init-head {
   width: 100%;
   min-width: 0;
+  height: var(--tool-head-h);
   justify-content: flex-start;
 }
+
+.claude-init-console {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+}
+
+/* 顶栏按钮尺寸/居中：公共 .btn-ops / .ver-head > .btn（buttons.css） */
 
 .claude-pane {
   min-height: 0;
@@ -572,50 +640,6 @@ async function runReset() {
   border: 1px solid color-mix(in srgb, var(--line) 80%, transparent);
   border-radius: 0.5rem;
   background: color-mix(in srgb, var(--panel) 40%, transparent);
-}
-
-.claude-hint {
-  margin: 0;
-  font-size: 0.78rem;
-  line-height: 1.45;
-  color: var(--muted);
-}
-
-.claude-form {
-  display: flex;
-  flex-direction: column;
-  gap: 0.65rem;
-}
-
-.claude-form label {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-  font-size: 0.72rem;
-  color: var(--muted);
-}
-
-.claude-form input,
-.claude-form select {
-  padding: 0.4rem 0.55rem;
-  border: 1px solid var(--line);
-  border-radius: 0.4rem;
-  background: var(--panel-strong);
-  color: var(--ink);
-  font-family: var(--font-mono);
-  font-size: 0.82rem;
-}
-
-.claude-head-btn {
-  box-sizing: border-box;
-  height: 100%;
-  min-height: 0;
-  margin: 0;
-  padding: 0 0.7rem;
-  line-height: 1;
-  display: inline-flex;
-  align-items: center;
-  font-size: 0.74rem;
 }
 
 .claude-list-label {

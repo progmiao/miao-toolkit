@@ -1,0 +1,53 @@
+/**
+ * 表单：竖排标签 + 控件（站点弹窗 / Claude API / 工具字段等）。
+ */
+.field-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+.field-stack--sm {
+  font-size: 0.72rem;
+}
+
+.control,
+.field-stack input,
+.field-stack select,
+.field-stack textarea {
+  box-sizing: border-box;
+  padding: 0.45rem 0.55rem;
+  border: 1px solid var(--line);
+  border-radius: 0.4rem;
+  background: var(--panel-strong);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: 0.9rem;
+  line-height: 1.3;
+}
+
+.field-stack--sm input,
+.field-stack--sm select,
+.field-stack--sm textarea,
+.control--sm {
+  padding: 0.4rem 0.55rem;
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+}
+
+.field-stack input:focus,
+.field-stack select:focus,
+.field-stack textarea:focus,
+.control:focus {
+  outline: none;
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--line));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+.form-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}

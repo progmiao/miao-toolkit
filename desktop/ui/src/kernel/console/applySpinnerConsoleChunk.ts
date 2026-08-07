@@ -35,7 +35,16 @@ const SPINNER_ONLY_RE = /^\s*[-\\|\/]\s*$/
 const WINGET_SIZE_RE =
   /(\d+(?:\.\d+)?)\s*(B|KB|MB|GB|TB)\s*\/\s*(\d+(?:\.\d+)?)\s*(B|KB|MB|GB|TB)/i
 
+/** PowerShell Invoke-WebRequest 进度（中/英）：应原地刷新，勿 append 刷屏。 */
+const PSH_IWR_PROGRESS_RE =
+  /(?:正在写入(?:\s*Web\s*)?请求|正在写入请求流|Writing\s+(?:web\s+)?request|Written\s+\d+\s+bytes|已写入字节数\s*[:：]?\s*\d+)/i
+
+/** winget / 终端块状进度条：`████░░░░  28%`（含 \r 叠帧或粘连多帧）。 */
+const BLOCK_PROGRESS_RE = /[█▉▊▋▌▍▎▏░▒▓]/
+
 export const WINGET_DOWNLOAD_LINE_ID = 'winget:download'
+export const PSH_IWR_PROGRESS_LINE_ID = 'psh:iwr-progress'
+export const BLOCK_PROGRESS_LINE_ID = 'console:block-progress'
 
 export function createSpinnerConsoleSession(): SpinnerConsoleSession {
   return { pending: '', spinnerSlot: 0, inSpinner: false, hasDownloadLine: false }
@@ -140,12 +149,68 @@ function emitDownload(
   }
 }
 
+/** PowerShell IWR 进度：收成单行；能解析字节时推进度。 */
+function emitPshIwrProgress(
+  session: SpinnerConsoleSession,
+  line: string,
+  sink: SpinnerConsoleSink,
+): ApplyConsoleChunkResult | null {
+  if (!PSH_IWR_PROGRESS_RE.test(line)) return null
+  clearSpinnerLine(session, sink)
+  session.hasDownloadLine = true
+  const m =
+    /\(已写入字节数:\s*(\d+)\)/i.exec(line) ||
+    /已写入字节数\s*[:：]?\s*(\d+)/i.exec(line) ||
+    /Written\s+(\d+)\s+bytes/i.exec(line)
+  const n = m ? Number(m[1]) : NaN
+  let text = '下载中…'
+  let downloadPct: number | undefined
+  if (Number.isFinite(n) && n >= 0) {
+    const mb = n / (1024 * 1024)
+    text =
+      mb >= 0.1
+        ? `下载中… 已写入 ${mb.toFixed(1)} MB`
+        : `下载中… 已写入 ${n} 字节`
+    // 无总大小时只做缓慢爬升提示（上限 85，留给后续 ##progress）
+    downloadPct = Math.min(85, Math.max(5, Math.round(Math.log10(n + 10) * 18)))
+  }
+  sink.upsert(PSH_IWR_PROGRESS_LINE_ID, text, 'dim')
+  return downloadPct != null ? { downloadPct } : {}
+}
+
+/** 解析块状进度条中最后一个百分比（粘连多帧时取最新）。 */
+export function parseBlockProgressPct(line: string): number | null {
+  if (!BLOCK_PROGRESS_RE.test(line)) return null
+  const matches = [...line.matchAll(/(\d{1,3})\s*%/g)]
+  if (!matches.length) return null
+  const pct = Number(matches[matches.length - 1]![1])
+  if (!Number.isFinite(pct) || pct < 0 || pct > 100) return null
+  return pct
+}
+
+function emitBlockProgress(
+  session: SpinnerConsoleSession,
+  line: string,
+  sink: SpinnerConsoleSink,
+): ApplyConsoleChunkResult | null {
+  const pct = parseBlockProgressPct(line)
+  if (pct == null) return null
+  clearSpinnerLine(session, sink)
+  session.hasDownloadLine = true
+  sink.upsert(BLOCK_PROGRESS_LINE_ID, `下载进度  ${formatBar(pct)} ${String(pct).padStart(3, ' ')}%`, 'dim')
+  return { downloadPct: pct }
+}
+
 function emitContent(session: SpinnerConsoleSession, line: string, sink: SpinnerConsoleSink) {
   clearSpinnerLine(session, sink)
   const text = line.replace(/\s+$/u, '')
   if (!text.trim()) return
-  // 原始 winget 进度块行：已转成下载行，勿再 append
+  // 原始进度行：已转成下载行，勿再 append
   if (parseWingetDownloadLine(text)) return
+  if (PSH_IWR_PROGRESS_RE.test(text)) return
+  if (parseBlockProgressPct(text) != null) return
+  // 协议行偶发漏进 console 时丢弃
+  if (/^##(?:progress|task|batch|log)\b/i.test(text.trim())) return
   sink.append(text)
   session.spinnerSlot += 1
 }
@@ -211,6 +276,10 @@ export function applySpinnerConsoleChunk(
   }
   const half = emitDownload(session, buf, sink)
   if (half) return half
+  const iwr = emitPshIwrProgress(session, buf, sink)
+  if (iwr) return iwr
+  const bar = emitBlockProgress(session, buf, sink)
+  if (bar) return bar
   session.pending = buf
   return lastDownload
 }
@@ -228,6 +297,10 @@ function flushBuffer(
   }
   const dl = emitDownload(session, buf, sink)
   if (dl) return dl
+  const iwr = emitPshIwrProgress(session, buf, sink)
+  if (iwr) return iwr
+  const bar = emitBlockProgress(session, buf, sink)
+  if (bar) return bar
   // \r 刷未识别正文：软刷新不 append，避免半截进度块刷屏
   if (mode === 'soft') {
     session.pending = buf

@@ -7,40 +7,51 @@
 $ErrorActionPreference = 'Stop'
 $ui = Join-Path $PSScriptRoot 'ui'
 $proj = Join-Path $PSScriptRoot 'src\Miao.App\Miao.App.csproj'
-$viteUrl = 'http://localhost:5173/'
+$viteUrl = 'http://127.0.0.1:5173/'
+$viteHost = '127.0.0.1'
+$vitePort = 5173
 $pkgJson = Join-Path $ui 'package.json'
 
 function Test-ViteUp {
-    foreach ($url in @('http://127.0.0.1:5173/', 'http://localhost:5173/')) {
-        try {
-            # 避免系统代理把 localhost 拐走
-            $req = [System.Net.HttpWebRequest]::Create($url)
-            $req.Timeout = 800
-            $req.Proxy = $null
-            $req.Method = 'GET'
-            $resp = $req.GetResponse()
-            $code = [int]$resp.StatusCode
-            $resp.Close()
-            if ($code -ge 200 -and $code -lt 500) { return $true }
-        }
-        catch {
-            # try next
-        }
-    }
-    return $false
-}
-
-function Stop-PortListeners([int]$Port) {
+    # TCP only: HttpWebRequest probes can stall on ServicePoint/proxy and keep returning false
+    # even while Vite is already listening (browser/curl still work).
     try {
-        $conns = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue
-        foreach ($c in $conns) {
-            if ($c.OwningProcess -gt 0) {
-                Stop-Process -Id $c.OwningProcess -Force -ErrorAction SilentlyContinue
+        $client = [System.Net.Sockets.TcpClient]::new()
+        try {
+            $async = $client.BeginConnect($viteHost, $vitePort, $null, $null)
+            if (-not $async.AsyncWaitHandle.WaitOne(400, $false)) {
+                return $false
             }
+            $client.EndConnect($async)
+            return $true
+        }
+        finally {
+            $client.Close()
         }
     }
     catch {
-        # optional helper; ignore if cmdlet unavailable
+        return $false
+    }
+}
+
+function Stop-PortListeners([int]$Port) {
+    $pids = @()
+    try {
+        $pids += @(
+            Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue |
+                ForEach-Object { $_.OwningProcess }
+        )
+    }
+    catch {
+        # NetTCPIP module may be unavailable in some shells
+    }
+    if (-not $pids -or $pids.Count -eq 0) {
+        foreach ($line in @(netstat -ano 2>$null | Select-String ":$Port\s+\S+\s+LISTENING")) {
+            if ($line -match '(\d+)\s*$') { $pids += [int]$Matches[1] }
+        }
+    }
+    foreach ($procId in ($pids | Where-Object { $_ -gt 0 } | Select-Object -Unique)) {
+        Stop-Process -Id $procId -Force -ErrorAction SilentlyContinue
     }
 }
 
@@ -239,19 +250,25 @@ try {
     Write-Host '[3/4] Vite + host build ...'
     $viteReady = Test-ViteUp
     if (-not $viteReady) {
-        Write-Host 'Starting Vite on :5173 ...'
+        Write-Host 'Starting Vite on 127.0.0.1:5173 ...'
         foreach ($f in @($viteOutLog, $viteErrLog)) {
             if (Test-Path -LiteralPath $f) {
                 Remove-Item -LiteralPath $f -Force -ErrorAction SilentlyContinue
             }
         }
-        $npmCmd = (Get-Command npm.cmd -ErrorAction Stop).Source
-        Start-Process -FilePath $npmCmd `
-            -ArgumentList @('run', 'dev', '--', '--host', '127.0.0.1', '--port', '5173', '--strictPort') `
+        # Prefer node+vite.js (npm.cmd + redirect can drop the child on some hosts)
+        $viteJs = [System.IO.Path]::Combine($ui, 'node_modules', 'vite', 'bin', 'vite.js')
+        if ([string]::IsNullOrWhiteSpace($viteJs) -or -not (Test-Path -LiteralPath $viteJs)) {
+            throw "Vite not found under $ui\node_modules\vite (run npm install in desktop/ui)"
+        }
+        $nodeCmd = (Get-Command node -ErrorAction Stop).Source
+        # Use cmd redirection (Start-Process -Redirect* can block node stdio on some hosts)
+        $cmdArgs = '/c ""{0}" "{1}" --host {2} --port {3} --strictPort >"{4}" 2>"{5}""' -f `
+            $nodeCmd, $viteJs, $viteHost, $vitePort, $viteOutLog, $viteErrLog
+        Start-Process -FilePath 'cmd.exe' `
+            -ArgumentList $cmdArgs `
             -WorkingDirectory $ui `
             -WindowStyle Hidden `
-            -RedirectStandardOutput $viteOutLog `
-            -RedirectStandardError $viteErrLog `
             -PassThru | Out-Null
         $startedVite = $true
     }
@@ -288,7 +305,7 @@ try {
                 throw $msg
             }
             if (((Get-Date) - $lastHint).TotalSeconds -ge 5) {
-                Write-Host 'Waiting for Vite ...'
+                Write-Host ("Waiting for Vite on {0}:{1} ..." -f $viteHost, $vitePort)
                 $lastHint = Get-Date
             }
             Start-Sleep -Milliseconds 300

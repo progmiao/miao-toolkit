@@ -1,4 +1,4 @@
-﻿{
+{
   "tools": [
     {
       "id": "volta",
@@ -104,7 +104,7 @@
       "nameKey": "tb.name",
       "descriptionKey": "tb.description",
       "tags": ["terminal"],
-      "ui": { "mode": "generic" },
+      "ui": { "mode": "panel", "entry": "terminalBuddy" },
       "install": {
         "strategy": "custom",
         "giteeOwner": "updateme",
@@ -126,18 +126,19 @@
       "sort": 40,
       "nameKey": "ccs.name",
       "descriptionKey": "ccs.description",
-      "tags": ["ai"],
-      "ui": { "mode": "generic" },
+      "tags": ["ai", "needs-node"],
+      "ui": { "mode": "panel", "entry": "ccSwitch" },
       "install": {
-        "strategy": "winget",
-        "packageId": "farion1231.CC-Switch",
+        "strategy": "custom",
+        "githubOwner": "farion1231",
+        "githubRepo": "cc-switch",
         "detect": {
           "registryUninstallNames": ["CC Switch", "CC-Switch"]
         },
-        "update": { "strategy": "winget" }
+        "update": { "strategy": "github-release" }
       },
       "actions": [
-        { "id": "install", "handler": "generic.winget", "nameKey": "ccs.action.install" },
+        { "id": "install", "handler": "cc-switch.install", "nameKey": "ccs.action.install" },
         { "id": "uninstall", "handler": "generic.uninstall", "nameKey": "ccs.action.uninstall" }
       ],
       "group": "dev"
@@ -147,20 +148,20 @@
       "sort": 50,
       "nameKey": "ccc.name",
       "descriptionKey": "ccc.description",
-      "tags": ["ai"],
-      "ui": { "mode": "generic" },
+      "tags": ["ai", "needs-node"],
+      "ui": { "mode": "panel", "entry": "ccConnect" },
       "install": {
-        "strategy": "winget",
-        "packageId": "9NHCNC0N2LBJ",
-        "wingetSource": "msstore",
+        "strategy": "npm",
+        "npmPackage": "cc-connect",
         "detect": {
-          "registryUninstallNames": ["CC Connect", "cc-connect"]
+          "command": "cc-connect",
+          "commandArgs": "--version"
         },
-        "update": { "strategy": "winget" }
+        "update": { "strategy": "npm" }
       },
       "actions": [
-        { "id": "install", "handler": "generic.winget", "nameKey": "ccc.action.install" },
-        { "id": "uninstall", "handler": "generic.winget-uninstall", "nameKey": "ccc.action.uninstall" }
+        { "id": "install", "handler": "generic.npm-global", "nameKey": "ccc.action.install" },
+        { "id": "uninstall", "handler": "generic.npm-global-uninstall", "nameKey": "ccc.action.uninstall" }
       ],
       "group": "dev"
     },
@@ -170,7 +171,7 @@
       "nameKey": "hermes.name",
       "descriptionKey": "hermes.description",
       "tags": ["ai", "cli"],
-      "ui": { "mode": "generic" },
+      "ui": { "mode": "panel", "entry": "hermes" },
       "install": {
         "strategy": "custom",
         "detect": {

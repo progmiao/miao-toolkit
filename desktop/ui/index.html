@@ -12,8 +12,126 @@
       href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Noto+Sans+SC:wght@700;900&family=Orbitron:wght@500;700&family=Oxanium:wght@600;700;800&family=Rajdhani:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
+    <!--
+      静态 S0：填补「宿主遮罩被 WebView HWND 盖住 → Vue Boot 挂载」之间的空窗。
+      视觉对齐 HostBootOverlay / BootPage（同底色、同 ASCII、同氛围），Vue 就绪后移除。
+    -->
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: #060a12;
+      }
+      #boot-splash {
+        position: fixed;
+        inset: 0;
+        z-index: 2147483000;
+        display: grid;
+        place-items: center;
+        overflow: hidden;
+        background: #060a12;
+        pointer-events: none;
+      }
+      #boot-splash .bs-atm {
+        position: absolute;
+        inset: 0;
+        overflow: hidden;
+      }
+      #boot-splash .bs-orb {
+        position: absolute;
+        border-radius: 50%;
+        filter: blur(48px);
+        opacity: 0.55;
+      }
+      #boot-splash .bs-orb-a {
+        width: min(52vw, 420px);
+        height: min(52vw, 420px);
+        left: 8%;
+        top: 12%;
+        background: radial-gradient(circle, rgba(94, 201, 214, 0.55), transparent 68%);
+      }
+      #boot-splash .bs-orb-b {
+        width: min(48vw, 380px);
+        height: min(48vw, 380px);
+        right: 4%;
+        bottom: 8%;
+        background: radial-gradient(circle, rgba(124, 156, 255, 0.45), transparent 68%);
+      }
+      #boot-splash .bs-grid {
+        position: absolute;
+        inset: 0;
+        opacity: 0.22;
+        background-image:
+          linear-gradient(rgba(94, 201, 214, 0.12) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(94, 201, 214, 0.12) 1px, transparent 1px);
+        background-size: 48px 48px;
+        -webkit-mask-image: radial-gradient(ellipse 70% 60% at 50% 45%, #000 20%, transparent 75%);
+        mask-image: radial-gradient(ellipse 70% 60% at 50% 45%, #000 20%, transparent 75%);
+      }
+      #boot-splash .bs-stage {
+        position: relative;
+        z-index: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        width: min(96vw, 820px);
+        padding: 1rem;
+      }
+      #boot-splash .bs-ascii {
+        margin: 0;
+        padding: 0;
+        /* 与 Vue .boot-ascii / 宿主完全一致 */
+        font-family: "Cascadia Mono", Consolas, "Courier New", monospace;
+        font-size: 24px;
+        line-height: 28px;
+        letter-spacing: 0;
+        font-kerning: none;
+        font-variant-ligatures: none;
+        font-feature-settings: "liga" 0, "calt" 0;
+        text-align: left;
+        white-space: pre;
+        color: #5ec9d6;
+        text-shadow:
+          0 0 22px rgba(94, 201, 214, 0.45),
+          0 0 48px rgba(124, 156, 255, 0.2);
+        animation: bs-glow 1.8s ease-in-out infinite;
+      }
+      #boot-splash .bs-slot {
+        width: min(100%, 480px);
+        height: 11.5rem;
+        margin-top: 0.55rem;
+      }
+      @keyframes bs-glow {
+        0%,
+        100% {
+          opacity: 0.72;
+        }
+        45% {
+          opacity: 1;
+        }
+      }
+    </style>
   </head>
-  <body style="margin:0;background:#070b14;">
+  <body>
+    <div id="boot-splash" aria-hidden="true">
+      <div class="bs-atm">
+        <div class="bs-orb bs-orb-a"></div>
+        <div class="bs-orb bs-orb-b"></div>
+        <div class="bs-grid"></div>
+      </div>
+      <div class="bs-stage">
+        <pre class="bs-ascii">    /\           /\
+   |  \_________/  |
+ ███╗   ███╗██╗ █████╗  ██████╗
+ ████╗ ████║██║██╔══██╗██╔═══██╗
+ ██╔████╔██║██║███████║██║   ██║
+ ██║╚██╔╝██║██║██╔══██║██║   ██║
+ ██║ ╚═╝ ██║██║██║  ██║╚██████╔╝
+ ╚═╝     ╚═╝╚═╝╚═╝  ╚═╝ ╚═════╝</pre>
+        <div class="bs-slot"></div>
+      </div>
+    </div>
     <div id="app"></div>
     <script type="module" src="/src/main.ts"></script>
   </body>

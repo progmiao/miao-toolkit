@@ -1,11 +1,11 @@
 {
   "ccc.action.install": "安装 / 更新",
   "ccc.action.uninstall": "卸载",
-  "ccc.description": "将本地 AI 编码助手桥接到即时通讯（Microsoft Store / WinGet）",
+  "ccc.description": "将本地 AI 编码助手桥接到即时通讯（npm；需 Node.js 18+）",
   "ccc.name": "CC Connect",
   "ccs.action.install": "安装 / 更新",
   "ccs.action.uninstall": "卸载",
-  "ccs.description": "官方桌面端：管理 Claude Code 等 AI CLI 的供应商配置",
+  "ccs.description": "官方桌面端（GitHub MSI）：管理 AI CLI 供应商配置；需 Node.js 18+",
   "ccs.name": "CC Switch",
   "claude.action.init": "初始化配置",
   "claude.action.reset": "重置初始化设置",

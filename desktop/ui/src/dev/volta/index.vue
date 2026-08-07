@@ -47,9 +47,15 @@ function goRelated(id: string) {
     </p>
     <div class="related">
       <span class="related-label">相关工具</span>
-      <button type="button" class="btn ghost mini" @click="goRelated('node')">Node.js</button>
-      <button type="button" class="btn ghost mini" @click="goRelated('pnpm')">Pnpm</button>
-      <button type="button" class="btn ghost mini" @click="goRelated('yarn')">Yarn</button>
+      <button type="button" class="btn ghost mini" @click="goRelated('node')">
+        <span class="btn-label">Node.js</span>
+      </button>
+      <button type="button" class="btn ghost mini" @click="goRelated('pnpm')">
+        <span class="btn-label">Pnpm</span>
+      </button>
+      <button type="button" class="btn ghost mini" @click="goRelated('yarn')">
+        <span class="btn-label">Yarn</span>
+      </button>
     </div>
   </div>
 </template>
@@ -77,9 +83,5 @@ function goRelated(id: string) {
   font-size: 0.8rem;
   color: var(--muted);
   margin-right: 0.15rem;
-}
-.btn.mini {
-  padding: 0.25rem 0.55rem;
-  font-size: 0.8rem;
 }
 </style>

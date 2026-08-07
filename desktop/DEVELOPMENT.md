@@ -37,10 +37,11 @@
 
 宿主**先出窗**，再后台初始化，避免白屏：
 
-1. **层 A（WPF）**：`MainWindow` 覆盖层——与 Vue `/boot` **S0 同视觉**（ASCII logo + 氛围），仅填补 WebView 空白期；无进度条/日志  
-2. **S0（Vue `/boot`）**：同款动态 logo；`boot.ui-ready` 后淡出宿主层（应感觉不到「换页」）  
-3. **S1**：收到 `boot.progress`（phase=`progress`）后同页切换为进度条 + 日志  
-4. **S2**：`boot.done` → 动画进入 `AppShell`  
+1. **层 A（WPF）**：`MainWindow` 覆盖层——与 Vue `/boot` **S0 同视觉**；启动期 WebView **Hidden**，用户只看这层  
+2. **HTML 静态 S0**（`index.html#boot-splash`）：在 Hidden 的 WebView 内预绘同款画面  
+3. **交接**：`boot.ui-ready` → 显示 WebView + 同帧收起 WPF → `boot.surface-ready` → 淡出 HTML splash → Vue Boot（应无闪）  
+4. **S1**：`boot.progress` 后同页淡入进度条 + 日志  
+5. **S2**：`boot.done` → 预挂 `AppShell` 再淡出 Boot  
 
 协议：`boot.subscribe` / `boot.ui-ready`（UI→宿主）；`boot.progress` / `boot.log` / `boot.done` / `boot.error`（宿主→UI）。  
 `dev.ps1` 窗前等待（Volta/npm/Vite/build）另用控制台 `[1/4]…[4/4]`，与窗内三态无关。
@@ -99,6 +100,29 @@
 完成后宿主推送 `catalog`（dev/daily），列表角标与版本自动刷新。Claude 面板 `claude.status` 首屏读库，不现场跑 `claude --version`。
 
 三工具页默认 `volta.list` 的 `forceRemote: false`（读库）；概览「刷新清单」仍强制远端。浏览器 Mock 会模拟同一任务流。
+
+---
+
+## 按钮与公共 UI 样式
+
+入口：`ui/src/kernel/styles/index.css`（`main.ts` 引入；令牌与页面骨架仍在 `styles.css`）。
+
+| 模块 | 类名 | 用途 |
+|------|------|------|
+| `buttons.css` | `.btn` + `.secondary` / `.danger` / `.ghost` / `.mini` | 通用按钮 |
+| | `.btn-overview` | 工具概览：安装 / 更新 / 卸载 / 终止 |
+| | `.btn-ops`（兼容旧名 `.btn-install`） | 工具内操作条 |
+| | `.actions--tall` | 概览区按钮贴齐信息块高度 |
+| `filters.css` | `.filter-bar` / `.filter-chip` | 分类过滤条 |
+| `frost.css` | `.panel-frost` / `.panel-frost--flat` | 磨砂面板 |
+| | `.side-nav-item` | 侧栏/列表悬停与左侧选中条 |
+| `status.css` | `.tag` | 目录卡片状态标签 |
+| | `.meta` / `.meta-status` | 开发列表紧凑状态 |
+| `forms.css` | `.form-stack` / `.field-stack` / `.control` | 竖排表单 |
+| `tips.css` | `.empty-hint` / `.sec-hint` / `.panel-hint` / `.claude-hint` | 说明与空态 |
+| | `.panel-tip` / `.prereq-*` / `.docs-row` | 提示条、前置条件、文档行 |
+
+`ver-head` / `ver-project` 内 `.btn` 自动套用 ops 尺寸。页面只保留布局与业务特殊样式，勿再复制上述公共规则。版本列表 LTS 标记用 `.ver-tag`，勿复用目录 `.tag`。
 
 ---
 

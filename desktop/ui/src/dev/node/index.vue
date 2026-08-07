@@ -124,7 +124,7 @@ const tablistAria = computed(() => `${displayName} 功能`)
                 :title="!selectedList.length ? '请先勾选要安装的版本' : '安装所选版本'"
                 @click="runBatchInstall"
               >
-                安装
+                <span class="btn-label">安装</span>
               </button>
             </div>
             <ul
@@ -167,7 +167,7 @@ const tablistAria = computed(() => `${displayName} 功能`)
                       />
                     </span>
                     <span class="ver-num">{{ v.version }}</span>
-                    <span v-if="v.lts" class="tag">LTS · {{ v.lts }}</span>
+                    <span v-if="v.lts" class="ver-tag">LTS · {{ v.lts }}</span>
                   </label>
                 </li>
                 <li v-if="!listForTab.length && !loading" class="empty-hint">无匹配版本</li>
@@ -196,7 +196,7 @@ const tablistAria = computed(() => `${displayName} 功能`)
                   title="选择含 package.json 的项目目录"
                   @click="pickProjectDir"
                 >
-                  选择
+                  <span class="btn-label">选择</span>
                 </button>
               </div>
               <p
@@ -230,7 +230,7 @@ const tablistAria = computed(() => `${displayName} 功能`)
                 "
                 @click="runSpecifyPin"
               >
-                指定
+                <span class="btn-label">指定</span>
               </button>
             </div>
             <ul
@@ -261,7 +261,7 @@ const tablistAria = computed(() => `${displayName} 功能`)
                     />
                   </span>
                   <span class="ver-num">{{ v.version }}</span>
-                  <span v-if="v.lts" class="tag">LTS · {{ v.lts }}</span>
+                  <span v-if="v.lts" class="ver-tag">LTS · {{ v.lts }}</span>
                 </label>
               </li>
               <li v-if="!listForTab.length && !loading" class="empty-hint">无匹配版本</li>
@@ -285,7 +285,7 @@ const tablistAria = computed(() => `${displayName} 功能`)
                 :title="!defaultPick ? '请先选择版本' : '设为默认'"
                 @click="runSetDefault"
               >
-                设置
+                <span class="btn-label">设置</span>
               </button>
             </div>
             <ul
@@ -316,7 +316,7 @@ const tablistAria = computed(() => `${displayName} 功能`)
                     />
                   </span>
                   <span class="ver-num">{{ v.version }}</span>
-                  <span v-if="v.lts" class="tag">LTS · {{ v.lts }}</span>
+                  <span v-if="v.lts" class="ver-tag">LTS · {{ v.lts }}</span>
                 </label>
               </li>
               <li v-if="!listForTab.length && !loading" class="empty-hint">无匹配版本</li>
@@ -340,7 +340,7 @@ const tablistAria = computed(() => `${displayName} 功能`)
                 :title="!selectedList.length ? '请先勾选要卸载的版本' : '卸载所选版本'"
                 @click="runBatchUninstall"
               >
-                卸载
+                <span class="btn-label">卸载</span>
               </button>
             </div>
             <ul
@@ -368,7 +368,7 @@ const tablistAria = computed(() => `${displayName} 功能`)
                     />
                   </span>
                   <span class="ver-num">{{ v.version }}</span>
-                  <span v-if="v.lts" class="tag">LTS · {{ v.lts }}</span>
+                  <span v-if="v.lts" class="ver-tag">LTS · {{ v.lts }}</span>
                 </label>
               </li>
               <li v-if="!listForTab.length && !loading" class="empty-hint">暂无已安装版本</li>
@@ -383,7 +383,6 @@ const tablistAria = computed(() => `${displayName} 功能`)
             :status-text="statusText"
             :entries="outputEntries"
             :busy="busy"
-            placeholder="执行操作后在此显示输出…"
           />
         </div>
       </div>

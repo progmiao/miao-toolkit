@@ -4,7 +4,6 @@ using System.IO;
 using System.Net.Http;
 using System.Text.Json;
 using System.Windows;
-using System.Windows.Media.Animation;
 using Microsoft.Web.WebView2.Core;
 using Miao.App.Boot;
 using Miao.App.Bridge;
@@ -15,7 +14,7 @@ namespace Miao.App;
 
 /// <summary>
 /// 主窗口：内嵌 WebView2，加载 Vue UI，并通过 JSON 消息与 <see cref="HostBridge"/> 通信。
-/// 启动：先出窗（宿主 S0）→ 导航 /boot → 后台初始化并推送进度 → 进入主壳。
+/// 启动：主窗 + 遮罩窗 → 导航 /boot → 后台初始化并推送进度 → 收遮罩进入主壳。
 /// </summary>
 public partial class MainWindow : Window
 {
@@ -23,55 +22,45 @@ public partial class MainWindow : Window
     private static readonly TimeSpan FastPathThreshold = TimeSpan.FromMilliseconds(320);
 
     private HostBridge? _bridge;
+    private BootSplashWindow? _bootSplash;
     private readonly List<object> _bootBuffer = new();
     private bool _bootSubscriberReady;
     private bool _pipelineRunning;
-    private bool _hostOverlayHidden;
+    private bool _bootSplashDismissed;
     private bool _bootDoneSent;
     private CancellationTokenSource? _pipelineCts;
 
     public MainWindow()
     {
         InitializeComponent();
-        LoadHostBootAscii();
+        SourceInitialized += OnSourceInitialized;
         Loaded += OnLoaded;
     }
 
-    /// <summary>加载与 Vue boot S0 同一份 ASCII logo。</summary>
-    private void LoadHostBootAscii()
+    /// <summary>源句柄就绪后立刻盖上遮罩，避免首帧露出 WebView 空底。</summary>
+    private void OnSourceInitialized(object? sender, EventArgs e)
     {
-        try
-        {
-            var uri = new Uri("pack://application:,,,/Assets/ascii-logo.txt");
-            var info = Application.GetResourceStream(uri);
-            if (info?.Stream is null) return;
-            using var reader = new StreamReader(info.Stream);
-            var raw = reader.ReadToEnd();
-            HostBootAscii.Text = string.Join(
-                "\n",
-                raw.Replace("\uFEFF", "")
-                    .Replace("\r\n", "\n")
-                    .Split('\n')
-                    .Select(l => l.TrimEnd())
-                    .Where(l => !string.IsNullOrWhiteSpace(l)));
-        }
-        catch
-        {
-            HostBootAscii.Text = "Miao";
-        }
+        _bootSplash = new BootSplashWindow(this);
+        _bootSplash.Show();
+        _bootSplash.SyncToOwner();
     }
 
-    /// <summary>仅在宿主层失败时显示提示（正常路径与 Vue S0 一样只有 logo）。</summary>
     private void ShowHostBootError(string message)
     {
-        HostBootHint.Text = message;
-        HostBootHint.Visibility = Visibility.Visible;
+        _bootSplash?.ShowError(message);
     }
 
     private async void OnLoaded(object sender, RoutedEventArgs e)
     {
         try
         {
+            // 锁定外框 DIP，防止 WebView 初始化过程中外框被改尺寸
+            if (ActualWidth > 1) Width = ActualWidth;
+            if (ActualHeight > 1) Height = ActualHeight;
+
+            // 布局稳定后再对齐客户区遮罩
+            _bootSplash?.SyncToOwner();
+
             await WebView.EnsureCoreWebView2Async().ConfigureAwait(true);
 
             WebView.CoreWebView2.Settings.AreDefaultContextMenusEnabled = true;
@@ -80,6 +69,8 @@ public partial class MainWindow : Window
 
             _bridge = new HostBridge(AppServices.EnsureJobRunner());
             WebView.CoreWebView2.WebMessageReceived += OnWebMessageReceived;
+
+            WebView.CoreWebView2.Settings.IsWebMessageEnabled = true;
 
             var uiUrl = await ResolveUiUrlAsync().ConfigureAwait(true);
             if (uiUrl is null)
@@ -106,7 +97,11 @@ public partial class MainWindow : Window
 
     private void OnNavigationCompleted(object? sender, CoreWebView2NavigationCompletedEventArgs args)
     {
-        if (args.IsSuccess) return;
+        if (args.IsSuccess)
+        {
+            // 成功时不收遮罩：等 boot.ui-ready（页面已画好 HTML S0）
+            return;
+        }
 
         var detail = args.WebErrorStatus.ToString();
         WebView.CoreWebView2.NavigateToString(
@@ -117,6 +112,7 @@ public partial class MainWindow : Window
             "再设置 <code>MIAO_UI_DEV=1</code> 后启动本程序。</p>" +
             "<p>发布模式：先运行 <code>desktop\\build.ps1</code>，确保 wwwroot 已打入。</p>" +
             "</body></html>");
+        // 保留遮罩并显示错误，勿先关掉
         ShowHostBootError("页面加载失败");
     }
 
@@ -159,7 +155,9 @@ public partial class MainWindow : Window
                     return true;
 
                 case "boot.ui-ready":
-                    HideHostOverlay();
+                    Dispatcher.BeginInvoke(
+                        RevealWebViewOverHostSplash,
+                        System.Windows.Threading.DispatcherPriority.Loaded);
                     return true;
 
                 default:
@@ -204,7 +202,7 @@ public partial class MainWindow : Window
                             return;
                         }
 
-                        // 进度只推 Vue；宿主层保持与 S0 一致的 logo，不刷状态文案
+                        // 进度只推 Vue；宿主遮罩保持 S0 logo
                         EmitBootProgress(stage, message, percent, phase: "progress");
                         EmitBootLog(message);
                     });
@@ -243,7 +241,8 @@ public partial class MainWindow : Window
             EmitBootLog($"错误：{ex.Message}");
             ShowHostBootError("启动失败");
             await Task.Delay(1200).ConfigureAwait(true);
-            Application.Current.Shutdown(1);        }
+            Application.Current.Shutdown(1);
+        }
         finally
         {
             _pipelineRunning = false;
@@ -315,21 +314,30 @@ public partial class MainWindow : Window
         _bootBuffer.Clear();
     }
 
-    private void HideHostOverlay()
+    /// <summary>
+    /// Vue Boot 已就绪：收起遮罩窗（WebView 始终可见且已画好 HTML S0），再通知淡出 HTML splash。
+    /// </summary>
+    private void RevealWebViewOverHostSplash()
     {
-        if (_hostOverlayHidden) return;
-        _hostOverlayHidden = true;
+        DismissBootSplash(instant: true);
 
-        var anim = new DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(280))
-        {
-            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut },
-        };
-        anim.Completed += (_, _) =>
-        {
-            HostBootOverlay.Visibility = Visibility.Collapsed;
-            HostBootOverlay.IsHitTestVisible = false;
-        };
-        HostBootOverlay.BeginAnimation(UIElement.OpacityProperty, anim);
+        // 遮罩关掉后再通知页面淡出 HTML splash，避免与遮罩关闭叠在同一帧
+        Dispatcher.BeginInvoke(
+            () =>
+            {
+                Dispatcher.BeginInvoke(
+                    () => PostToUi(new { type = "boot.surface-ready" }),
+                    System.Windows.Threading.DispatcherPriority.Render);
+            },
+            System.Windows.Threading.DispatcherPriority.Loaded);
+    }
+
+    private void DismissBootSplash(bool instant)
+    {
+        if (_bootSplashDismissed) return;
+        _bootSplashDismissed = true;
+        _bootSplash?.Dismiss(instant);
+        _bootSplash = null;
     }
 
     private void PostToUi(object payload)
@@ -351,8 +359,9 @@ public partial class MainWindow : Window
 
     private async Task<string?> ResolveUiUrlAsync()
     {
+        // 与 Vite --host 127.0.0.1 对齐；避免 localhost→::1 / 系统代理把探测拐走
         if (await IsViteUpAsync().ConfigureAwait(true))
-            return "http://localhost:5173/";
+            return "http://127.0.0.1:5173/";
 
         var www = FindWwwRoot();
         if (www is null) return null;
@@ -406,8 +415,9 @@ public partial class MainWindow : Window
     {
         try
         {
-            using var client = new HttpClient { Timeout = TimeSpan.FromMilliseconds(400) };
-            using var resp = await client.GetAsync("http://localhost:5173/").ConfigureAwait(false);
+            using var handler = new HttpClientHandler { UseProxy = false };
+            using var client = new HttpClient(handler) { Timeout = TimeSpan.FromMilliseconds(800) };
+            using var resp = await client.GetAsync("http://127.0.0.1:5173/").ConfigureAwait(false);
             return resp.IsSuccessStatusCode;
         }
         catch

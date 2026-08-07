@@ -190,32 +190,48 @@ public sealed class ClaudePluginInstallHandler : IToolActionHandler
     public string HandlerId => "claude.plugin-install";
 
     /// <inheritdoc />
-    public Task<JobResult> ExecuteAsync(ToolActionContext context, CancellationToken cancellationToken = default)
+    public async Task<JobResult> ExecuteAsync(ToolActionContext context, CancellationToken cancellationToken = default)
     {
         var ids = ResolvePluginIds(context);
         if (ids.Count == 0)
-            return Task.FromResult(new JobResult(context.JobId, false, 1, "未指定插件 id"));
+            return new JobResult(context.JobId, false, 1, "未指定插件 id");
 
-        var okAll = true;
-        var sb = new StringBuilder();
-        for (var i = 0; i < ids.Count; i++)
+        try
         {
-            var id = ids[i];
-            context.Jobs.EmitProgress(context.JobId, (int)(10 + 70.0 * (i + 1) / ids.Count));
-            context.Jobs.EmitLog(context.JobId, $"安装插件 {id}…");
-            var (ok, detail) = _claude.InstallPlugin(id);
-            sb.AppendLine(ok ? $"OK {id}" : $"FAIL {id}: {detail}");
-            if (!ok) okAll = false;
-            else context.Jobs.EmitLog(context.JobId, detail);
+            var okAll = true;
+            var sb = new StringBuilder();
+            for (var i = 0; i < ids.Count; i++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var id = ids[i];
+                context.Jobs.EmitProgress(context.JobId, (int)(10 + 70.0 * i / ids.Count));
+                context.Jobs.EmitTask(context.JobId, $"安装插件 {id}");
+                context.Jobs.EmitLog(context.JobId, $"安装插件 {id}…");
+                var (ok, detail) = await Task.Run(
+                        () => _claude.InstallPlugin(id),
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                sb.AppendLine(ok ? $"OK {id}" : $"FAIL {id}: {detail}");
+                if (!ok) okAll = false;
+                else context.Jobs.EmitLog(context.JobId, detail);
+                context.Jobs.EmitProgress(context.JobId, (int)(10 + 70.0 * (i + 1) / ids.Count));
+            }
+
+            context.Jobs.EmitLog(context.JobId, "同步插件安装状态到本地库…");
+            var (syncOk, syncDetail) = await Task.Run(
+                    () => _claude.SyncPluginCatalog(context.Db, updateRemote: false),
+                    cancellationToken)
+                .ConfigureAwait(false);
+            if (!syncOk) sb.AppendLine(syncDetail);
+            else context.Jobs.EmitLog(context.JobId, syncDetail);
+
+            context.Jobs.EmitProgress(context.JobId, 100);
+            return new JobResult(context.JobId, okAll, okAll ? 0 : 1, sb.ToString());
         }
-
-        context.Jobs.EmitLog(context.JobId, "同步插件安装状态到本地库…");
-        var (syncOk, syncDetail) = _claude.SyncPluginCatalog(context.Db, updateRemote: false);
-        if (!syncOk) sb.AppendLine(syncDetail);
-        else context.Jobs.EmitLog(context.JobId, syncDetail);
-
-        context.Jobs.EmitProgress(context.JobId, 100);
-        return Task.FromResult(new JobResult(context.JobId, okAll, okAll ? 0 : 1, sb.ToString()));
+        catch (OperationCanceledException)
+        {
+            return new JobResult(context.JobId, false, -1, "cancelled");
+        }
     }
 
     private static List<string> ResolvePluginIds(ToolActionContext context)
@@ -238,34 +254,51 @@ public sealed class ClaudePluginUpdateHandler : IToolActionHandler
     public string HandlerId => "claude.plugin-update";
 
     /// <inheritdoc />
-    public Task<JobResult> ExecuteAsync(ToolActionContext context, CancellationToken cancellationToken = default)
+    public async Task<JobResult> ExecuteAsync(ToolActionContext context, CancellationToken cancellationToken = default)
     {
         var ids = context.Options.TryGetValue("plugins", out var csv) && !string.IsNullOrWhiteSpace(csv)
             ? csv.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList()
             : context.Versions.Where(v => !string.IsNullOrWhiteSpace(v)).ToList();
 
         if (ids.Count == 0)
-            return Task.FromResult(new JobResult(context.JobId, false, 1, "未指定插件 id"));
+            return new JobResult(context.JobId, false, 1, "未指定插件 id");
 
-        var okAll = true;
-        var sb = new StringBuilder();
-        for (var i = 0; i < ids.Count; i++)
+        try
         {
-            var id = ids[i];
-            context.Jobs.EmitProgress(context.JobId, (int)(10 + 70.0 * (i + 1) / ids.Count));
-            context.Jobs.EmitLog(context.JobId, $"更新插件 {id}…");
-            var (ok, detail) = _claude.UpdatePlugin(id);
-            sb.AppendLine(ok ? $"OK {id}" : $"FAIL {id}: {detail}");
-            if (!ok) okAll = false;
-            else context.Jobs.EmitLog(context.JobId, detail);
+            var okAll = true;
+            var sb = new StringBuilder();
+            for (var i = 0; i < ids.Count; i++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var id = ids[i];
+                context.Jobs.EmitProgress(context.JobId, (int)(10 + 70.0 * i / ids.Count));
+                context.Jobs.EmitTask(context.JobId, $"更新插件 {id}");
+                context.Jobs.EmitLog(context.JobId, $"更新插件 {id}…");
+                var (ok, detail) = await Task.Run(
+                        () => _claude.UpdatePlugin(id),
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                sb.AppendLine(ok ? $"OK {id}" : $"FAIL {id}: {detail}");
+                if (!ok) okAll = false;
+                else context.Jobs.EmitLog(context.JobId, detail);
+                context.Jobs.EmitProgress(context.JobId, (int)(10 + 70.0 * (i + 1) / ids.Count));
+            }
+
+            context.Jobs.EmitLog(context.JobId, "同步插件状态到本地库…");
+            var (syncOk, syncDetail) = await Task.Run(
+                    () => _claude.SyncPluginCatalog(context.Db, updateRemote: false),
+                    cancellationToken)
+                .ConfigureAwait(false);
+            if (!syncOk) sb.AppendLine(syncDetail);
+            else context.Jobs.EmitLog(context.JobId, syncDetail);
+
+            context.Jobs.EmitProgress(context.JobId, 100);
+            return new JobResult(context.JobId, okAll, okAll ? 0 : 1, sb.ToString());
         }
-
-        context.Jobs.EmitLog(context.JobId, "同步插件状态到本地库…");
-        var (syncOk, syncDetail) = _claude.SyncPluginCatalog(context.Db, updateRemote: false);
-        if (!syncOk) sb.AppendLine(syncDetail);
-
-        context.Jobs.EmitProgress(context.JobId, 100);
-        return Task.FromResult(new JobResult(context.JobId, okAll, okAll ? 0 : 1, sb.ToString()));
+        catch (OperationCanceledException)
+        {
+            return new JobResult(context.JobId, false, -1, "cancelled");
+        }
     }
 }
 
@@ -281,29 +314,47 @@ public sealed class ClaudePluginUninstallHandler : IToolActionHandler
     public string HandlerId => "claude.plugin-uninstall";
 
     /// <inheritdoc />
-    public Task<JobResult> ExecuteAsync(ToolActionContext context, CancellationToken cancellationToken = default)
+    public async Task<JobResult> ExecuteAsync(ToolActionContext context, CancellationToken cancellationToken = default)
     {
         var ids = context.Options.TryGetValue("plugins", out var csv) && !string.IsNullOrWhiteSpace(csv)
             ? csv.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList()
             : context.Versions.Where(v => !string.IsNullOrWhiteSpace(v)).ToList();
 
         if (ids.Count == 0)
-            return Task.FromResult(new JobResult(context.JobId, false, 1, "未指定插件 id"));
+            return new JobResult(context.JobId, false, 1, "未指定插件 id");
 
-        var okAll = true;
-        var sb = new StringBuilder();
-        foreach (var id in ids)
+        try
         {
-            context.Jobs.EmitLog(context.JobId, $"卸载插件 {id}…");
-            var (ok, detail) = _claude.UninstallPlugin(id);
-            sb.AppendLine(ok ? $"OK {id}" : $"FAIL {id}: {detail}");
-            if (!ok) okAll = false;
+            var okAll = true;
+            var sb = new StringBuilder();
+            for (var i = 0; i < ids.Count; i++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var id = ids[i];
+                context.Jobs.EmitProgress(context.JobId, (int)(10 + 70.0 * i / ids.Count));
+                context.Jobs.EmitTask(context.JobId, $"卸载插件 {id}");
+                context.Jobs.EmitLog(context.JobId, $"卸载插件 {id}…");
+                var (ok, detail) = await Task.Run(
+                        () => _claude.UninstallPlugin(id),
+                        cancellationToken)
+                    .ConfigureAwait(false);
+                sb.AppendLine(ok ? $"OK {id}" : $"FAIL {id}: {detail}");
+                if (!ok) okAll = false;
+                context.Jobs.EmitProgress(context.JobId, (int)(10 + 70.0 * (i + 1) / ids.Count));
+            }
+
+            context.Jobs.EmitLog(context.JobId, "同步插件状态到本地库…");
+            _ = await Task.Run(
+                    () => _claude.SyncPluginCatalog(context.Db, updateRemote: false),
+                    cancellationToken)
+                .ConfigureAwait(false);
+
+            context.Jobs.EmitProgress(context.JobId, 100);
+            return new JobResult(context.JobId, okAll, okAll ? 0 : 1, sb.ToString());
         }
-
-        context.Jobs.EmitLog(context.JobId, "同步插件状态到本地库…");
-        _ = _claude.SyncPluginCatalog(context.Db, updateRemote: false);
-
-        context.Jobs.EmitProgress(context.JobId, 100);
-        return Task.FromResult(new JobResult(context.JobId, okAll, okAll ? 0 : 1, sb.ToString()));
+        catch (OperationCanceledException)
+        {
+            return new JobResult(context.JobId, false, -1, "cancelled");
+        }
     }
 }

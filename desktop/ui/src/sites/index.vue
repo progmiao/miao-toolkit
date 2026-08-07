@@ -221,23 +221,23 @@ function onImportFile(ev: Event) {
     </div>
 
     <div v-if="editingSite" class="modal" @click.self="editingSite = null">
-      <form class="panel" @submit.prevent="saveSite">
+      <form class="panel form-stack" @submit.prevent="saveSite">
         <h3>{{ editingSite.id ? '编辑网站' : '新建网站' }}</h3>
-        <label>
+        <label class="field-stack">
           分类
           <select v-model="editingSite.categoryId" required>
             <option v-for="c in categories" :key="c.id" :value="c.id">{{ c.name }}</option>
           </select>
         </label>
-        <label>
+        <label class="field-stack">
           标题
           <input v-model="editingSite.title" required />
         </label>
-        <label>
+        <label class="field-stack">
           网址
           <input v-model="editingSite.url" required />
         </label>
-        <label>
+        <label class="field-stack">
           备注
           <input v-model="editingSite.note" />
         </label>
@@ -249,9 +249,9 @@ function onImportFile(ev: Event) {
     </div>
 
     <div v-if="editingCategory" class="modal" @click.self="editingCategory = null">
-      <form class="panel" @submit.prevent="saveCategory">
+      <form class="panel form-stack" @submit.prevent="saveCategory">
         <h3>新建分类</h3>
-        <label>
+        <label class="field-stack">
           名称
           <input v-model="editingCategory.name" required />
         </label>
@@ -387,21 +387,6 @@ function onImportFile(ev: Event) {
   letter-spacing: 0.08em;
   text-transform: uppercase;
   font-size: 0.9rem;
-}
-.panel label {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-  font-size: 0.9rem;
-  color: var(--muted);
-}
-.panel input,
-.panel select {
-  padding: 0.45rem 0.55rem;
-  border: 1px solid var(--line);
-  border-radius: 0.4rem;
-  background: var(--panel);
-  color: var(--ink);
 }
 .row {
   display: flex;

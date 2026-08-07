@@ -535,8 +535,17 @@ public sealed class HostBridge
 
         try
         {
-            var result = await AppServices.Software
-                .ExecuteAsync(jobId, toolId!, action ?? "install", _jobs, versions, options, cts.Token)
+            // 插件装更卸等 Handler 内部是同步 CLI；必须离 UI 线程，否则 job-started / 输出 / cancel 都会卡到 CLI 结束才刷
+            var result = await Task.Run(
+                    () => AppServices.Software.ExecuteAsync(
+                        jobId,
+                        toolId!,
+                        action ?? "install",
+                        _jobs,
+                        versions,
+                        options,
+                        cts.Token),
+                    CancellationToken.None)
                 .ConfigureAwait(false);
 
             AppServices.Software.ProbeTool(toolId!);

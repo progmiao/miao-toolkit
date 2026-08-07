@@ -15,9 +15,10 @@ import { fileURLToPath, URL } from 'node:url'
 
 const src = (p: string) => fileURLToPath(new URL(p, import.meta.url))
 
-export default defineConfig({
+export default defineConfig(({ command }) => ({
   plugins: [vue()],
-  base: './',
+  // dev: absolute base for WebView2; build: relative for packaged wwwroot
+  base: command === 'build' ? './' : '/',
   resolve: {
     alias: {
       '@': src('./src'),
@@ -30,12 +31,13 @@ export default defineConfig({
     },
   },
   server: {
+    host: '127.0.0.1',
     port: 5173,
     strictPort: true,
-    open: true,
+    open: false,
   },
   build: {
     outDir: 'dist',
     emptyOutDir: true,
   },
-})
+}))

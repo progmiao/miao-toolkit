@@ -529,7 +529,7 @@
 
 /* —— 底栏：贴底，与左侧相接 —— */
 .shell-bottom {
-  /* 高于内容区，避免后台任务弹窗被 shell-view 遮挡 */
+  /* 高于内容区；弹层已 Teleport 到 body，此处只需保证底栏控件不被盖住 */
   position: relative;
   z-index: 50;
   flex: 0 0 auto;
@@ -542,7 +542,7 @@
   height: var(--shell-footer-h);
   padding: 0 0.85rem 0 1rem;
   border-top: 1px solid color-mix(in srgb, var(--line) 75%, transparent);
-  overflow: hidden;
+  overflow: visible;
   transition: background var(--shell-ease), border-color var(--shell-ease), box-shadow var(--shell-ease);
 }
 

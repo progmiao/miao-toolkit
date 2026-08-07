@@ -9,7 +9,8 @@
                                    "terminal"
                                ],
                       "ui":  {
-                                 "mode":  "generic"
+                                 "mode":  "panel",
+                                 "entry":  "terminalBuddy"
                              },
                       "install":  {
                                       "strategy":  "custom",

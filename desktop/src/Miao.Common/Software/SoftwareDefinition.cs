@@ -89,6 +89,13 @@ public sealed class SoftwareInstallManifest
     [JsonPropertyName("giteeRepo")]
     public string? GiteeRepo { get; set; }
 
+    /// <summary>GitHub Releases（CC Switch 等）。</summary>
+    [JsonPropertyName("githubOwner")]
+    public string? GithubOwner { get; set; }
+
+    [JsonPropertyName("githubRepo")]
+    public string? GithubRepo { get; set; }
+
     [JsonPropertyName("assetName")]
     public string? AssetName { get; set; }
 }
@@ -116,7 +123,7 @@ public sealed class SoftwareDetectManifest
 public sealed class SoftwareUpdateManifest
 {
     /// <summary>
-    /// 策略：<c>winget</c> / <c>gitee-release</c> / <c>hermes</c> / <c>none</c>。
+    /// 策略：<c>winget</c> / <c>npm</c> / <c>gitee-release</c> / <c>github-release</c> / <c>hermes</c> / <c>none</c>。
     /// </summary>
     [JsonPropertyName("strategy")]
     public string Strategy { get; set; } = "none";
@@ -171,6 +178,7 @@ public sealed class SoftwareGroupDefinition
 /// <param name="UiEntry">panel 路由段：与前端 `/dev/{entry}` 对应；generic 时可空。</param>
 /// <param name="Tags">分类标签。</param>
 /// <param name="UpdateAvailable">已安装且检测到可更新时为 true（驱动「更新」按钮）。</param>
+/// <param name="LatestVersion">可更新时的最新版本号；未知时可空。</param>
 public sealed record CatalogItemDto(
     [property: JsonPropertyName("id")] string Id,
     [property: JsonPropertyName("name")] string Name,
@@ -182,7 +190,8 @@ public sealed record CatalogItemDto(
     [property: JsonPropertyName("uiMode")] string UiMode,
     [property: JsonPropertyName("uiEntry")] string? UiEntry,
     [property: JsonPropertyName("tags")] string[] Tags,
-    [property: JsonPropertyName("updateAvailable")] bool UpdateAvailable);
+    [property: JsonPropertyName("updateAvailable")] bool UpdateAvailable,
+    [property: JsonPropertyName("latestVersion")] string? LatestVersion = null);
 
 /// <summary>发给 Vue 的分组 DTO。</summary>
 public sealed record CatalogGroupDto(
