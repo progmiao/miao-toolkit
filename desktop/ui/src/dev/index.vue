@@ -380,7 +380,8 @@ async function runAction(action: string, id: string) {
                   {{ activeItem.name }}
                   <span class="panel-title-meta">
                     <template v-if="activeItem.status === 'installed'">
-                      · 已安装<span v-if="activeItem.version"> · {{ activeItem.version }}</span>
+                      <template v-if="activeItem.version"> · 已安装 {{ activeItem.version }}</template>
+                      <template v-else> · 已安装</template>
                       <span
                         v-if="activeItem.updateAvailable"
                         class="panel-title-update"

@@ -24,6 +24,8 @@ public static class AppServices
     private static JobRunner? _jobs;
     private static SilentTaskRunner? _silent;
     private static bool _postBootSilentStarted;
+    /// <summary>本次启动开始时已有 <c>package_versions</c> 缓存的工具 id（仅这些会进后台增量）。</summary>
+    private static HashSet<string>? _versionCacheExistedAtBoot;
 
     /// <summary>本地 SQLite。</summary>
     public static AppDatabase Db
@@ -114,6 +116,7 @@ public static class AppServices
     /// <summary>
     /// 分步初始化：任务数等比进度；单任务超时 + 失败重试；
     /// 核心失败达上限 → <see cref="BootInitResult.Fatal"/>；数据失败达上限 → 跳过并继续（降级）。
+    /// 含安装态校准；若版本目录无缓存则首次远端同步也在此完成。
     /// </summary>
     /// <param name="report">
     /// stage / message / percent。
@@ -146,14 +149,20 @@ public static class AppServices
 
         void Log(string message) => report?.Invoke("log", message, 0);
 
-        bool RunTask(string name, BootTaskSeverity severity, Action action, out string? failMessage)
+        bool RunTask(
+            string name,
+            BootTaskSeverity severity,
+            Action action,
+            out string? failMessage,
+            TimeSpan? timeoutOverride = null)
         {
             failMessage = null;
+            var taskTimeout = timeoutOverride ?? timeout;
             for (var attempt = 1; attempt <= maxRetry; attempt++)
             {
                 try
                 {
-                    RunWithTimeout(action, timeout);
+                    RunWithTimeout(action, taskTimeout);
                     if (attempt > 1)
                         Log($"{name}：第 {attempt} 次成功");
                     return true;
@@ -162,7 +171,7 @@ public static class AppServices
                 {
                     failMessage = ex.Message;
                     var detail = ex is TimeoutException
-                        ? $"超时（>{BootOptions.TaskTimeoutSeconds}s）"
+                        ? $"超时（>{taskTimeout.TotalSeconds:0}s）"
                         : ex.Message;
                     if (attempt < maxRetry)
                     {
@@ -229,8 +238,9 @@ public static class AppServices
             toolIds = _db!.ListSoftware().Select(r => r.Id).ToList();
         }
 
-        // 启动只保证库/种子/服务就绪；安装态与更新探测进主壳后静默校准
-        const int total = 3;
+        // 核心 3 + 安装态 1 + 版本目录（无缓存时）1
+        // 版本目录步在服务就绪后确定是否需要，先按上限占位，跳过时仍 Tick 说明。
+        const int total = 5;
         var done = 0;
 
         void Tick(string stage, string message)
@@ -269,34 +279,96 @@ public static class AppServices
         Tick("services", "初始化服务");
         _ = toolIds;
 
+        // 1) 安装态：本地探测，进主壳前完成，避免进工具再等静默任务
+        if (!RunTask(
+                "校准工具安装状态",
+                BootTaskSeverity.Data,
+                () =>
+                {
+                    // maxAge=0：每次启动都校准，保证进工具即见准确已装/未装
+                    _software!.CalibrateInstallStates(
+                        progress: null,
+                        cancellationToken: CancellationToken.None,
+                        maxAge: TimeSpan.Zero);
+                },
+                out var installErr))
+        {
+            degraded = true;
+            Log($"安装态校准跳过：{installErr}");
+            Tick("detect.install", $"安装态校准跳过：{installErr}");
+        }
+        else
+        {
+            Tick("detect.install", "已校准工具安装状态");
+        }
+
+        // 2) 远端版本目录：仅「启动时库中尚无缓存」首次拉取；已有缓存的留给后台增量（不含本次刚灌入的）
+        var versionTools = new[] { "node", "pnpm", "yarn" };
+        var hadVersionCacheAtBoot = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var firstVersionTools = new List<string>();
+        foreach (var id in versionTools)
+        {
+            if (_db!.ListPackageVersions(id).Count > 0)
+                hadVersionCacheAtBoot.Add(id);
+            else
+                firstVersionTools.Add(id);
+        }
+
+        lock (Gate)
+        {
+            _versionCacheExistedAtBoot = hadVersionCacheAtBoot;
+        }
+
+        if (firstVersionTools.Count == 0)
+        {
+            Tick("cache.versions", "版本目录已有缓存，跳过首次同步");
+        }
+        else if (!RunTask(
+                     "同步版本目录（首次）",
+                     BootTaskSeverity.Data,
+                     () =>
+                     {
+                         foreach (var id in firstVersionTools)
+                         {
+                             Log($"首次同步版本目录：{id}");
+                             _volta!.ListAsync(id, ltsOnly: false, forceRemote: true)
+                                 .GetAwaiter()
+                                 .GetResult();
+                         }
+                     },
+                     out var verErr,
+                     timeoutOverride: TimeSpan.FromMinutes(3)))
+        {
+            degraded = true;
+            Log($"版本目录首次同步跳过：{verErr}");
+            Tick("cache.versions", $"版本目录首次同步跳过：{verErr}");
+        }
+        else
+        {
+            Tick("cache.versions", $"已首次同步版本目录（{string.Join("/", firstVersionTools)}）");
+        }
+
         report?.Invoke(
             "ready",
-            degraded ? "服务就绪（部分数据任务已跳过，状态校准将在后台进行）" : "服务就绪（状态校准将在后台进行）",
+            degraded
+                ? "服务就绪（部分数据任务已跳过；更新检查将在后台进行）"
+                : "服务就绪（更新检查将在后台进行）",
             100);
         return BootInitResult.Success(degraded);
     }
 
-    /// <summary>主壳就绪后：安装态校准、更新探测、版本目录同步。</summary>
+    /// <summary>
+    /// 主壳就绪后：更新探测；已有缓存的版本目录做后台增量；Claude 插件目录视状态入队。
+    /// 安装态与「首次」版本目录已在 <see cref="InitializeWithProgress"/> 完成。
+    /// </summary>
     public static void StartPostBootSilentTasks()
     {
         if (_postBootSilentStarted) return;
-        if (_volta is null || _software is null) return;
+        if (_volta is null || _software is null || _db is null) return;
         _postBootSilentStarted = true;
 
         var catalog = _software;
         var volta = _volta;
-        var freshness = TimeSpan.FromHours(24);
-
-        Silent.Enqueue(
-            "detect.install",
-            "校准工具安装状态",
-            async (progress, ct) =>
-            {
-                await Task.Run(
-                        () => catalog.CalibrateInstallStates(progress, ct, freshness),
-                        ct)
-                    .ConfigureAwait(false);
-            });
 
         Silent.Enqueue(
             "detect.update",
@@ -314,9 +386,10 @@ public static class AppServices
                     .ConfigureAwait(false);
             });
 
-        EnqueueOneVersionCache(volta, "node", "cache.versions.node", "同步 Node.js 版本目录");
-        EnqueueOneVersionCache(volta, "pnpm", "cache.versions.pnpm", "同步 pnpm 版本目录");
-        EnqueueOneVersionCache(volta, "yarn", "cache.versions.yarn", "同步 Yarn 版本目录");
+        // 仅对「启动时已有缓存」的包做后台增量；本次刚首次灌入的不入队
+        EnqueueVersionCacheIfExistedAtBoot(volta, "node", "cache.versions.node", "同步 Node.js 版本目录");
+        EnqueueVersionCacheIfExistedAtBoot(volta, "pnpm", "cache.versions.pnpm", "同步 pnpm 版本目录");
+        EnqueueVersionCacheIfExistedAtBoot(volta, "yarn", "cache.versions.yarn", "同步 Yarn 版本目录");
         EnqueueClaudePluginCache();
     }
 
@@ -361,6 +434,18 @@ public static class AppServices
             });
     }
 
+    /// <summary>启动时已有该包版本缓存 → 入队后台增量同步。</summary>
+    private static void EnqueueVersionCacheIfExistedAtBoot(
+        VoltaPackageService volta,
+        string toolId,
+        string taskId,
+        string title)
+    {
+        var existed = _versionCacheExistedAtBoot;
+        if (existed is null || !existed.Contains(toolId)) return;
+        EnqueueOneVersionCache(volta, toolId, taskId, title);
+    }
+
     /// <summary>入队单个 Volta 包的远程增量同步。</summary>
     private static void EnqueueOneVersionCache(
         VoltaPackageService volta,
@@ -391,10 +476,13 @@ public static class AppServices
             _volta = null;
             _claude = null;
             _postBootSilentStarted = false;
+            _versionCacheExistedAtBoot = null;
         }
     }
 
     /// <summary>在独立线程执行并施加超时。</summary>
+    /// <param name="action">要执行的工作。</param>
+    /// <param name="timeout">超时时长。</param>
     private static void RunWithTimeout(Action action, TimeSpan timeout)
     {
         var task = Task.Run(action);

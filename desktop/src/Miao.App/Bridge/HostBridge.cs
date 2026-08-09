@@ -45,7 +45,7 @@ public sealed class HostBridge
     private void OnSilentTaskChanged(SilentTaskInfo task)
     {
         _post?.Invoke(new { type = "silent.task", task = ToSilentTaskDto(task) });
-        // 安装态/更新/版本目录校准完成后推送目录，刷新列表角标与版本
+        // 更新 / 版本目录增量完成后推送目录，刷新列表角标与版本
         if (string.Equals(task.Status, "succeeded", StringComparison.OrdinalIgnoreCase)
             && (task.Id.StartsWith("detect.", StringComparison.OrdinalIgnoreCase)
                 || task.Id.StartsWith("cache.versions.", StringComparison.OrdinalIgnoreCase)))

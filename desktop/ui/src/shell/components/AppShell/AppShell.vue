@@ -272,6 +272,12 @@ watch(
 
       <RegionLock class="shell-nav-lock" :active="foregroundJobBusy" title="任务进行中，请先终止">
         <nav class="shell-nav" aria-label="业务菜单">
+          <RouterLink
+            to="/"
+            active-class=""
+            exact-active-class="router-link-active"
+            :tabindex="foregroundJobBusy ? -1 : undefined"
+          >首页</RouterLink>
           <RouterLink to="/sites" :tabindex="foregroundJobBusy ? -1 : undefined">常用网站</RouterLink>
           <RouterLink to="/daily" :tabindex="foregroundJobBusy ? -1 : undefined">日常工具</RouterLink>
           <RouterLink to="/dev" :tabindex="foregroundJobBusy ? -1 : undefined">开发工具</RouterLink>

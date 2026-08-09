@@ -232,6 +232,7 @@ public sealed class NpmGlobalUninstallHandler : IToolActionHandler
 
 /// <summary>
 /// 通用：按卸载项 DisplayName 匹配后执行 QuietUninstallString / UninstallString。
+/// MSI（msiexec）一律改为 <c>/x {GUID} /quiet /norestart</c>，避免弹出卸载向导。
 /// </summary>
 public sealed class RegistryUninstallHandler : IToolActionHandler
 {
@@ -269,9 +270,19 @@ foreach ($root in $roots) {
   }
 }
 if (-not $cmd) { throw '未找到卸载命令' }
+# MSI：强制静默卸载（忽略注册表里可能带 UI 的 /I 或无 /quiet）
+if ($cmd -match '(?i)msiexec' -and $cmd -match '\{[0-9A-Fa-f]{8}(-[0-9A-Fa-f]{4}){3}-[0-9A-Fa-f]{12}\}') {
+  $guid = $Matches[0]
+  $cmd = ""msiexec.exe /x $guid /quiet /norestart""
+}
 Write-Host ""卸载: $cmd""
 Write-Host '##progress 40'
-cmd /c $cmd
+Write-Host '##task 正在静默卸载…'
+$p = Start-Process -FilePath 'cmd.exe' -ArgumentList @('/c', $cmd) -Wait -PassThru -WindowStyle Hidden
+if ($null -eq $p -or ($p.ExitCode -ne 0 -and $p.ExitCode -ne 3010)) {
+  $code = if ($p) { $p.ExitCode } else { -1 }
+  throw ""卸载失败 exit=$code""
+}
 Write-Host '##progress 100'
 ");
 

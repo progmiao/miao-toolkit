@@ -303,9 +303,14 @@
   margin: 0 auto;
   width: fit-content;
   max-width: 100%;
-  font-family: var(--font-mono, Consolas, monospace);
+  /* 与 boot splash 一致；纯 █ 竖笔避免 ║ 小字号发弯 */
+  font-family: "Cascadia Mono", Consolas, "Courier New", monospace;
   font-size: 7.2px;
   line-height: 1.05;
+  letter-spacing: 0;
+  font-kerning: none;
+  font-variant-ligatures: none;
+  font-feature-settings: "liga" 0, "calt" 0;
   color: var(--shell-cyan);
   white-space: pre;
   overflow: hidden;
@@ -534,10 +539,9 @@
   z-index: 50;
   flex: 0 0 auto;
   box-sizing: border-box;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 15.5rem;
+  display: flex;
   align-items: center;
-  column-gap: 0.75rem;
+  justify-content: flex-end;
   min-height: var(--shell-footer-h);
   height: var(--shell-footer-h);
   padding: 0 0.85rem 0 1rem;
@@ -547,10 +551,14 @@
 }
 
 .shell-meta {
+  /* 相对整条底栏水平居中（不受右侧静默任务栏挤偏） */
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 0;
   margin: 0;
-  min-width: 0;
-  max-width: 100%;
-  justify-self: center;
+  max-width: min(100%, calc(100% - 17rem));
+  padding: 0 0.5rem;
   font-size: 0.72rem;
   line-height: 1.35;
   color: var(--shell-muted);
@@ -558,7 +566,16 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  pointer-events: none;
   transition: color var(--shell-ease);
+}
+
+.shell-bottom :deep(.silent-tasks) {
+  position: relative;
+  z-index: 1;
+  flex: 0 1 15.5rem;
+  width: 15.5rem;
+  max-width: 15.5rem;
 }
 
 @media (max-width: 900px) {

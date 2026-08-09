@@ -6,6 +6,7 @@ namespace Miao.Software.Jobs;
 /// 流式拆分协议行与命令窗输出：
 /// - 完整以换行结束的 <c>##…</c> 行 → 进度/日志协议（不进命令窗）
 /// - 其余（含裸 <c>\\r</c>、半行）立即进命令窗，供 xterm 实时刷新（与真终端一致）
+/// - 纯换行仍透出，避免半行 + 被剥离的协议行导致下一句粘连
 /// </summary>
 internal sealed class ConsoleProtocolFilter
 {
@@ -64,11 +65,28 @@ internal sealed class ConsoleProtocolFilter
         var cleaned = StripAnsi(text);
         // 仅含清屏/擦行等控制残留时可能变空，勿刷空块
         if (cleaned.Length == 0) return;
+        // 纯换行必须透出：半行实时透出后，若随后是 ##progress 被吃掉，
+        // UI 的 pending 半行要靠这个 \n 冲刷，否则会与下一句粘成一行。
+        if (IsNewlineOnly(cleaned))
+        {
+            onConsole(cleaned);
+            return;
+        }
         if (IsConsoleNoiseOnly(cleaned)) return;
         onConsole(cleaned);
     }
 
-    /// <summary>剥完 ANSI 后是否只剩空白 / 无意义碎片。</summary>
+    /// <summary>是否只含换行（可带 \r），用于保留行分隔。</summary>
+    private static bool IsNewlineOnly(string s)
+    {
+        for (var i = 0; i < s.Length; i++)
+        {
+            if (s[i] is not ('\r' or '\n')) return false;
+        }
+        return s.Length > 0;
+    }
+
+    /// <summary>剥完 ANSI 后是否只剩空白 / 无意义碎片（不含纯换行，见 <see cref="IsNewlineOnly"/>）。</summary>
     private static bool IsConsoleNoiseOnly(string s)
     {
         var t = s.AsSpan().Trim();

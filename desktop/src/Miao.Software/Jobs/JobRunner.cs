@@ -89,8 +89,9 @@ public sealed class JobRunner
         CancellationToken cancellationToken)
     {
         var commandLine = BuildPowerShellCommandLine(argList);
-        // 与常见终端宽度接近，减轻进度条折行；UI xterm 用 convertEol+\r 原地刷新
-        using var session = ConPtySession.Start(commandLine, cols: 100, rows: 30);
+        // 列数尽量宽：避免 ConPTY 对长 URL / 路径软折行，命令窗按「逻辑一行」横滑展示。
+        // 进度条仍靠 \r 原地刷新；UI 侧会按最长行再 widen。
+        using var session = ConPtySession.Start(commandLine, cols: 500, rows: 30);
         var filter = new ConsoleProtocolFilter();
 
         void HandleChunk(string chunk)

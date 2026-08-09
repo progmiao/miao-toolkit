@@ -172,13 +172,18 @@ export function useJobConsole(options: UseJobConsoleOptions = {}): JobConsoleApi
 
   function appendConsole(chunk: string) {
     if (!chunk) return
-    // 去掉偶发夹在 console 流里的协议行，避免 ##progress 出现在输出窗
+    // 去掉偶发夹在 console 流里的协议行，避免 ##progress 出现在输出窗。
+    // 若匹配吞掉了行首换行，须补回 \n，否则上一句半行会与下一句粘连。
     const cleaned = chunk
       .replace(/\u001b\[[0-9;?]*[ -/]*[@-~]/g, '')
-      .replace(/(?:^|\r?\n)##(?:progress|task|batch|log)\b[^\r\n]*/gi, '')
+      .replace(/(?:^|\r?\n)##(?:progress|task|batch|log)\b[^\r\n]*/gi, (m) =>
+        /^\r?\n/.test(m) ? '\n' : '',
+      )
+    // 纯换行仍要交给按行解析（冲刷 pending）；仅空白且无换行才丢弃
+    if (!cleaned) return
+    if (!/[\r\n]/.test(cleaned) && !cleaned.trim()) return
     const plain = cleaned.trim()
-    if (!plain) return
-    if (/^##(?:progress|task|batch|log)\b/i.test(plain)) return
+    if (plain && /^##(?:progress|task|batch|log)\b/i.test(plain)) return
 
     const adapters = resolveAdapters()
     if (adapters.onConsoleChunk) {

@@ -42,13 +42,12 @@ function emitSilentTask(task: MockSilentTask) {
   queueMicrotask(() => emit?.({ type: 'silent.task', task }))
 }
 
-/** 模拟进主壳后的安装校准 / 更新探测 / 版本目录同步。 */
+/** 模拟进主壳后：更新探测 + 已有缓存的版本目录增量（安装态 / 首次版本目录在 boot 完成）。 */
 function ensureMockSilentSync() {
   if (mockSilentStarted) return
   mockSilentStarted = true
 
   const specs = [
-    { id: 'detect.install', title: '校准工具安装状态' },
     { id: 'detect.update', title: '检查工具更新' },
     { id: 'cache.versions.node', title: '同步 Node.js 版本目录' },
     { id: 'cache.versions.pnpm', title: '同步 pnpm 版本目录' },
