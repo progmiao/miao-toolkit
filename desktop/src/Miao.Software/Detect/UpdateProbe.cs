@@ -53,6 +53,18 @@ public static class UpdateProbe
                 _ => null,
             };
 
+            // 可用版与本机版相同 → 视为无更新（winget 升级后偶发仍带 Available 列）
+            if (latest is { Length: > 0 }
+                && !string.IsNullOrWhiteSpace(state.Version)
+                && string.Equals(
+                    NormalizeTag(latest),
+                    NormalizeTag(state.Version!),
+                    StringComparison.OrdinalIgnoreCase))
+            {
+                ClearUpdateMark(db, toolId, state);
+                return;
+            }
+
             if (latest is not null)
             {
                 var mark = latest.Length == 0
@@ -143,9 +155,18 @@ public static class UpdateProbe
             var versions = Regex.Matches(line, @"\b\d+(?:\.\d+)+\b")
                 .Select(m => m.Value)
                 .ToList();
-            // Version + Available → 取最后一个为可用版本
+            // Version + Available → 取最后一个为可用版本；两列相同则无更新
             if (versions.Count >= 2)
-                return versions[^1];
+            {
+                var installed = versions[^2];
+                var available = versions[^1];
+                if (string.Equals(
+                        NormalizeTag(installed),
+                        NormalizeTag(available),
+                        StringComparison.OrdinalIgnoreCase))
+                    return null;
+                return available;
+            }
         }
 
         return null;

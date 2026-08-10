@@ -8,6 +8,7 @@ import JobConsole from '@kernel/components/JobConsole.vue'
 import { post, subscribe } from '@kernel/bridge/bus'
 import { useShellTitle } from '@kernel/composables/useShellTitle'
 import { DEV_WORKSPACE_OWNS_CONSOLE_KEY } from '../devPanelContext'
+import { installConsoleJobOptions } from '../consoleAdapters/installTty'
 import { useDevPanelJob } from '../useDevPanelJob'
 
 const props = defineProps<{
@@ -27,6 +28,7 @@ const {
   consumeJobMessage,
   isShared,
 } = useDevPanelJob({
+  ...installConsoleJobOptions(),
   onFinished: () => post({ type: 'get-catalog', group: 'dev' }),
   formatStarted: (msg) => `开始：${msg.action ?? '任务'}`,
   formatFinished: (msg) =>

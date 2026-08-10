@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Text.Json;
 using Miao.Common.Jobs;
 using Miao.Common.Software;
@@ -22,6 +23,8 @@ public sealed class SoftwareCatalog
     private readonly VoltaPackageService _volta;
     private readonly Dictionary<string, IToolActionHandler> _handlers;
     private List<SoftwareGroupDefinition> _groups = new();
+    /// <summary>前台 Job 进行中的工具，静默更新探测应跳过，避免写回过期「可更新」。</summary>
+    private static readonly ConcurrentDictionary<string, byte> JobBusyTools = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
     /// 创建目录并注册全部内置 Handler。
@@ -98,6 +101,7 @@ public sealed class SoftwareCatalog
     {
         foreach (var row in _db.ListSoftware())
         {
+            if (JobBusyTools.ContainsKey(row.Id)) continue;
             var manifest = JsonSerializer.Deserialize<SoftwareDefinition>(row.ManifestJson);
             if (IsUpdateSuppressed(manifest, row.Id)) continue;
             UpdateProbe.ProbeAndStore(_db, row.Id, manifest);
@@ -203,7 +207,7 @@ public sealed class SoftwareCatalog
     /// <param name="options">可选键值（如 projectPath）。</param>
     /// <param name="cancellationToken">取消令牌。</param>
     /// <returns>任务结果；找不到工具/动作/Handler 时 ok=false。</returns>
-    public Task<JobResult> ExecuteAsync(
+    public async Task<JobResult> ExecuteAsync(
         string jobId,
         string toolId,
         string action,
@@ -214,23 +218,31 @@ public sealed class SoftwareCatalog
     {
         var row = _db.GetSoftware(toolId);
         if (row is null)
-            return Task.FromResult(new JobResult(jobId, false, 1, $"未知软件: {toolId}"));
+            return new JobResult(jobId, false, 1, $"未知软件: {toolId}");
 
         var manifest = JsonSerializer.Deserialize<SoftwareDefinition>(row.ManifestJson);
         var act = manifest?.Actions.FirstOrDefault(a =>
             string.Equals(a.Id, action, StringComparison.OrdinalIgnoreCase));
         if (act is null || string.IsNullOrWhiteSpace(act.Handler))
-            return Task.FromResult(new JobResult(jobId, false, 1, $"未知动作: {toolId}/{action}"));
+            return new JobResult(jobId, false, 1, $"未知动作: {toolId}/{action}");
 
         if (!_handlers.TryGetValue(act.Handler, out var handler))
         {
-            return Task.FromResult(new JobResult(
-                jobId, false, 1, $"未注册 Handler: {act.Handler}（工具 {toolId}）"));
+            return new JobResult(
+                jobId, false, 1, $"未注册 Handler: {act.Handler}（工具 {toolId}）");
         }
 
         var seedsRoot = AppPaths.ResolveSeedsRoot() ?? "";
         var ctx = new ToolActionContext(jobId, toolId, action, manifest!, seedsRoot, jobs, _db, versions, options);
-        return handler.ExecuteAsync(ctx, cancellationToken);
+        JobBusyTools[toolId] = 0;
+        try
+        {
+            return await handler.ExecuteAsync(ctx, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            JobBusyTools.TryRemove(toolId, out _);
+        }
     }
 
     /// <summary>探测安装状态，并同步 Volta 管理工具的展示版本。</summary>

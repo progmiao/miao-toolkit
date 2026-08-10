@@ -550,15 +550,8 @@ public sealed class HostBridge
 
             AppServices.Software.ProbeTool(toolId!);
             var row = AppServices.Db.GetSoftware(toolId!);
-            PostCatalog(postToUi, row?.Group);
 
-            // 初始化 / 插件装更卸后刷新三态插件列表
-            if (string.Equals(toolId, "claude-code", StringComparison.OrdinalIgnoreCase)
-                && IsClaudePluginDataAction(action))
-            {
-                PostClaudeStatus(postToUi);
-            }
-
+            // 先结束任务再推目录，保证 UI busy 已清、列表角标/概览版本立刻吃到新状态
             postToUi(new
             {
                 type = "job-finished",
@@ -567,6 +560,17 @@ public sealed class HostBridge
                 exitCode = result.ExitCode,
                 detail = result.Detail
             });
+
+            PostCatalog(postToUi, row?.Group);
+
+            // 装更卸后刷新 Claude 工作区安装态（与目录同步）
+            if (string.Equals(toolId, "claude-code", StringComparison.OrdinalIgnoreCase)
+                && (IsClaudePluginDataAction(action)
+                    || string.Equals(action, "install", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(action, "uninstall", StringComparison.OrdinalIgnoreCase)))
+            {
+                PostClaudeStatus(postToUi);
+            }
         }
         finally
         {

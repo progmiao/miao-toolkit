@@ -2,7 +2,9 @@
 /**
  * Claude Code 工作区：
  * - 未安装 / 安装·更新·卸载进行中：内容区整页为进度+输出
- * - 已安装·初始化：第一行执行/重置，下方整宽进度+输出
+ * - 安装 / 更新结束后需点「确认」再回主功能区（安装失败不可点，便于看日志）
+ * - 卸载结束后随未安装态自动收口（无主操作页，不需确认）
+ * - 已安装·初始化：进度条与执行/重置同一行，下方输出
  * - 已安装·其他 Tab：左操作 / 右共用进度+输出；空闲切 Tab 清空输出
  * 取消任务挂父级「终止」；状态读库，不提供刷新状态按钮。
  */
@@ -14,6 +16,7 @@ import { confirmDialog } from '@kernel/bridge/confirm'
 import { showToast } from '@kernel/bridge/toast'
 import { useShellTitle } from '@kernel/composables/useShellTitle'
 import { DEV_WORKSPACE_OWNS_CONSOLE_KEY } from '../devPanelContext'
+import { installConsoleJobOptions } from '../consoleAdapters/installTty'
 import { useDevPanelJob } from '../useDevPanelJob'
 import '../voltaShared/voltaPackageWorkspace.css'
 
@@ -71,9 +74,11 @@ const selected = ref<Record<string, boolean>>({})
 const filter = ref('')
 /** 已收到至少一次 claude.status，避免未装态闪 Tab。 */
 const statusReady = ref(false)
-/** 安装 / 更新 / 卸载；失败后保持直至成功或（已安装时）返回。 */
+/** 安装 / 更新 / 卸载；装更需确认后才退出，卸仍随状态自动收口。 */
 const lifecycleKind = ref<LifecycleKind | null>(null)
 const tabBeforeLifecycle = ref<ClaudeTab>('init')
+/** 当前生命周期任务结果：null=未结束；装更确认按钮依赖此项。 */
+const lifecycleJobOk = ref<boolean | null>(null)
 
 const apiMode = ref<'official' | 'custom' | 'clear'>('official')
 const apiKey = ref('')
@@ -101,6 +106,7 @@ const {
   resetWhenIdle,
   isShared,
 } = useDevPanelJob({
+  ...installConsoleJobOptions(),
   onFinished: () => post({ type: 'claude.status' }),
   formatStarted: (msg) => `开始：${msg.action ?? '任务'}`,
   formatFinished: (msg) => (msg.ok ? '完成' : `失败 ${msg.detail ?? ''}`),
@@ -114,6 +120,34 @@ const showLifecycleView = computed(
     !isInstalled.value ||
     lifecycleKind.value != null,
 )
+
+/** 安装 / 更新执行页：进度条旁预留确认（卸载不需要）。 */
+const showLifecycleConfirm = computed(
+  () => lifecycleKind.value === 'install' || lifecycleKind.value === 'update',
+)
+
+/**
+ * 执行结束后才可点：更新成/败均可回主区；安装须成功且已探测到已安装才可进。
+ */
+const lifecycleConfirmEnabled = computed(() => {
+  if (!showLifecycleConfirm.value || busy.value) return false
+  if (lifecycleJobOk.value === null) return false
+  if (lifecycleKind.value === 'install') {
+    return lifecycleJobOk.value === true && isInstalled.value
+  }
+  return true
+})
+
+const lifecycleConfirmTitle = computed(() => {
+  if (busy.value || lifecycleJobOk.value === null) return '执行完成后可确认返回'
+  if (lifecycleKind.value === 'install' && lifecycleJobOk.value === false) {
+    return '安装失败，无法进入功能区（可查看输出日志）'
+  }
+  if (lifecycleKind.value === 'install' && !isInstalled.value) {
+    return '正在确认安装状态…'
+  }
+  return '返回功能区'
+})
 
 const activePlugins = computed(() => {
   if (tab.value === 'plugin-update') return pluginsUpdate.value
@@ -177,30 +211,26 @@ function pluginRowLabel(p: Plugin) {
 function enterLifecycle(kind: LifecycleKind) {
   if (!lifecycleKind.value) tabBeforeLifecycle.value = tab.value
   lifecycleKind.value = kind
+  lifecycleJobOk.value = null
 }
 
-function applyLifecycleFinished(ok: boolean) {
+/** 确认离开安装 / 更新执行页，进入主功能区。 */
+function confirmLifecycle() {
+  if (!lifecycleConfirmEnabled.value) return
   const kind = lifecycleKind.value
-  if (!kind) return
-  if (!ok) return
-  if (kind === 'update') {
-    tab.value = tabBeforeLifecycle.value
-    lifecycleKind.value = null
-    // 回到功能区：清掉装/更输出，显示默认空控制台
-    resetWhenIdle()
-  }
-  // install / uninstall：等 claude.status 再收口，避免 catalog 与 status 短暂不一致闪屏
+  if (kind === 'install') tab.value = 'init'
+  else if (kind === 'update') tab.value = tabBeforeLifecycle.value
+  lifecycleKind.value = null
+  lifecycleJobOk.value = null
+  resetWhenIdle()
 }
 
+/** 卸载成功后随 status 自动收口；装更不自动跳转。 */
 function settleLifecycleFromStatus() {
   if (busy.value || !lifecycleKind.value) return
-  const kind = lifecycleKind.value
-  if (kind === 'install' && isInstalled.value) {
-    tab.value = 'init'
+  if (lifecycleKind.value === 'uninstall' && !isInstalled.value) {
     lifecycleKind.value = null
-    resetWhenIdle()
-  } else if (kind === 'uninstall' && !isInstalled.value) {
-    lifecycleKind.value = null
+    lifecycleJobOk.value = null
     resetWhenIdle()
   }
 }
@@ -248,7 +278,7 @@ onMounted(() => {
     }
     if (msg.type === 'job-finished') {
       post({ type: 'claude.status' })
-      applyLifecycleFinished(Boolean(msg.ok))
+      if (lifecycleKind.value) lifecycleJobOk.value = Boolean(msg.ok)
     }
     if (!isShared) consumeJobMessage(msg)
   })
@@ -333,7 +363,19 @@ async function runReset() {
           :status-text="statusText"
           :entries="outputEntries"
           :busy="busy"
-        />
+        >
+          <template v-if="showLifecycleConfirm" #actions>
+            <button
+              type="button"
+              class="btn secondary claude-lifecycle-confirm"
+              :disabled="!lifecycleConfirmEnabled"
+              :title="lifecycleConfirmTitle"
+              @click="confirmLifecycle"
+            >
+              <span class="btn-label">返回</span>
+            </button>
+          </template>
+        </JobConsole>
       </div>
     </template>
 
@@ -358,23 +400,25 @@ async function runReset() {
       </RegionLock>
 
       <div class="folder-body">
-        <!-- 初始化：第一行按钮，下方整宽进度+输出 -->
+        <!-- 初始化：进度条与执行/重置同一行，下方输出 -->
         <div
           v-if="tab === 'init'"
           class="claude-init-layout"
           :class="{ 'is-job-locked': busy }"
         >
-          <div class="tool-ops claude-init-ops">
-            <div
-              v-if="busy"
-              class="tool-ops-lock"
-              title="任务进行中，请先终止"
-              aria-hidden="true"
-            />
-            <div class="ver-head claude-init-head">
+          <JobConsole
+            class="tool-console claude-init-console"
+            always-show
+            actions-placement="start"
+            :progress="progress"
+            :status-text="statusText"
+            :entries="outputEntries"
+            :busy="busy"
+          >
+            <template #actions>
               <button
                 type="button"
-                class="btn btn-ops"
+                class="btn claude-init-action"
                 :disabled="busy"
                 title="执行初始化"
                 @click="runJob('init')"
@@ -383,23 +427,15 @@ async function runReset() {
               </button>
               <button
                 type="button"
-                class="btn secondary btn-ops"
+                class="btn secondary claude-init-action"
                 :disabled="busy"
                 title="仅重置初始化设置"
                 @click="runReset"
               >
                 <span class="btn-label">重置</span>
               </button>
-            </div>
-          </div>
-          <JobConsole
-            class="tool-console claude-init-console"
-            always-show
-            :progress="progress"
-            :status-text="statusText"
-            :entries="outputEntries"
-            :busy="busy"
-          />
+            </template>
+          </JobConsole>
         </div>
 
         <div
@@ -599,29 +635,17 @@ async function runReset() {
   width: 100%;
 }
 
+.claude-lifecycle-confirm {
+  min-width: 4.5rem;
+}
+
 .claude-init-layout {
   flex: 1;
   min-width: 0;
   min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.55rem;
   overflow: hidden;
-}
-
-.claude-init-ops {
-  position: relative;
-  flex: 0 0 auto;
-  width: 100%;
-  max-width: min(22rem, 100%);
-  min-height: 0;
-}
-
-.claude-init-head {
-  width: 100%;
-  min-width: 0;
-  height: var(--tool-head-h);
-  justify-content: flex-start;
 }
 
 .claude-init-console {
@@ -630,7 +654,9 @@ async function runReset() {
   width: 100%;
 }
 
-/* 顶栏按钮尺寸/居中：公共 .btn-ops / .ver-head > .btn（buttons.css） */
+.claude-init-action {
+  min-width: 4.5rem;
+}
 
 .claude-pane {
   min-height: 0;

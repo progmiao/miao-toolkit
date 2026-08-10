@@ -20,7 +20,7 @@
   "group.dev": "Dev Tools",
   "hermes.action.install": "Install / Update",
   "hermes.action.uninstall": "Uninstall",
-  "hermes.description": "Hermes official CLI (install.ps1 / update; uninstall keeps user data)",
+  "hermes.description": "Hermes official CLI. Enable VPN TUN mode before install/update",
   "hermes.name": "Hermes",
   "nav.daily": "Daily tools",
   "nav.dev": "Dev tools",

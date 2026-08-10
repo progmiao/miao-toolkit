@@ -1,6 +1,6 @@
 /**
  * Job 控制台状态：进度 + 单轨输出（原命令/日志合并为一条时间线）。
- * 默认把 console chunk 按行 append；业务可通过 onConsoleChunk 自行解析（如 Volta）。
+ * 默认 console 仅 scrub + 分行写出；业务通过 onConsoleChunk 自行解析（install / Volta 等）。
  */
 import { ref, type Ref } from 'vue'
 import { post, type HostMessage } from '@kernel/bridge/bus'
@@ -8,11 +8,11 @@ import { confirmDialog } from '@kernel/bridge/confirm'
 import { useLogEntries, type UseLogEntriesApi } from '@kernel/composables/useLogEntries'
 import type { LogEntry, LogEntryInput, LogEntryTone } from '@kernel/console/logEntries'
 import {
-  applySpinnerConsoleChunk,
-  createSpinnerConsoleSession,
-  finishSpinnerConsoleSession,
-  type SpinnerConsoleSession,
-} from '@kernel/console/applySpinnerConsoleChunk'
+  applyPlainConsoleChunk,
+  createPlainConsoleSession,
+  finishPlainConsoleSession,
+  type PlainConsoleSession,
+} from '@kernel/console/applyPlainConsoleChunk'
 
 export type ConsoleChunkHandlers = {
   append: (text: string, tone?: LogEntryTone) => void
@@ -28,11 +28,13 @@ export type UseJobConsoleOptions = {
   formatStarted?: (msg: HostMessage) => string
   formatFinished?: (msg: HostMessage) => string
   /**
-   * 业务接管输出窗写入与进度（如 Node Volta）。
-   * 未提供时：console 按行 append，进度用宿主 ##progress。
+   * 业务接管输出窗写入与进度（如 install TTY / Node Volta）。
+   * 未提供时：console 仅按行 append，进度用宿主 ##progress。
    * 也可运行时通过 setViewAdapters 挂载（嵌入共用 Job 时）。
    */
   onConsoleChunk?: (chunk: string, api: ConsoleChunkHandlers) => void
+  /** 任务缓冲清空时重置业务 console session（job-started / reset）。 */
+  onConsoleReset?: () => void
   /** 业务接管宿主 progress；返回值写入进度条，返回 undefined 则沿用默认。 */
   onHostProgress?: (pct: number, api: ConsoleChunkHandlers) => number | void
   /** 业务接管 ##task 文案。 */
@@ -41,6 +43,7 @@ export type UseJobConsoleOptions = {
 
 export type JobViewAdapters = {
   onConsoleChunk?: UseJobConsoleOptions['onConsoleChunk']
+  onConsoleReset?: UseJobConsoleOptions['onConsoleReset']
   onHostProgress?: UseJobConsoleOptions['onHostProgress']
   onTaskLabel?: UseJobConsoleOptions['onTaskLabel']
 }
@@ -72,7 +75,7 @@ function clampProgress(pct: number): number {
   return Math.round(Math.min(100, Math.max(0, pct)))
 }
 
-function spinnerSink(outputLog: UseLogEntriesApi) {
+function plainSink(outputLog: UseLogEntriesApi) {
   return {
     append: (text: string, tone?: LogEntryTone) => {
       outputLog.append(tone ? { text, tone } : text)
@@ -86,31 +89,6 @@ function spinnerSink(outputLog: UseLogEntriesApi) {
   }
 }
 
-function defaultAppendConsoleLines(
-  chunk: string,
-  outputLog: UseLogEntriesApi,
-  session: SpinnerConsoleSession,
-  onDownload?: (info: {
-    downloadPct: number
-    downloaded: string
-    total: string
-  }) => void,
-) {
-  const result = applySpinnerConsoleChunk(session, chunk, spinnerSink(outputLog))
-  if (
-    result?.downloadPct != null &&
-    result.downloaded &&
-    result.total &&
-    onDownload
-  ) {
-    onDownload({
-      downloadPct: result.downloadPct,
-      downloaded: result.downloaded,
-      total: result.total,
-    })
-  }
-}
-
 export function useJobConsole(options: UseJobConsoleOptions = {}): JobConsoleApi {
   const outputLog = useLogEntries()
   const progress = ref(0)
@@ -121,11 +99,12 @@ export function useJobConsole(options: UseJobConsoleOptions = {}): JobConsoleApi
   const currentJob = ref<string | null>(null)
 
   let runtimeAdapters: JobViewAdapters = {}
-  let spinnerSession = createSpinnerConsoleSession()
+  let plainSession: PlainConsoleSession = createPlainConsoleSession()
 
   function resolveAdapters(): JobViewAdapters {
     return {
       onConsoleChunk: runtimeAdapters.onConsoleChunk ?? options.onConsoleChunk,
+      onConsoleReset: runtimeAdapters.onConsoleReset ?? options.onConsoleReset,
       onHostProgress: runtimeAdapters.onHostProgress ?? options.onHostProgress,
       onTaskLabel: runtimeAdapters.onTaskLabel ?? options.onTaskLabel,
     }
@@ -159,17 +138,6 @@ export function useJobConsole(options: UseJobConsoleOptions = {}): JobConsoleApi
     outputLog.append(tone ? { text: line, tone } : line)
   }
 
-  function applyDownloadProgress(info: {
-    downloadPct: number
-    downloaded: string
-    total: string
-  }) {
-    // 下载阶段映射到总进度约 30–85，且只升不降（保留宿主 ##progress 下限）
-    const mapped = clampProgress(30 + (info.downloadPct / 100) * 55)
-    if (mapped > progress.value) progress.value = mapped
-    statusText.value = `下载 ${info.downloaded} / ${info.total}`
-  }
-
   function appendConsole(chunk: string) {
     if (!chunk) return
     // 去掉偶发夹在 console 流里的协议行，避免 ##progress 出现在输出窗。
@@ -189,7 +157,7 @@ export function useJobConsole(options: UseJobConsoleOptions = {}): JobConsoleApi
     if (adapters.onConsoleChunk) {
       adapters.onConsoleChunk(cleaned, handlers())
     } else {
-      defaultAppendConsoleLines(cleaned, outputLog, spinnerSession, applyDownloadProgress)
+      applyPlainConsoleChunk(plainSession, cleaned, plainSink(outputLog))
     }
   }
 
@@ -199,7 +167,8 @@ export function useJobConsole(options: UseJobConsoleOptions = {}): JobConsoleApi
     statusText.value = ''
     batchCurrent.value = 0
     batchTotal.value = 0
-    spinnerSession = createSpinnerConsoleSession()
+    plainSession = createPlainConsoleSession()
+    resolveAdapters().onConsoleReset?.()
   }
 
   function resetWhenIdle() {
@@ -276,7 +245,7 @@ export function useJobConsole(options: UseJobConsoleOptions = {}): JobConsoleApi
 
     if (msg.type === 'job-finished') {
       busy.value = false
-      finishSpinnerConsoleSession(spinnerSession, spinnerSink(outputLog))
+      finishPlainConsoleSession(plainSession, plainSink(outputLog))
       const cancelled =
         !msg.ok &&
         (String(msg.detail ?? '').toLowerCase().includes('cancelled') ||
@@ -297,7 +266,7 @@ export function useJobConsole(options: UseJobConsoleOptions = {}): JobConsoleApi
 
     if (msg.type === 'error' && msg.message) {
       busy.value = false
-      finishSpinnerConsoleSession(spinnerSession, spinnerSink(outputLog))
+      finishPlainConsoleSession(plainSession, plainSink(outputLog))
       progress.value = 0
       statusText.value = '错误'
       appendLine(`[错误] ${msg.message}`, 'err')

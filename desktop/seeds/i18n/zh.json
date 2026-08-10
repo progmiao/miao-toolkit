@@ -19,7 +19,7 @@
   "group.dev": "开发工具",
   "hermes.action.install": "安装 / 更新",
   "hermes.action.uninstall": "卸载",
-  "hermes.description": "Hermes 官方 CLI（install.ps1 / update；卸载保留用户数据）",
+  "hermes.description": "Hermes 官方 CLI。安装/更新前请先开启科学上网 TUN 模式",
   "hermes.name": "Hermes",
   "nav.daily": "日常工具",
   "nav.dev": "开发工具",

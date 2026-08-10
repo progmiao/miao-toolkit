@@ -45,8 +45,26 @@ Write-Host 'Claude Code CLI 已就绪'
         var result = await context.Jobs
             .RunPowerShellAsync(context.JobId, sb.ToString(), cancellationToken: cancellationToken)
             .ConfigureAwait(false);
-        InstallDetector.ProbeAndStore(context.Db, context.ToolId, context.Manifest.Install?.Detect);
+        // 刷新本机版本 + 更新角标；升级后 PATH/winget 偶发滞后，失败则短等再探一次
+        RefreshInstallAndUpdate(context);
+        if (result.Ok)
+        {
+            var state = context.Db.GetToolState(context.ToolId);
+            var stillMarked = state?.Detail is { Length: > 0 } d
+                && d.StartsWith("update:", StringComparison.OrdinalIgnoreCase);
+            if (stillMarked)
+            {
+                await Task.Delay(1200, cancellationToken).ConfigureAwait(false);
+                RefreshInstallAndUpdate(context);
+            }
+        }
         return result;
+    }
+
+    private static void RefreshInstallAndUpdate(ToolActionContext context)
+    {
+        InstallDetector.ProbeAndStore(context.Db, context.ToolId, context.Manifest.Install?.Detect);
+        UpdateProbe.ProbeAndStore(context.Db, context.ToolId, context.Manifest);
     }
 }
 

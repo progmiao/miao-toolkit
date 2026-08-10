@@ -104,6 +104,9 @@ watch(
 .command-line.tone-err {
   color: #f48771;
 }
+.command-line.tone-accent {
+  color: color-mix(in srgb, var(--accent, #3dd6c6) 88%, #9ef);
+}
 
 .command-scroll::-webkit-scrollbar {
   width: var(--scroll-size, 7px);

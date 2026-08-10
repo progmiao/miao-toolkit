@@ -4,7 +4,7 @@
  * - 有 id：首次追加，再次同 id 则原位更新文案
  */
 
-export type LogEntryTone = 'plain' | 'dim' | 'ok' | 'warn' | 'err'
+export type LogEntryTone = 'plain' | 'dim' | 'ok' | 'warn' | 'err' | 'accent'
 
 export type LogEntry = {
   id: string

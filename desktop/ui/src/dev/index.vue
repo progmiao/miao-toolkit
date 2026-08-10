@@ -23,6 +23,7 @@ import { confirmDialog } from '@kernel/bridge/confirm'
 import { setForegroundJobBusy } from '@kernel/bridge/foregroundJob'
 import RegionLock from '@kernel/components/RegionLock.vue'
 import { useJobConsole } from '@kernel/composables/useJobConsole'
+import { installConsoleJobOptions } from './consoleAdapters/installTty'
 import { useShellTitle } from '@kernel/composables/useShellTitle'
 import {
   buildTagFilters,
@@ -75,6 +76,7 @@ function recalcSkeletonRows() {
 }
 
 const jobApi = useJobConsole({
+  ...installConsoleJobOptions(),
   onFinished: () => requestCatalog(),
   onError: () => {
     if (listLoading.value) listLoading.value = false
@@ -163,17 +165,6 @@ const workspaceComponent = computed(() =>
 )
 
 /**
- * 右侧唯一功能提示。
- * 当前仅 Hermes 安装后需额外说明。
- */
-const featureTip = computed(() => {
-  if (activeItem.value?.id === 'hermes') {
-    return '安装后建议新开终端执行 hermes setup --portal。'
-  }
-  return null
-})
-
-/**
  * 按工具 id 选中列表项（供工作区内「相关工具」调用）。
  * @param toolId - 目录 id
  */
@@ -198,7 +189,8 @@ function selectRow(it: CatalogItem) {
  * 向宿主请求开发工具目录；进入加载态直至收到 `catalog`。
  */
 function requestCatalog() {
-  listLoading.value = true
+  // 已有列表时不要整表骨架，避免装/更完成后短暂「空闪」且看起来像没刷新
+  if (!items.value.length) listLoading.value = true
   post({ type: 'get-catalog', group: 'dev' })
 }
 
@@ -208,7 +200,8 @@ onMounted(() => {
   unsub = subscribe((msg) => {
     if (msg.type === 'catalog' && msg.items) {
       if (msg.group && msg.group !== 'dev') return
-      items.value = msg.items as CatalogItem[]
+      // 新数组引用，确保列表角标 / 概览版本与「可更新」立即重算
+      items.value = (msg.items as CatalogItem[]).map((it) => ({ ...it }))
       listLoading.value = false
       // 任务进行中禁止因目录刷新切换选中工具
       if (busy.value) return
@@ -396,7 +389,6 @@ async function runAction(action: string, id: string) {
                   </span>
                 </h2>
                 <p v-if="activeItem.description" class="panel-desc">{{ activeItem.description }}</p>
-                <p v-if="featureTip" class="panel-tip tip-feature">{{ featureTip }}</p>
                 <p v-if="nodePrereqBlocked" class="prereq-banner-inline">
                   <span>缺少前置：Node.js 18+</span>
                   <button
@@ -414,6 +406,7 @@ async function runAction(action: string, id: string) {
             <div class="tool-overview-actions actions--tall">
               <RegionLock
                 class="overview-actions-lock"
+                mask="clear"
                 :active="busy"
                 title="任务进行中，请先终止"
               >
@@ -809,6 +802,7 @@ async function runAction(action: string, id: string) {
   min-width: 0;
 }
 
+/* 忙碌时按钮已 :disabled；RegionLock mask=clear 仅挡点击 */
 .overview-actions-group {
   display: flex;
   flex-wrap: wrap;

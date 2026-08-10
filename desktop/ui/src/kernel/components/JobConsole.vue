@@ -15,6 +15,8 @@ const props = withDefaults(
     placeholder?: string
     alwaysShow?: boolean
     statusText?: string
+    /** 操作按钮相对进度条：start=左，end=右 */
+    actionsPlacement?: 'start' | 'end'
   }>(),
   {
     busy: false,
@@ -22,6 +24,7 @@ const props = withDefaults(
     statusText: '',
     entries: () => [],
     placeholder: '执行操作时在此显示输出…',
+    actionsPlacement: 'end',
   },
 )
 
@@ -35,7 +38,21 @@ const visible = computed(
 
 <template>
   <div v-if="visible" class="job-console">
-    <JobProgressBar :progress="progress" :status-text="statusText" />
+    <div class="job-progress-row">
+      <div
+        v-if="$slots.actions && actionsPlacement === 'start'"
+        class="job-progress-side"
+      >
+        <slot name="actions" />
+      </div>
+      <JobProgressBar class="job-progress-main" :progress="progress" :status-text="statusText" />
+      <div
+        v-if="$slots.actions && actionsPlacement === 'end'"
+        class="job-progress-side"
+      >
+        <slot name="actions" />
+      </div>
+    </div>
 
     <div class="job-panes job-panes--tabs">
       <div class="pane-tabs" role="tablist" aria-label="输出面板">
@@ -68,6 +85,37 @@ const visible = computed(
   width: 100%;
   max-width: 100%;
   flex: 1;
+}
+
+.job-progress-row {
+  display: flex;
+  align-items: stretch;
+  gap: 0.5rem;
+  flex: 0 0 auto;
+  min-width: 0;
+}
+
+.job-progress-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.job-progress-side {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: stretch;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.job-progress-side > :deep(.btn) {
+  height: 100% !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  align-self: stretch;
+  box-sizing: border-box;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
 }
 
 .job-panes {

@@ -339,16 +339,26 @@ export function handleMockRequest(message: Record<string, unknown>) {
         const item = all.find((i) => i.id === toolId)
         if (item) {
           if (action === 'install') {
+            const wasUpdate = Boolean(item.updateAvailable)
             item.status = 'installed'
+            if (wasUpdate && item.latestVersion) {
+              item.version = item.latestVersion
+            } else if (!item.version) {
+              item.version = 'mock'
+            }
             item.updateAvailable = false
-            if (!item.version) item.version = 'mock'
+            item.latestVersion = undefined
           } else if (action === 'uninstall') {
             item.status = 'missing'
             item.version = undefined
             item.updateAvailable = false
+            item.latestVersion = undefined
           }
         }
+        const group = item?.group ?? 'dev'
+        const catalog = group === 'daily' ? MOCK_DAILY : MOCK_DEV
         reply({ type: 'job-finished', jobId, ok: true, exitCode: 0, detail: 'mock' })
+        reply({ type: 'catalog', group, items: catalog.map((i) => ({ ...i })) })
       }, 400)
       break
     }
