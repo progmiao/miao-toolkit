@@ -35,10 +35,17 @@ if ($desk -match 'HermesDesktop|fathah') {
 }
 Write-Host '##progress 20'
 if (Test-Hermes) {
-  Write-Host '已检测到 Hermes，执行 hermes update…'
+  Write-Host '已检测到 Hermes，执行 hermes update（非交互，不恢复本地 stash）…'
   Write-Host '##progress 40'
-  hermes update
-  if ($LASTEXITCODE -ne 0) { throw ""hermes update 失败 exit=$LASTEXITCODE"" }
+  # --yes：跳过交互；discard：更新后丢掉 autostash（等同 Restore local changes? N）
+  try { hermes config set updates.non_interactive_local_changes discard 2>&1 | Out-Host } catch { }
+  $prevEAP = $ErrorActionPreference
+  $ErrorActionPreference = 'Continue'
+  # 个别版本仍可能读 stdin；预置 n 作兜底
+  ""n"" | hermes update --yes
+  $updExit = $LASTEXITCODE
+  $ErrorActionPreference = $prevEAP
+  if ($updExit -ne 0) { throw ""hermes update 失败 exit=$updExit"" }
 } else {
   Write-Host '执行官方安装脚本（跳过交互向导）…'
   Write-Host '##progress 35'

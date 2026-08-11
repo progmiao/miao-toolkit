@@ -1,5 +1,5 @@
 /**
- * 安装类工具 TTY 适配器：CLI 转圈 + winget/IWR/块状条 + git remote / uv Preparing·Installing。
+ * 安装类工具 TTY 适配器：CLI 转圈 + winget/IWR/块状条 + git remote / uv / Playwright 下载。
  * 供 useJobConsole.onConsoleChunk 挂载；内核输出层不包含这些业务语义。
  */
 
@@ -24,6 +24,10 @@ export type InstallTtySession = {
   inUvPrepare: boolean
   /** uv Installing packages（█░ [n/m] pkg）刷屏中 */
   inUvInstall: boolean
+  /** Playwright 浏览器组件下载刷屏中 */
+  inPlaywrightDownload: boolean
+  /** 当前 Playwright 下载资源名（短） */
+  playwrightAsset: string
   /** 下载进度条峰值（只升不降） */
   peakDownloadMapped: number
 }
@@ -72,6 +76,7 @@ export const GIT_REMOTE_PROGRESS_LINE_PREFIX = 'git:remote:'
 export const GIT_PROGRESS_LINE_PREFIX = GIT_REMOTE_PROGRESS_LINE_PREFIX
 export const UV_PREPARE_LINE_ID = 'uv:preparing-packages'
 export const UV_INSTALL_LINE_ID = 'uv:installing-packages'
+export const PLAYWRIGHT_DOWNLOAD_LINE_ID = 'playwright:download'
 
 /** uv「Preparing packages...(n/m)」多包进度条（TTY 整屏刷新）。 */
 const UV_PREPARING_RE = /Preparing packages\.\.\.\s*\((\d+)\/(\d+)\)/gi
@@ -88,6 +93,11 @@ const UV_INSTALL_FRAME_RE =
 const UV_INSTALLED_RE = /Installed\s+(\d+)\s+packages\s+in\s+[^\r\n]+/i
 const UV_PLUS_PKG_RE = /^\+\s+[a-zA-Z0-9_.+-]+(?:==\S+)?\s*$/m
 
+/** Playwright：`Downloading … from https://…` / `|■■|  10% of 172.8 MiB` / `… downloaded to …` */
+const PW_DOWNLOADING_RE = /Downloading\s+(.+?)\s+from\s+https?:\/\/\S+/gi
+const PW_DOWNLOADED_RE = /^(.+?)\s+downloaded\s+to\s+\S+/i
+const PW_PROGRESS_RE = /\|[^|\r\n]*\|\s*(\d{1,3})%\s+of\s+([\d.]+\s*[KMGT]?i?B)/gi
+
 export function createInstallTtySession(): InstallTtySession {
   return {
     pending: '',
@@ -96,6 +106,8 @@ export function createInstallTtySession(): InstallTtySession {
     hasDownloadLine: false,
     inUvPrepare: false,
     inUvInstall: false,
+    inPlaywrightDownload: false,
+    playwrightAsset: '',
     peakDownloadMapped: 0,
   }
 }
@@ -546,6 +558,92 @@ function emitUvInstallProgress(
   return downloadPct != null ? { downloadPct } : {}
 }
 
+function shortPlaywrightAsset(name: string): string {
+  const t = name.trim()
+  if (/Chrome for Testing/i.test(t)) return 'Chrome for Testing'
+  if (/Chrome Headless Shell/i.test(t)) return 'Chrome Headless Shell'
+  if (/FFmpeg/i.test(t)) return 'FFmpeg'
+  if (/Winldd/i.test(t)) return 'Winldd'
+  if (/playwright\s+(\S+)/i.test(t)) return RegExp.$1
+  return t.length > 48 ? `${t.slice(0, 45)}…` : t
+}
+
+/**
+ * Playwright 浏览器组件下载：进度条收成单行；Downloading / downloaded 里程碑保留。
+ */
+function emitPlaywrightDownloadProgress(
+  session: InstallTtySession,
+  line: string,
+  sink: InstallTtySink,
+): ApplyConsoleChunkResult | null {
+  const downloading = [...line.matchAll(new RegExp(PW_DOWNLOADING_RE.source, 'gi'))]
+  const progress = [...line.matchAll(new RegExp(PW_PROGRESS_RE.source, 'gi'))]
+  const downloadedLine = PW_DOWNLOADED_RE.exec(line.trim())
+  PW_DOWNLOADED_RE.lastIndex = 0
+
+  const looksLike =
+    downloading.length > 0 ||
+    progress.length > 0 ||
+    (session.inPlaywrightDownload && !!downloadedLine) ||
+    (!!downloadedLine && /playwright|chromium|ffmpeg|winldd|ms-playwright/i.test(line))
+
+  if (!looksLike) return null
+
+  // 纯「downloaded to」且不在下载中：当里程碑（可能单独一行）
+  if (downloadedLine && downloading.length === 0 && progress.length === 0) {
+    clearSpinnerLine(session, sink)
+    session.inPlaywrightDownload = false
+    sink.remove(PLAYWRIGHT_DOWNLOAD_LINE_ID)
+    sink.append(line.trim(), 'ok')
+    session.spinnerSlot += 1
+    return {}
+  }
+
+  clearSpinnerLine(session, sink)
+  session.hasDownloadLine = true
+  session.inPlaywrightDownload = true
+
+  if (downloading.length) {
+    const lastDl = downloading[downloading.length - 1]!
+    session.playwrightAsset = shortPlaywrightAsset(lastDl[1] ?? 'Playwright asset')
+  }
+
+  let downloadPct: number | undefined
+  let sizeHint = ''
+  if (progress.length) {
+    const last = progress[progress.length - 1]!
+    const pct = Number(last[1])
+    if (Number.isFinite(pct) && pct >= 0 && pct <= 100) {
+      downloadPct = pct
+      sizeHint = (last[2] ?? '').trim()
+    }
+  }
+
+  const asset = session.playwrightAsset || 'Playwright'
+  if (downloadPct != null) {
+    const size = sizeHint ? ` of ${sizeHint}` : ''
+    sink.upsert(
+      PLAYWRIGHT_DOWNLOAD_LINE_ID,
+      `Downloading ${asset}…  ${formatBar(downloadPct)} ${String(downloadPct).padStart(3, ' ')}%${size}`,
+      'dim',
+    )
+  } else {
+    sink.upsert(PLAYWRIGHT_DOWNLOAD_LINE_ID, `Downloading ${asset}…`, 'dim')
+  }
+
+  // 同块里若已完成某一资源
+  const done = [...line.matchAll(/^.+?\s+downloaded\s+to\s+\S+/gim)]
+  if (done.length) {
+    const lastDone = done[done.length - 1]![0]!.trim()
+    sink.remove(PLAYWRIGHT_DOWNLOAD_LINE_ID)
+    sink.append(lastDone, 'ok')
+    session.inPlaywrightDownload = false
+    session.playwrightAsset = ''
+  }
+
+  return downloadPct != null ? { downloadPct } : {}
+}
+
 /** Preparing 阶段的单行里程碑 / 噪声。 */
 function emitUvPrepareLineExtras(
   session: InstallTtySession,
@@ -595,6 +693,19 @@ function emitUvPrepareLineExtras(
   }
   if (UV_PLUS_PKG_RE.test(t)) return true
   if (session.inUvInstall && /^[█▉▊▋▌▍▎▏░▒▓]/.test(t)) return true
+  // Playwright 进度条单行
+  PW_PROGRESS_RE.lastIndex = 0
+  if (PW_PROGRESS_RE.test(t)) {
+    PW_PROGRESS_RE.lastIndex = 0
+    emitPlaywrightDownloadProgress(session, t, sink)
+    return true
+  }
+  PW_DOWNLOADING_RE.lastIndex = 0
+  if (PW_DOWNLOADING_RE.test(t)) {
+    PW_DOWNLOADING_RE.lastIndex = 0
+    emitPlaywrightDownloadProgress(session, t, sink)
+    return true
+  }
   if (session.inUvPrepare && isUvPrepareNoiseLine(t)) return true
   // Building @ file:///… 即使尚未进入 Preparing，也是 uv 本地构建 TTY 噪声
   if (UV_BUILDING_RE.test(t)) {
@@ -612,6 +723,7 @@ function emitContent(session: InstallTtySession, line: string, sink: InstallTtyS
   // 原始进度行：已转成下载行，勿再 append
   if (parseWingetDownloadLine(text)) return
   if (PSH_IWR_PROGRESS_RE.test(text)) return
+  if (emitPlaywrightDownloadProgress(session, text, sink)) return
   if (emitUvInstallProgress(session, text, sink)) return
   if (parseBlockProgressPct(text) != null) return
   if (emitGitRemoteProgress(session, text, sink)) return
@@ -654,6 +766,8 @@ export function finishInstallTtySession(
   session.pending = ''
   session.inUvPrepare = false
   session.inUvInstall = false
+  session.inPlaywrightDownload = false
+  session.playwrightAsset = ''
   session.peakDownloadMapped = 0
 }
 
@@ -711,6 +825,8 @@ export function applyInstallTtyChunk(
   if (half) return half
   const iwr = emitPshIwrProgress(session, buf, sink)
   if (iwr) return iwr
+  const pwHalf = emitPlaywrightDownloadProgress(session, buf, sink)
+  if (pwHalf) return { ...lastDownload, ...pwHalf }
   const uvInstHalf = emitUvInstallProgress(session, buf, sink)
   if (uvInstHalf) return { ...lastDownload, ...uvInstHalf }
   const bar = emitBlockProgress(session, buf, sink)
@@ -745,6 +861,8 @@ function flushBuffer(
   if (dl) return dl
   const iwr = emitPshIwrProgress(session, buf, sink)
   if (iwr) return iwr
+  const pw = emitPlaywrightDownloadProgress(session, buf, sink)
+  if (pw) return pw
   const uvInst = emitUvInstallProgress(session, buf, sink)
   if (uvInst) return uvInst
   const bar = emitBlockProgress(session, buf, sink)
